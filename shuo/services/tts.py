@@ -36,7 +36,12 @@ class TTSService:
         self._running = False
         
         self._api_key = os.getenv("ELEVENLABS_API_KEY", "")
-        self._voice_id = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
+        # "Krish - Modern Creator" (context.md decision 21). The fallback
+        # has to be an Indian-English voice: an unset ELEVENLABS_VOICE_ID
+        # used to land on Rachel, an American voice, which breaks the
+        # persona on the exact calls this project exists for -- and does it
+        # silently, mid-call, with no error anywhere.
+        self._voice_id = os.getenv("ELEVENLABS_VOICE_ID", "MmiGAbOYCaIFzgNItUWa")
     
     @property
     def is_active(self) -> bool:

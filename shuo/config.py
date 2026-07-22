@@ -56,6 +56,31 @@ def record_calls() -> bool:
     return _env("RECORD_CALLS", default="true").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def checkpoint_grace_seconds() -> float:
+    """
+    How long a finished turn waits for the carrier's playback ack.
+
+    The player's own completion only means the last frame was *dispatched*
+    -- the carrier still holds the pre-roll and the handset its de-jitter
+    buffer, so the caller has not heard it yet. `playedStream` is the
+    signal that they have. rules.md V18 makes that ack conditional, so
+    this is the bound on how long we sit in RESPONDING waiting for one
+    that may never come.
+
+    250ms: above the ~100-200ms the ack needs in ap-south-1 (60ms
+    pre-roll + 40-100ms de-jitter + a same-region round trip), and at the
+    median human response gap (rules.md H1), so the wait hides inside the
+    gap we are going to sample anyway rather than adding to it. Tune it
+    against `carrier_playback_done` in the trace after the first live
+    call. **0 disables the gate**, restoring the guessed completion.
+    """
+    raw = _env("SHUO_CHECKPOINT_GRACE_MS", default="250")
+    try:
+        return max(0.0, float(raw) / 1000.0)
+    except ValueError:
+        return 0.25
+
+
 def persona_for_did(did: Optional[str]) -> str:
     """
     Resolve which persona answers a given inbound number.

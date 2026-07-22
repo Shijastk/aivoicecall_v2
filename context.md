@@ -12,10 +12,10 @@ Read with [CLAUDE.md](CLAUDE.md) (scope + rules) and [rules.md](rules.md) (engin
 | | |
 |---|---|
 | **Current phase** | **Phase 1 — Transport swap: Twilio → Vobiz** |
-| **Status** | **Steps 1.0–1.8 implemented. 204 tests green.** Research + adversarial review applied. Live call pending. |
+| **Status** | **Steps 1.0–1.8 implemented. 218 tests green.** Research + adversarial review applied. Live call pending. |
 | **Blocking on** | A 10-digit Indian DID (a dummy number works for local testing). Credentials are in hand. |
-| **Codebase state** | `shuo/carrier/` holds Vobiz + Twilio behind one interface. Pipeline is Flux + Groq + **ElevenLabs (now permanent — decision 21)**. Player paces at realtime. |
-| **Last completed** | TTS vendor decision (ElevenLabs kept) and the Bug B pacing fix in [player.py](shuo/services/player.py), pulled forward from Phase 5. |
+| **Codebase state** | `shuo/carrier/` holds Vobiz + Twilio behind one interface. Pipeline is Flux + Groq + **ElevenLabs (now permanent — decision 21)**. Player paces at realtime; turns end on the carrier's playback ack. |
+| **Last completed** | **Bug B closed** — `playedStream` is now the authoritative turn-completion signal (decision 27), and the TTS fallback voice is Indian (decision 26). |
 
 ### Phase tracker
 
@@ -26,7 +26,7 @@ Read with [CLAUDE.md](CLAUDE.md) (scope + rules) and [rules.md](rules.md) (engin
 | 2 | Provider abstraction (`shuo/providers/`) | not started |
 | 3 | STT (Sarvam) + in-process turn detection, 3-phase state machine | not started |
 | 4 | ~~TTS → Cartesia~~ **ElevenLabs confirmed, voice selected** | **vendor question closed** (decision 21); founder voice clone deferred |
-| 5 | Player rewrite — fixes Bug A + Bug B | **Bug B pacing half done** (decision 22); Bug A + authoritative checkpoint not started |
+| 5 | Player rewrite — fixes Bug A + Bug B | **Bug B done** — pacing (decision 22) + authoritative checkpoint (decision 27); **Bug A not started** |
 | 6 | Filler engine, response-gap sampler, backchannel suppression | not started |
 | 6.5 | **`shuo/persona/` — Digital Twin persona layer** (NEW, not in plan.md) | not started |
 | 7 | LLM → Vertex Gemini 2.5 Flash-Lite, decided by measurement | not started |
@@ -46,7 +46,7 @@ Read with [CLAUDE.md](CLAUDE.md) (scope + rules) and [rules.md](rules.md) (engin
 | Protocol stub | [scripts/fake_vobiz.py](scripts/fake_vobiz.py) |
 | Tests (146 passing) | [tests/](tests/) — `test_update.py` unchanged, + carrier/vobiz/player/state/integration |
 
-**Test breakdown:** 24 original (unchanged) + 21 state + 25 carrier + 17 player + 56 vobiz + 34 integration + 6 logging = 185.
+**Test breakdown:** 24 original (unchanged) + 21 state + 25 carrier + 17 player + 56 vobiz + 34 integration + 6 logging = 185. Later additions bring the suite to **218**, including 14 in [tests/test_turn_completion.py](tests/test_turn_completion.py) (decision 27).
 
 **Bugs fixed beyond scope:** Bug C (POSIX-only trace paths); Deepgram SDK 7.x incompatibility in [flux.py](shuo/services/flux.py) that broke every call at connect time; webhook URL reconstruction (see decision 12).
 
@@ -106,15 +106,15 @@ Vobiz SBC + media plane        ── AWS ap-south-1 (Mumbai), ~1-5ms
 |---|---|---|---|
 | [shuo/state.py](shuo/state.py) | 60 | Pure `process_event`, 2 phases | **Keep**, extend to 3 phases (Phase 3) |
 | [shuo/types.py](shuo/types.py) | 109 | Immutable State/Event/Action | Extend (Phase 1 + 3) |
-| [shuo/conversation.py](shuo/conversation.py) | 161 | Event loop | Keep structure, add event sources |
-| [shuo/agent.py](shuo/agent.py) | 216 | Per-turn LLM→TTS→Player pipeline | Heavy modification |
+| [shuo/conversation.py](shuo/conversation.py) | 426 | Event loop + `_TurnCompletion` (the ack gate) | Keep structure, add event sources |
+| [shuo/agent.py](shuo/agent.py) | 190 | Per-turn LLM→TTS→Player pipeline | Heavy modification |
 | [shuo/server.py](shuo/server.py) | 307 | FastAPI + TTFT bench harness | Modify endpoints; **reuse bench** |
 | [shuo/log.py](shuo/log.py) | 296 | Structured logging | Keep |
 | [shuo/tracer.py](shuo/tracer.py) | 140 | Per-turn span tracing | Keep; fix Bug C, export metrics |
 | [shuo/services/flux.py](shuo/services/flux.py) | 160 | Deepgram Flux (STT + turn detect) | **Delete** (Phase 3) |
 | [shuo/services/tts.py](shuo/services/tts.py) | 191 | ElevenLabs WS | → `providers/tts/elevenlabs.py` (fallback) |
 | [shuo/services/tts_pool.py](shuo/services/tts_pool.py) | 182 | Warm pool, TTL eviction | **Keep pattern**, generalise |
-| [shuo/services/player.py](shuo/services/player.py) | 407 | Reframes to 160-byte frames, deadline-paced at 50/s | **Bug B pacing done**; Bug A + checkpoint remain |
+| [shuo/services/player.py](shuo/services/player.py) | 429 | Reframes to 160-byte frames, deadline-paced at 50/s | **Bug B done**; Bug A remains |
 | [shuo/services/twilio_client.py](shuo/services/twilio_client.py) | 74 | Outbound call + WS parsing | **Replace** → `carrier/vobiz.py` (Phase 1) |
 | [shuo/services/llm.py](shuo/services/llm.py) | 120 | Groq streaming | Modify (Phase 7) |
 | [tests/test_update.py](tests/test_update.py) | 307 | State machine tests | **Must stay green** |
@@ -131,7 +131,7 @@ Vobiz SBC + media plane        ── AWS ap-south-1 (Mumbai), ~1-5ms
 ### Three latent bugs (all confirmed present)
 
 - **Bug A — agent believes it said things the caller never heard.** [llm.py:111](shuo/services/llm.py#L111) appends the *entire generated* text `+ "..."` to history on cancel. Fix needs played-ms accounting. **Severity is higher for the candidate persona** — long answers get interrupted often.
-- **Bug B — pacing drifts, turn-completion is guessed.** *Pacing half **FIXED** 2026-07-22 (decision 22).* [player.py](shuo/services/player.py) reframes TTS chunks of any size to 160-byte frames and emits one per 20ms tick on an accumulating monotonic deadline. Pinned by `TestPacing` in [tests/test_player.py](tests/test_player.py) — the literal rules.md gate (3000 frames in 60s, <1 frame drift) passes on Windows; run it with `SHUO_PACING_SECONDS=60`. **Still open:** `on_done` fires when the last frame is *dispatched*, not when the carrier acknowledges the `checkpoint`. Making `playedStream` authoritative is a [conversation.py](shuo/conversation.py) change and must respect rules.md V18 (the ack is conditional and may never arrive), so nothing may block on it.
+- **Bug B — pacing drifts, turn-completion is guessed.** ***FIXED*** *2026-07-22 (decisions 22 + 27).* Pacing: [player.py](shuo/services/player.py) reframes TTS chunks of any size to 160-byte frames and emits one per 20ms tick on an accumulating monotonic deadline. Pinned by `TestPacing` in [tests/test_player.py](tests/test_player.py) — the literal rules.md gate (3000 frames in 60s, <1 frame drift) passes on Windows; run it with `SHUO_PACING_SECONDS=60`. Completion: `_TurnCompletion` in [conversation.py](shuo/conversation.py) holds the turn open until the carrier's `playedStream`, bounded by a grace window so rules.md V18 is respected. Pinned by [tests/test_turn_completion.py](tests/test_turn_completion.py).
 - **Bug C — POSIX-only path.** [tracer.py:26](shuo/tracer.py#L26) `Path("/tmp/shuo")`, same at [server.py:80](shuo/server.py#L80). Breaks the Windows dev machine today.
 
 ---
@@ -168,6 +168,8 @@ Append-only. Reversals get a new entry.
 | 23 | 2026-07-22 | **The player paces on `time.perf_counter()`, not `loop.time()`.** Recorded as [rules.md C7](rules.md). | Found by measurement, not review. On Python 3.12/Windows `loop.time()` is `GetTickCount64` at **15.625ms resolution** — three quarters of a 20ms frame — so the scheduler could not tell "on time" from "a frame late" and settled at **32.5 fps**; with `perf_counter` the same 30s stream runs at **50.02 fps, +6.9ms drift**. Fixed in 3.13 upstream, so it would have vanished on the Linux target and been invisible until someone trusted a local test call. The test harness has the same requirement — a `loop.time()` stopwatch cannot see most of its own 20ms budget. |
 | 24 | 2026-07-22 | **Lateness re-anchors; the player never catches up by bursting.** `_sleep_until` drops the old "recoverable if under 100ms late" branch — any missed deadline reschedules from *now*. | Found by measurement during a working-tree audit. The old branch yielded with `sleep(0)` and kept the missed deadline, so a loop running 20–100ms behind emitted frames **back-to-back — measured at 0.02ms apart, 25/25 runs under load**. That is Bug B by another name: it floods the handset de-jitter buffer (audio glitches) and leaves up to 100ms of unretractable audio committed at a barge-in, against the ~1 frame the module docstring promises. Cost: a stall now delays the stream permanently instead of being clawed back. User chose that trade explicitly — this is a personal-call/interview tool, so stream quality beats catching up. Matches the underrun path, which already re-anchored. Depends on [C7](rules.md): with `loop.time()`'s 15.625ms quantum, ticks read as late every third frame and re-anchoring turned each phantom stall into permanent drift (40.7ms over 150 frames). |
 | 23b | 2026-07-22 | **Decision 23 / [rules.md C7](rules.md) had been silently reverted in the working tree and was re-applied.** | Discovered during the audit: `player.py` was back on `loop.time()` throughout despite C7 being a 🔴 rule and 23 a recorded decision. It was also re-reverted *mid-session*, immediately after being fixed — same "ghost edit" pattern flagged last session. Re-verify `grep -c 'loop.time()' shuo/services/player.py` returns only the prose reference before trusting any local pacing measurement. |
+| 26 | 2026-07-22 | **The ElevenLabs fallback voice is `MmiGAbOYCaIFzgNItUWa` ("Krish - Modern Creator"), not Rachel.** [tts.py:39](shuo/services/tts.py#L39). | An unset `ELEVENLABS_VOICE_ID` used to default to `21m00Tcm4TlvDq8ikWAM` — Rachel, an American voice. On this project that is not a cosmetic default: the twin claims to be an Indian candidate, so the fallback is an instant character break (CLAUDE.md §4 / rules.md D3, D4) and it fails **silently, mid-call**, with no error anywhere. The fallback now matches decision 21's live config, so a missing env var degrades to the right voice instead of the wrong persona. |
+| 27 | 2026-07-22 | **`playedStream` is the authoritative end of a turn** — the second half of Bug B. `_TurnCompletion` in [conversation.py](shuo/conversation.py) arms on the player's dispatch callback and emits `AgentTurnDoneEvent` when the carrier acks the checkpoint, or when a **250ms grace window** expires (`SHUO_CHECKPOINT_GRACE_MS`, 0 disables). Voided by barge-in, reconnect, `clearedAudio` and hangup. | The player's `on_done` only means the last frame was *dispatched*; the carrier still holds the pre-roll and the handset its de-jitter buffer, so the agent believed a turn was over before the caller had heard it. rules.md V18 makes the ack conditional and possibly absent, so it is a **gate, not a wait** — nothing blocks, and the worst case is 250ms. 250ms because the ack needs ~100–200ms in ap-south-1 and that sits at the median human response gap (rules.md H1), so the wait hides inside a gap we are going to sample anyway. **The state machine is unchanged and still pure** (CLAUDE.md rule 1): a grace window is a timer, so it lives at the dispatch boundary (rules.md A3) and `process_event` still sees exactly one `AgentTurnDoneEvent` per turn. Tuning input for the first live call: a `carrier_playback_timeout` marker now lands in the trace whenever the ack does not arrive — which also settles whether Vobiz sends `playedStream` at all. |
 | 22 | 2026-07-22 | **Bug B's pacing half pulled forward from Phase 5**, on explicit user approval (CLAUDE.md rule 7). [player.py](shuo/services/player.py) now reframes to 160-byte frames and paces on a monotonic accumulating deadline. | Decision 21 makes it urgent rather than future work: ElevenLabs' ~125ms chunks drove the old `sleep(0.020)`-per-chunk loop at ~6.25× realtime. Over-buffering is unretractable on barge-in, and the candidate persona's 20–45s answers get interrupted constantly (rules.md D5). Reframing also decouples pacing from vendor chunk size, so this does not have to be revisited if TTS is ever swapped again. |
 
 ### Verification posture
@@ -179,6 +181,8 @@ Phase 1 was checked three ways beyond the unit suite:
 3. **Mutation testing** on the disconnect handler exposed a real coverage gap: deleting the `StreamStopEvent` on `WebSocketDisconnect` left all 156 tests green, even though it is the *only* thing that ends a Vobiz call. TestClient masks it by cancelling the task on context exit. `TestCallTermination` now drives `run_conversation` directly and fails with `TimeoutError` under that mutation.
 
 **Lesson worth keeping:** a green suite is not evidence of correctness until a mutation proves the suite can fail. Apply this to Phase 5's player rewrite, where the pacing assertions will be easy to write tautologically.
+
+**Applied to decision 27, and it paid immediately.** Seven mutations were run against the completion gate. The first pass caught 3 of 7 — the four survivors all traced to one flaw in the *test*, not the code: the stub agent reported playback complete inside `start_turn`, so turn N+1 always armed the gate the instant it began. That closed the exact window the gate exists to police (a turn running while the previous turn's checkpoint is still unacknowledged) and made every stale-ack bug untestable. With the stub corrected to make playback completion a separate step, 5 of 7 are caught. The two survivors are the paired `void` calls, which are mutually redundant — removing either alone still holds, removing both is caught. That is recorded in the code comments rather than papered over. **A stub that collapses a timing window is indistinguishable from a passing test.**
 
 ---
 

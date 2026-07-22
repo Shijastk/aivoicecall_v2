@@ -42,7 +42,7 @@ class Agent:
     def __init__(
         self,
         session: CarrierSession,
-        on_done: Callable[[], None],
+        on_done: Callable[[Optional[str]], None],
         tts_pool: TTSPool,
         tracer: Tracer,
         persona_id: str = "default",
@@ -66,6 +66,12 @@ class Agent:
         self._tts: Optional[TTSService] = None
         self._player: Optional[AudioPlayer] = None
         self._active = False
+
+        # Checkpoint the player will ask the carrier to acknowledge for
+        # this turn. Handed to `on_done` so the loop can match the
+        # `playedStream` that comes back -- an ack for a turn we have
+        # already abandoned must not end the one now running.
+        self._checkpoint: Optional[str] = None
 
         # Current turn number (for tracer)
         self._turn: int = 0
@@ -112,10 +118,11 @@ class Agent:
         self._tracer.end(self._turn, "tts_pool")
 
         # Create player
+        self._checkpoint = f"turn-{self._turn}"
         self._player = AudioPlayer(
             session=self._session,
             on_done=self._on_playback_done,
-            checkpoint_name=f"turn-{self._turn}",
+            checkpoint_name=self._checkpoint,
         )
 
         # Start LLM
@@ -147,6 +154,11 @@ class Agent:
             if self._player.is_playing:
                 await self._player.stop_and_clear()
             self._player = None
+
+        # rules.md V18: the barge-in that got us here voids this turn's
+        # checkpoint permanently. Forget it so a late ack cannot be
+        # mistaken for the *next* turn finishing.
+        self._checkpoint = None
 
         log.info(f"Turn cancelled at +{elapsed}ms (history preserved)")
 
@@ -202,17 +214,28 @@ class Agent:
         self._player.mark_tts_done()
 
     def _on_playback_done(self) -> None:
-        """Player finished -> turn is complete."""
+        """
+        Player dispatched its last frame.
+
+        This is *not* the caller having heard the turn -- the carrier and
+        the handset are still draining. The checkpoint name goes out with
+        the callback so the loop can hold the turn open until the carrier
+        acknowledges it (see conversation._TurnCompletion). The agent
+        itself is done either way: nothing here waits on the ack, because
+        rules.md V18 says it may never arrive.
+        """
         if not self._active:
             return
 
         self._tracer.end(self._turn, "player")
 
         total = _ms_since(self._t0)
-        log.info(f"⏱  Turn complete    +{total}ms total")
+        log.info(f"⏱  Playback dispatched  +{total}ms total")
 
+        checkpoint = self._checkpoint
         self._active = False
         self._tts = None
         self._player = None
+        self._checkpoint = None
 
-        self._on_done()
+        self._on_done(checkpoint)

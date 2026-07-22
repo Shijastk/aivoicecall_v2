@@ -12,7 +12,8 @@ This is the explicit, readable loop that drives the entire system:
 Events come from:
 - The carrier WebSocket (audio packets, playback acks, DTMF)
 - The turn detector (turn events)
-- The agent (playback complete)
+- The agent (playback dispatched) gated on the carrier's ack -- see
+  _TurnCompletion
 
 The loop is carrier-agnostic: it holds a CarrierSession and never
 mentions Twilio or Vobiz.
@@ -20,7 +21,7 @@ mentions Twilio or Vobiz.
 
 import json
 import asyncio
-from typing import Optional
+from typing import Callable, Optional
 
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
@@ -42,6 +43,160 @@ from .tracer import Tracer
 from .log import Logger, get_logger
 
 logger = get_logger("shuo.conversation")
+
+
+class _TurnCompletion:
+    """
+    Decides *when* a turn is over -- the second half of Bug B.
+
+    The player's completion callback fires when the last frame was
+    **dispatched**. The caller has not heard it yet: the carrier still
+    holds the pre-roll and the handset its de-jitter buffer. The carrier's
+    `playedStream` is the signal that they have, and it is the one that
+    should end the turn.
+
+    rules.md V18 is what makes this a gate and not a wait: `playedStream`
+    is conditional and **may never arrive** -- a `clearAudio`, a barge-in
+    or a disconnect voids every pending checkpoint permanently. So:
+
+        ack matching the armed checkpoint  -> turn over (authoritative)
+        grace window expires               -> turn over anyway (V18)
+        checkpoint voided                  -> wait dropped, turn already
+                                              over by another route
+
+    Nothing blocks. The longest a missing ack can cost is the grace
+    window, and `SHUO_CHECKPOINT_GRACE_MS=0` reverts to the old guess.
+
+    Exactly one AgentTurnDoneEvent per armed turn, by construction: every
+    exit clears `_name` before emitting, and `_expire` re-checks `_name`
+    after its sleep, so a superseded timer resolves to nothing.
+
+    Deliberately *not* in the state machine: a grace window is a timer,
+    and CLAUDE.md rule 1 keeps `process_event` pure. The machine still
+    sees one AgentTurnDoneEvent per turn and is unchanged.
+    """
+
+    def __init__(
+        self,
+        queue: "asyncio.Queue[Event]",
+        grace_seconds: float,
+        on_timeout: Optional[Callable[[str], None]] = None,
+    ) -> None:
+        self._queue = queue
+        self._grace = grace_seconds
+        self._on_timeout = on_timeout
+        self._name: Optional[str] = None
+        self._timer: Optional[asyncio.Task] = None
+        self._warned_missing_ack = False
+
+    @property
+    def pending(self) -> Optional[str]:
+        """Checkpoint currently being waited on, if any."""
+        return self._name
+
+    def arm(self, checkpoint: Optional[str]) -> None:
+        """
+        The player dispatched its last frame. Wait for the carrier.
+
+        Called straight from the Agent's on_done, so it must not block and
+        must not raise.
+        """
+        self._cancel_timer()
+
+        if not checkpoint or self._grace <= 0:
+            # No checkpoint to be acked, or the gate is switched off.
+            # Fall back to the dispatch-time guess.
+            self._name = None
+            self._finish()
+            return
+
+        self._name = checkpoint
+        self._timer = asyncio.create_task(self._expire(checkpoint))
+
+    def ack(self, name: str) -> bool:
+        """
+        A `playedStream` arrived. True if it completed the pending turn.
+
+        A name we are not waiting on is ignored on purpose: a late ack for
+        an abandoned turn must never end the turn now running.
+        """
+        if self._name is None or name != self._name:
+            return False
+
+        self._cancel_timer()
+        self._name = None
+        self._finish()
+        return True
+
+    def void(self, reason: str) -> None:
+        """
+        Drop the pending wait **without** ending a turn.
+
+        For every route out of RESPONDING that is not playback finishing:
+        a barge-in, a reconnect, a new turn, the call ending. The state
+        machine has already left RESPONDING by the time we get here, so
+        emitting would either be a no-op or -- if a new turn has started
+        -- would cut that new turn off. rules.md V18: those events void
+        the checkpoint permanently, so there is nothing left to wait for.
+        """
+        if self._name is None and self._timer is None:
+            return
+
+        name, self._name = self._name, None
+        self._cancel_timer()
+        if name:
+            logger.debug(f"Checkpoint {name} voided ({reason})")
+
+    async def close(self) -> None:
+        """Tear down at call end. Never emits."""
+        self._name = None
+        timer, self._timer = self._timer, None
+        if timer and not timer.done():
+            timer.cancel()
+            try:
+                await timer
+            except asyncio.CancelledError:
+                pass
+
+    # ── Internals ───────────────────────────────────────────────────
+
+    def _finish(self) -> None:
+        self._queue.put_nowait(AgentTurnDoneEvent())
+
+    async def _expire(self, name: str) -> None:
+        """The V18 escape hatch: end the turn on a timer, not on faith."""
+        await asyncio.sleep(self._grace)
+
+        # Re-check under the same tick that woke us: arm/ack/void all
+        # clear `_name` synchronously, so a stale timer sees a mismatch.
+        if self._name != name:
+            return
+
+        self._name = None
+        self._timer = None
+
+        if self._on_timeout:
+            self._on_timeout(name)
+
+        if not self._warned_missing_ack:
+            self._warned_missing_ack = True
+            # First one is a warning because it answers a live question:
+            # whether this carrier sends `playedStream` at all. After that
+            # it is just noise on every turn.
+            logger.warning(
+                f"No playedStream for {name} within "
+                f"{int(self._grace * 1000)}ms -- ending the turn on the "
+                f"dispatch-time guess (rules.md V18)"
+            )
+        else:
+            logger.debug(f"No playedStream for {name}; ended on the grace window")
+
+        self._finish()
+
+    def _cancel_timer(self) -> None:
+        timer, self._timer = self._timer, None
+        if timer and not timer.done():
+            timer.cancel()
 
 
 async def run_conversation(
@@ -70,6 +225,14 @@ async def run_conversation(
     tts_pool = TTSPool(pool_size=1, ttl=8.0)
     recording_started = False
     background_tasks: set = set()
+
+    # Turn completion is the carrier's `playedStream`, bounded by a grace
+    # window because rules.md V18 says it may never come.
+    completion = _TurnCompletion(
+        queue=event_queue,
+        grace_seconds=cfg.checkpoint_grace_seconds(),
+        on_timeout=lambda name: _trace_playback_timeout(tracer, name),
+    )
 
     logger.info(
         f"Call starting  carrier={carrier.name}  direction={context.direction.name.lower()}  "
@@ -175,7 +338,7 @@ async def run_conversation(
                     await tts_pool.start()
                     agent = Agent(
                         session=session,
-                        on_done=lambda: event_queue.put_nowait(AgentTurnDoneEvent()),
+                        on_done=completion.arm,
                         tts_pool=tts_pool,
                         tracer=tracer,
                         persona_id=context.persona_id,
@@ -185,11 +348,20 @@ async def run_conversation(
                     # the agent and its history; only the stream id moved.
                     logger.info("Stream restarted on the same call -- history preserved")
 
-            # ─── TRACE-ONLY EVENTS ──────────────────────────────────
+            # ─── CARRIER SIGNALS ────────────────────────────────────
             if isinstance(event, PlaybackMarkEvent):
                 _trace_playback_mark(tracer, event.name)
+                # The authoritative end of a turn. Queues the
+                # AgentTurnDoneEvent, which lands on the next iteration --
+                # after this event has been through the machine.
+                if completion.ack(event.name):
+                    logger.debug(f"Turn ended on the carrier ack for {event.name}")
             elif isinstance(event, AudioClearedEvent):
                 logger.debug("Carrier acknowledged audio flush")
+                # rules.md V18 names clearAudio as a checkpoint voider.
+                # The barge-in that caused it has already voided ours;
+                # this is the belt to that pair of braces.
+                completion.void("the carrier flushed its buffer")
             elif isinstance(event, DtmfEvent):
                 logger.info(f"DTMF: {event.digit}")
 
@@ -206,10 +378,26 @@ async def run_conversation(
                         await flux.send(action.audio_bytes)
 
                     elif isinstance(action, StartAgentTurnAction):
+                        # Second of two guards against the same hazard: a
+                        # checkpoint from an abandoned turn still pending
+                        # when a new turn starts. Its ack would then end
+                        # the *new* turn -- truncating a live answer
+                        # mid-sentence, with no error anywhere.
+                        #
+                        # Mutation testing: either guard alone holds, and
+                        # removing both is caught by
+                        # test_a_barge_in_voids_the_checkpoint. Kept
+                        # doubled because Phase 3 rewrites the machine to
+                        # three phases, and this failure is silent.
+                        completion.void("a new turn started")
                         if agent:
                             await agent.start_turn(action.transcript)
 
                     elif isinstance(action, ResetAgentTurnAction):
+                        # Barge-in, reconnect or hangup -- rules.md V18
+                        # voids the pending checkpoint permanently. First
+                        # of the two guards; see StartAgentTurnAction.
+                        completion.void("the turn was interrupted")
                         if agent:
                             await agent.cancel_turn()
 
@@ -226,6 +414,10 @@ async def run_conversation(
                                 await agent.cancel_turn()
                             except Exception:
                                 pass
+                        # No audio was played, so no checkpoint will ever
+                        # be acked. End the turn directly, and drop any
+                        # wait so this stays one done event per turn.
+                        completion.void("the turn failed to start")
                         event_queue.put_nowait(AgentTurnDoneEvent())
 
             # ─── EXIT CHECK ─────────────────────────────────────────
@@ -242,6 +434,10 @@ async def run_conversation(
             await reader_task
         except asyncio.CancelledError:
             pass
+
+        # The call is over; a pending checkpoint has nothing left to
+        # complete. Awaited so its task cannot outlive the loop.
+        await completion.close()
 
         # Let in-flight background work finish before teardown. Abandoning
         # a recording-start request mid-flight loses the recording for the
@@ -283,17 +479,34 @@ async def _start_recording(carrier: Carrier, call_id: str) -> None:
         logger.error(f"Could not start recording for {call_id}: {e}")
 
 
-def _trace_playback_mark(tracer: Tracer, name: str) -> None:
-    """
-    Record a carrier playback acknowledgement against its turn.
-
-    Checkpoints are named "turn-<n>" by the player.
-    """
+def _turn_number(name: str) -> Optional[int]:
+    """Turn number out of a checkpoint name. The player names them "turn-<n>"."""
     if not name.startswith("turn-"):
-        return
+        return None
     try:
-        turn = int(name.split("-", 1)[1])
+        return int(name.split("-", 1)[1])
     except (ValueError, IndexError):
+        return None
+
+
+def _trace_playback_mark(tracer: Tracer, name: str) -> None:
+    """Record a carrier playback acknowledgement against its turn."""
+    turn = _turn_number(name)
+    if turn is None:
         return
     tracer.mark(turn, "carrier_playback_done")
     logger.debug(f"Carrier confirmed playback of {name}")
+
+
+def _trace_playback_timeout(tracer: Tracer, name: str) -> None:
+    """
+    Record that a turn ended without its ack.
+
+    Open question 8 and rules.md V18 both turn on whether Vobiz sends
+    `playedStream` at all. A marker in the trace answers that from the
+    saved file, without needing the live log.
+    """
+    turn = _turn_number(name)
+    if turn is None:
+        return
+    tracer.mark(turn, "carrier_playback_timeout")
