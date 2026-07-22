@@ -53,10 +53,13 @@ class FluxService:
             return
 
         try:
+            # deepgram-sdk 7.x added a required `agent_rest` field. Without
+            # it construction raises and every call dies at connect time.
             deepgram_eu = DeepgramClientEnvironment(
                 base="wss://api.eu.deepgram.com",
                 production="wss://api.eu.deepgram.com",
                 agent="wss://agent.eu.deepgram.com",
+                agent_rest="https://agent.eu.deepgram.com",
             )
             self._client = AsyncDeepgramClient(
                 api_key=self._api_key,
