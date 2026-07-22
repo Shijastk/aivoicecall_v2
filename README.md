@@ -1,21 +1,23 @@
 # shuo 说
 
-A voice agent framework in ~600 lines of Python. 
+A voice agent framework in ~2,500 lines of Python, re-targeted at Indian telephony.
 
 ```bash
-python main.py +1234567890
+python main.py +919876543210
 ```
 
 ```
 🚀 Server starting on port 3040
 ✓  Ready https://mature-spaniel-physically.ngrok-free.app
-📞 Calling +1234567890...
-✓  Call initiated SID: CA094f2e...
+   carrier=vobiz  persona=candidate  recording=dual-channel
+📞 Calling +919876543210...
+✓  Call initiated SID: fake-cal...
 🔌 WebSocket connected
-▶  Stream started SID: MZ8a3b1f...
-← Flux EndOfTurn "Hey, how's it going?"
+▶  Stream started SID: 4a1f9c2e...
+← Flux EndOfTurn "So, tell me about your experience with Python."
 ◆ LISTENING → RESPONDING
-→ Start Agent "Hey, how's it going?"
+→ Start Agent "So, tell me about your experience with Python."
+← Carrier played "turn-1"
 ← Agent turn done
 ◆ RESPONDING → LISTENING
 ```
@@ -24,11 +26,11 @@ python main.py +1234567890
 
 Two abstractions, one pure function:
 
-- **Deepgram Flux** — always-on STT + turn detection over a single WebSocket
+- **Carrier** — telephony behind one interface. Vobiz (production, AWS ap-south-1) and Twilio (regression path) both drop in behind it.
 - **Agent** — self-contained LLM → TTS → Player pipeline, owns conversation history
-- **`process_event(state, event) → (state, actions)`** — the entire state machine in ~30 lines
+- **`process_event(state, event) → (state, actions)`** — the entire state machine, no I/O, fully tested
 
-Everything streams. LLM tokens feed TTS immediately, TTS audio feeds Twilio immediately. If you interrupt (barge-in), the agent cancels everything and clears the audio buffer instantly.
+Everything streams. LLM tokens feed TTS immediately, TTS audio feeds the carrier immediately. On barge-in the agent cancels everything and flushes the carrier's audio buffer.
 
 ```
 LISTENING ──EndOfTurn──→ RESPONDING ──Done──→ LISTENING
@@ -36,49 +38,73 @@ LISTENING ──EndOfTurn──→ RESPONDING ──Done──→ LISTENING
     └────StartOfTurn─────────┘  (barge-in)
 ```
 
+The agent is a **multi-persona Digital Twin**: the persona (system prompt, grounded facts, voice, turn-taking profile) is runtime configuration, selected per call. Outbound picks it at originate time; inbound resolves it from the dialled number.
+
 ## Project structure
 
 ```
 shuo/
   types.py              # Immutable state, events, actions
-  state.py              # Pure state machine (~30 lines)
+  state.py              # Pure state machine
   conversation.py       # Main event loop
   agent.py              # LLM → TTS → Player pipeline
+  config.py             # Carrier-neutral configuration
   log.py                # Colored logging
   server.py             # FastAPI endpoints
+  tracer.py             # Per-turn latency spans
+  carrier/
+    base.py             # Carrier + CarrierSession interfaces
+    vobiz.py            # Vobiz <Stream> (production)
+    twilio.py           # Twilio Media Streams (regression path)
   services/
     flux.py             # Deepgram Flux (STT + turns)
-    llm.py              # OpenAI GPT-4o-mini streaming
+    llm.py              # Streaming LLM
     tts.py              # ElevenLabs WebSocket streaming
     tts_pool.py         # TTS connection pool (warm spares)
-    player.py           # Audio playback to Twilio
-    twilio_client.py    # Outbound calls + message parsing
+    player.py           # Paces audio out through the carrier
+scripts/
+  fake_vobiz.py         # Protocol-accurate Vobiz stand-in (no account needed)
+  bench_sarvam.py       # Full-pipeline latency benchmark
 ```
+
+Project context lives in [CLAUDE.md](CLAUDE.md) (scope and rules), [context.md](context.md) (current state), [rules.md](rules.md) (engineering constraints and carrier traps), and [plan.md](plan.md) (the research this is built on).
 
 ## Setup
 
-Requires Python 3.9+, [ngrok](https://ngrok.com/), and API keys for Twilio, Deepgram, OpenAI, and ElevenLabs.
+Requires Python 3.9+, [ngrok](https://ngrok.com/), a Vobiz account, and API keys for Deepgram, OpenAI/Groq, and ElevenLabs.
 
 Configure your [ngrok authentication token](https://dashboard.ngrok.com/get-started/your-authtoken):
 ```bash
 ngrok config add-authtoken <YOUR_NGROK_AUTH_TOKEN>
 ```
 
-
 ```bash
 pip install -r requirements.txt
-cp .env.example .env   # fill in your keys
-ngrok http 3040        # in another terminal
-python main.py +1234567890  # Replace with the phone number the code will call
+cp .env.example .env        # fill in your keys
+ngrok http 3040             # in another terminal — put the URL in PUBLIC_URL
+python main.py +919876543210
+```
+
+Switch carriers with `CARRIER=vobiz|twilio` in `.env`. Nothing else changes.
+
+## Testing without a phone call
+
+`scripts/fake_vobiz.py` speaks the Vobiz protocol — signed webhooks and all — so the whole transport can be exercised locally:
+
+```bash
+python main.py                                        # terminal 1
+python scripts/fake_vobiz.py                          # terminal 2
+python scripts/fake_vobiz.py --mode media-before-start
+python scripts/fake_vobiz.py --mode reconnect
 ```
 
 ## Tests
-Running these tests is not required for executing the application.
-It is recommended to run tests after making changes to the codebase.
 
 ```bash
-python -m pytest tests/ -v   # runs in ~0.03s
+python -m pytest tests/ -v
 ```
+
+The state machine is pure, so every transition is tested without I/O or mocks.
 
 ## License
 
