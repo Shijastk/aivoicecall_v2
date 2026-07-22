@@ -4,7 +4,10 @@ External services for the shuo voice agent pipeline.
 Deepgram Flux  -- STT + turn detection
 OpenAI         -- LLM streaming
 ElevenLabs     -- TTS streaming + connection pool
-Twilio         -- outbound calls + audio playback
+Player         -- paces audio out through the carrier session
+
+Telephony no longer lives here. It moved to `shuo.carrier`, behind a
+provider interface, in Phase 1.
 """
 
 from .flux import FluxService
@@ -12,7 +15,6 @@ from .llm import LLMService
 from .tts import TTSService
 from .tts_pool import TTSPool
 from .player import AudioPlayer
-from .twilio_client import make_outbound_call
 
 __all__ = [
     "FluxService",
@@ -20,5 +22,4 @@ __all__ = [
     "TTSService",
     "TTSPool",
     "AudioPlayer",
-    "make_outbound_call",
 ]
