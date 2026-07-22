@@ -14,8 +14,7 @@ import asyncio
 import time
 from typing import Optional, Callable, List, Dict
 
-from fastapi import WebSocket
-
+from .carrier.base import CarrierSession
 from .services.llm import LLMService
 from .services.tts import TTSService
 from .services.tts_pool import TTSPool
@@ -42,17 +41,20 @@ class Agent:
 
     def __init__(
         self,
-        websocket: WebSocket,
-        stream_sid: str,
+        session: CarrierSession,
         on_done: Callable[[], None],
         tts_pool: TTSPool,
         tracer: Tracer,
+        persona_id: str = "default",
     ):
-        self._websocket = websocket
-        self._stream_sid = stream_sid
+        self._session = session
         self._on_done = on_done
         self._tts_pool = tts_pool
         self._tracer = tracer
+        # Phase 1 threads the persona through and logs it. Phase 6.5
+        # (shuo/persona/) uses it to select the system prompt, fact block,
+        # voice and turn-taking profile.
+        self._persona_id = persona_id
 
         # Persistent LLM -- keeps conversation history across turns
         self._llm = LLMService(
@@ -111,9 +113,9 @@ class Agent:
 
         # Create player
         self._player = AudioPlayer(
-            websocket=self._websocket,
-            stream_sid=self._stream_sid,
+            session=self._session,
             on_done=self._on_playback_done,
+            checkpoint_name=f"turn-{self._turn}",
         )
 
         # Start LLM
