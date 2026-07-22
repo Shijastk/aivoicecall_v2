@@ -2,7 +2,7 @@
 Lightweight span tracer for shuo.
 
 Records begin/end spans and point-in-time markers for each agent turn.
-Persists as JSON to /tmp/shuo/<call_id>.json on call end.
+Persists as JSON to <tempdir>/shuo/<call_id>.json on call end.
 
 Usage:
     tracer = Tracer()
@@ -10,11 +10,13 @@ Usage:
     tracer.begin(1, "llm")
     tracer.mark(1, "llm_first_token")
     tracer.end(1, "llm")
-    tracer.save("MZ8a3b1f")  # -> /tmp/shuo/MZ8a3b1f.json
+    tracer.save("MZ8a3b1f")  # -> <tempdir>/shuo/MZ8a3b1f.json
 """
 
+import os
 import json
 import time
+import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional
 from dataclasses import dataclass, field, asdict
@@ -23,7 +25,22 @@ from .log import get_logger
 
 logger = get_logger("shuo.tracer")
 
-TRACE_DIR = Path("/tmp/shuo")
+
+def _default_trace_dir() -> Path:
+    """
+    Platform-neutral trace directory.
+
+    /tmp is POSIX-only and breaks the Windows dev machine, so resolve
+    through tempfile.gettempdir(). SHUO_TRACE_DIR overrides for deploys
+    that want traces on a persistent volume.
+    """
+    override = os.getenv("SHUO_TRACE_DIR")
+    if override:
+        return Path(override)
+    return Path(tempfile.gettempdir()) / "shuo"
+
+
+TRACE_DIR = _default_trace_dir()
 
 
 @dataclass
@@ -114,12 +131,14 @@ class Tracer:
                 span.end_ms = ms
 
     def save(self, call_id: str) -> Optional[Path]:
-        """Write trace data to /tmp/shuo/<call_id>.json."""
+        """Write trace data to <tempdir>/shuo/<call_id>.json."""
         if not self._turns:
             return None
 
         TRACE_DIR.mkdir(parents=True, exist_ok=True)
-        path = TRACE_DIR / f"{call_id}.json"
+        # call_id comes off the wire -- keep it from escaping the trace dir.
+        safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in call_id) or "unknown"
+        path = TRACE_DIR / f"{safe_id}.json"
 
         data = {
             "call_id": call_id,

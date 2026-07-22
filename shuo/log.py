@@ -7,6 +7,7 @@ Provides:
 - ServiceLogger for individual services
 """
 
+import io
 import logging
 import sys
 from typing import Optional
@@ -16,6 +17,7 @@ from .types import (
     StreamStartEvent, StreamStopEvent, MediaEvent,
     FluxStartOfTurnEvent, FluxEndOfTurnEvent,
     AgentTurnDoneEvent,
+    PlaybackMarkEvent, AudioClearedEvent, DtmfEvent,
     Action,
     FeedFluxAction, StartAgentTurnAction, ResetAgentTurnAction,
     Phase,
@@ -75,9 +77,37 @@ class ColorFormatter(logging.Formatter):
         return time_str + " \u2502 " + record.getMessage()
 
 
+def _utf8_stream():
+    """
+    A stdout that can carry this module's box-drawing characters, arrows
+    and emoji.
+
+    On Windows the console is cp1252 by default, which cannot encode
+    '\\u2502' -- so EVERY log line raises UnicodeEncodeError inside the
+    handler and the operator sees a wall of logging tracebacks instead of
+    the call trace. Re-wrap the underlying buffer as UTF-8 with
+    errors="replace" so a glyph the terminal cannot render degrades to
+    '?' rather than losing the line.
+    """
+    stream = sys.stdout
+    encoding = (getattr(stream, "encoding", "") or "").lower().replace("-", "")
+    if encoding in ("utf8", "utf8mb4"):
+        return stream
+
+    buffer = getattr(stream, "buffer", None)
+    if buffer is None:
+        return stream
+    try:
+        return io.TextIOWrapper(
+            buffer, encoding="utf-8", errors="replace", line_buffering=True
+        )
+    except Exception:
+        return stream
+
+
 def setup_logging(level: int = logging.INFO) -> None:
     """Configure logging for the application."""
-    console = logging.StreamHandler(sys.stdout)
+    console = logging.StreamHandler(_utf8_stream())
     console.setFormatter(ColorFormatter())
     console.setLevel(level)
 
@@ -194,6 +224,26 @@ class Logger:
             self._events_logger.info(
                 _c(C.GREEN, "\u2190") + " " +
                 _c(C.DIM, "Agent turn done")
+            )
+            return
+
+        if isinstance(event, PlaybackMarkEvent):
+            # The carrier's authoritative "the caller heard up to here".
+            # Phase 5 promotes this to drive turn completion.
+            self._events_logger.info(
+                _c(C.GREEN, "\u2190") + " " +
+                _c(C.DIM, "Carrier played ") + _quote(event.name, C.DIM)
+            )
+            return
+
+        if isinstance(event, AudioClearedEvent):
+            self._events_logger.debug(_c(C.DIM, "\u2190 Audio buffer flushed"))
+            return
+
+        if isinstance(event, DtmfEvent):
+            self._events_logger.info(
+                _c(C.YELLOW, "\u2190") + " " +
+                _c(C.YELLOW, "DTMF ") + _quote(event.digit)
             )
             return
 
