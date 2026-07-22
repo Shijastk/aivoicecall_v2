@@ -1,4 +1,13 @@
 src/__pycache__/**
 **/*.pyc
+__pycache__/
 .env
 .env-test
+.venv/
+venv/
+.pytest_cache/
+
+# Local tooling and generated audio -- never commit these.
+ngrok.exe
+out/
+f5vocab.txt
