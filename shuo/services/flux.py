@@ -9,13 +9,38 @@ Replaces both local VAD (Silero) and separate STT (Deepgram v1).
 
 import os
 import asyncio
-from typing import Optional, Callable, Awaitable
+from collections.abc import Mapping
+from typing import Any, Optional, Callable, Awaitable
 
 from deepgram import AsyncDeepgramClient, DeepgramClientEnvironment
 
 from ..log import ServiceLogger
 
 log = ServiceLogger("Flux")
+
+
+def _field(message: Any, name: str, default: Any = None) -> Any:
+    """
+    Read one field off a Deepgram message, whether it arrived as a model
+    or as a plain dict.
+
+    🔴 It is a dict, in practice. The SDK types its socket responses as
+
+        Union[ListenV2Connected, ListenV2TurnInfo, Any, ...]
+
+    and `construct_type` short-circuits any union containing `Any`
+    (deepgram/core/unchecked_base_model.py:222) by returning the decoded
+    JSON untouched. So no message is ever coerced into a model, and
+    `getattr(message, "type")` is always None -- every TurnInfo is
+    silently discarded, the agent never takes a turn, and nothing in the
+    log says why. Read both shapes so a future SDK that does construct
+    models keeps working.
+    """
+    if isinstance(message, Mapping):
+        value = message.get(name, default)
+    else:
+        value = getattr(message, name, default)
+    return default if value is None else value
 
 
 class FluxService:
@@ -42,6 +67,14 @@ class FluxService:
         self._cm = None
         self._listener_task: Optional[asyncio.Task] = None
         self._running = False
+
+        # Deepgram is a black box until it says something. These counters
+        # are the only way to tell "the carrier sent us no audio" apart
+        # from "we sent audio and Deepgram stayed silent" -- the two
+        # failure modes look identical in the log otherwise.
+        self._frames_sent = 0
+        self._bytes_sent = 0
+        self._messages_seen = 0
 
     @property
     def is_active(self) -> bool:
@@ -73,12 +106,22 @@ class FluxService:
             )
             self._connection = await self._cm.__aenter__()
 
+            # Event names are the *values* of deepgram.core.events.EventType
+            # -- "open", "message", "error", "close", all lowercase. The
+            # emitter looks callbacks up by exact key, so a capitalised
+            # "Error" registers a handler that can never fire: Deepgram
+            # could reject the stream and the call would look healthy.
             self._connection.on("message", self._on_message)
-            self._connection.on("Error", self._on_error)
+            self._connection.on("error", self._on_error)
+            self._connection.on("close", self._on_close)
 
             self._listener_task = asyncio.create_task(
                 self._connection.start_listening()
             )
+            # start_listening() swallows everything into its ERROR/CLOSE
+            # events, but a task that dies before those fire is otherwise
+            # invisible -- nothing awaits it until cleanup cancels it.
+            self._listener_task.add_done_callback(self._on_listener_done)
 
             self._running = True
             log.connected()
@@ -91,12 +134,29 @@ class FluxService:
     async def send(self, audio_bytes: bytes) -> None:
         """Send audio chunk to Deepgram Flux."""
         if not self._connection or not self._running:
+            # Audio arriving with no socket to put it on is a silent
+            # transcript loss, so say it once rather than never.
+            if self._frames_sent == 0:
+                log.error("Dropping caller audio -- no Deepgram connection")
             return
 
         try:
             await self._connection.send_media(audio_bytes)
         except Exception as e:
             log.error("Send failed", e)
+            return
+
+        self._frames_sent += 1
+        self._bytes_sent += len(audio_bytes)
+        # First frame proves the carrier -> STT path end to end; the
+        # heartbeat (~every 5s at 50 frames/sec) proves it stayed up.
+        if self._frames_sent == 1:
+            log.info(f"→ first caller audio forwarded ({len(audio_bytes)} bytes)")
+        elif self._frames_sent % 250 == 0:
+            log.info(
+                f"→ {self._frames_sent} frames / {self._bytes_sent} bytes sent, "
+                f"{self._messages_seen} messages back"
+            )
 
     async def stop(self) -> None:
         """Disconnect from Deepgram Flux."""
@@ -129,31 +189,40 @@ class FluxService:
     async def _on_message(self, message, *args, **kwargs) -> None:
         """Handle Flux messages -- parse TurnInfo events."""
         try:
-            msg_type = getattr(message, "type", None)
+            msg_type = _field(message, "type")
+
+            self._messages_seen += 1
+            if self._messages_seen == 1:
+                # Deepgram's first message is `Connected`. Seeing it is the
+                # difference between "the socket opened" and "Deepgram is
+                # actually serving this model on this endpoint".
+                log.info(f"← first message from Deepgram: {msg_type}")
+
+            if msg_type == "FatalError":
+                # The stream is over. Loud, because every later turn will
+                # silently produce nothing.
+                log.error(
+                    f"Deepgram FatalError: "
+                    f"{_field(message, 'description') or message}"
+                )
+                return
 
             if msg_type == "TurnInfo":
-                event = getattr(message, "event", None)
+                event = _field(message, "event")
 
                 if event == "EndOfTurn":
-                    transcript = getattr(message, "transcript", "") or ""
+                    transcript = _field(message, "transcript", "") or ""
                     await self._on_end_of_turn(transcript.strip())
 
                 elif event == "StartOfTurn":
                     await self._on_start_of_turn()
 
-            elif msg_type == "Results" and self._on_interim:
-                channel = getattr(message, "channel", None)
-                if channel:
-                    alternatives = getattr(channel, "alternatives", None)
-                    if alternatives:
-                        alt = (
-                            alternatives[0]
-                            if isinstance(alternatives, list)
-                            else alternatives
-                        )
-                        transcript = getattr(alt, "transcript", "")
-                        if transcript:
-                            await self._on_interim(transcript.strip())
+                elif event == "Update" and self._on_interim:
+                    # Flux carries interim text on the same TurnInfo
+                    # message; there is no separate v1-style `Results`.
+                    transcript = _field(message, "transcript", "") or ""
+                    if transcript:
+                        await self._on_interim(transcript.strip())
 
         except Exception as e:
             log.error("Message handling failed", e)
@@ -161,3 +230,32 @@ class FluxService:
     async def _on_error(self, error, *args, **kwargs) -> None:
         """Handle Deepgram errors."""
         log.error("Deepgram: " + str(error))
+
+    async def _on_close(self, *args, **kwargs) -> None:
+        """
+        Deepgram closed the socket.
+
+        Mid-call this is fatal and otherwise invisible: `send` keeps
+        succeeding into a dead socket and no transcript ever comes back.
+        Deepgram also closes a stream that has received no audio, so a
+        close ~10s in with `frames=0` says the carrier never forked media
+        to us -- which is a different bug entirely.
+        """
+        if self._running:
+            log.error(
+                f"Deepgram closed the stream mid-call "
+                f"(frames={self._frames_sent}, messages={self._messages_seen})"
+            )
+        else:
+            log.debug(
+                f"stream closed (frames={self._frames_sent}, "
+                f"messages={self._messages_seen})"
+            )
+
+    def _on_listener_done(self, task: "asyncio.Task") -> None:
+        """Surface a listener task that died without emitting anything."""
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            log.error("Listener task died", exc)

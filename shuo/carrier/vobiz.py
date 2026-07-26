@@ -92,6 +92,16 @@ class VobizSession(CarrierSession):
             media = data.get("media", {}) or {}
             payload = media.get("payload") or ""
             if not payload:
+                # Every documented shape nests the payload under `media`,
+                # but that shape has never been confirmed against a live
+                # Vobiz call. A frame we cannot find audio in is dropped
+                # silently otherwise, and the symptom -- an agent that
+                # never hears anything -- points nowhere near here.
+                self._warn_once(
+                    "media-no-payload",
+                    f"Vobiz `media` frame carried no media.payload; keys seen: "
+                    f"top-level={sorted(data)} media={sorted(media)}",
+                )
                 return None
             return MediaEvent(
                 audio_bytes=self.decode_payload(payload),
@@ -128,8 +138,22 @@ class VobizSession(CarrierSession):
             logger.info("Received an inbound `stop` from Vobiz (undocumented but handled)")
             return StreamStopEvent()
 
-        logger.debug(f"Ignoring unknown Vobiz event: {event_type}")
+        # Once per event type, at WARNING: an event name we do not handle
+        # is how "the carrier is streaming audio under a name we never
+        # look for" presents, and at DEBUG that is invisible at the
+        # default log level.
+        self._warn_once(
+            f"unknown-event:{event_type}",
+            f"Ignoring unknown Vobiz event {event_type!r}; keys={sorted(data)}",
+        )
         return None
+
+    def _warn_once(self, key: str, message: str) -> None:
+        """Log a protocol surprise once per call, not 50 times a second."""
+        if key in self._warned:
+            return
+        self._warned.add(key)
+        logger.warning(message)
 
     def _check_media_format(self, media_format: Dict[str, Any]) -> None:
         """

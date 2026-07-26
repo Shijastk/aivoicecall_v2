@@ -9,6 +9,7 @@ Provides:
 
 import io
 import logging
+import os
 import sys
 from typing import Optional
 
@@ -105,8 +106,20 @@ def _utf8_stream():
         return stream
 
 
-def setup_logging(level: int = logging.INFO) -> None:
+def log_level() -> int:
+    """
+    Console log level, from SHUO_LOG_LEVEL (default INFO).
+
+    Debugging a live call means seeing per-frame detail, and the only
+    alternative to a switch is editing this file mid-incident.
+    """
+    name = os.getenv("SHUO_LOG_LEVEL", "INFO").strip().upper()
+    return getattr(logging, name, logging.INFO) if name else logging.INFO
+
+
+def setup_logging(level: Optional[int] = None) -> None:
     """Configure logging for the application."""
+    level = log_level() if level is None else level
     console = logging.StreamHandler(_utf8_stream())
     console.setFormatter(ColorFormatter())
     console.setLevel(level)

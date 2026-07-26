@@ -213,6 +213,28 @@ class Agent:
         self._tracer.end(self._turn, "tts")
         self._player.mark_tts_done()
 
+        if not self._got_first_audio:
+            # 🔴 TTS ended having produced nothing: a refused generation, a
+            # dropped socket, a connection that died in the pool. The player
+            # was never started -- `send_chunk` is its only entry point --
+            # so `_playback_loop` does not exist, `_on_playback_done` can
+            # never fire, and `mark_tts_done` above just sets a flag nobody
+            # reads. Left here the turn stays `_active` forever: the caller
+            # hears silence, the machine sits in RESPONDING, and the only
+            # exit is the caller giving up and barging in. That is precisely
+            # the "silent hang" signature, and it is a *pipeline* failure
+            # wearing a *conversation* failure's clothes.
+            #
+            # End the turn here instead. No checkpoint goes with it: not one
+            # frame was dispatched, so there is nothing for the carrier to
+            # acknowledge, and `_TurnCompletion.arm(None)` finishes
+            # immediately rather than burning the grace window.
+            log.error(
+                f"TTS produced no audio at +{_ms_since(self._t0)}ms -- "
+                f"ending turn (the caller heard silence)"
+            )
+            self._end_turn(checkpoint=None)
+
     def _on_playback_done(self) -> None:
         """
         Player dispatched its last frame.
@@ -232,7 +254,18 @@ class Agent:
         total = _ms_since(self._t0)
         log.info(f"⏱  Playback dispatched  +{total}ms total")
 
-        checkpoint = self._checkpoint
+        self._end_turn(checkpoint=self._checkpoint)
+
+    def _end_turn(self, checkpoint: Optional[str]) -> None:
+        """
+        Release the turn and hand the loop its completion signal.
+
+        The single exit for a turn that *finished*, as opposed to one that
+        was cancelled. Both routes here -- playback dispatched, and TTS
+        having produced nothing -- must drop the per-turn services and clear
+        `_active` in exactly the same way, so they share one body rather
+        than two that drift apart.
+        """
         self._active = False
         self._tts = None
         self._player = None

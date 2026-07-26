@@ -72,6 +72,10 @@ class CarrierSession(ABC):
         self._warned_non_inbound = False
         self._closed = False
 
+        # Protocol surprises worth logging once per call rather than 50
+        # times a second (see VobizSession._warn_once).
+        self._warned: set = set()
+
     # ── Inbound ─────────────────────────────────────────────────────
 
     @abstractmethod

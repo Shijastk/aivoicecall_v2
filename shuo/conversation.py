@@ -40,7 +40,7 @@ from .services.flux import FluxService
 from .services.tts_pool import TTSPool
 from .agent import Agent
 from .tracer import Tracer
-from .log import Logger, get_logger
+from .log import Logger, get_logger, log_level
 
 logger = get_logger("shuo.conversation")
 
@@ -217,7 +217,9 @@ async def run_conversation(
     carrier = carrier or get_carrier()
     session = carrier.new_session(websocket, context)
 
-    event_log = Logger(verbose=False)
+    # Per-frame media logging is 50 lines a second, so it rides on
+    # SHUO_LOG_LEVEL=DEBUG rather than being on by default.
+    event_log = Logger(verbose=log_level() <= 10)  # logging.DEBUG
     event_queue: asyncio.Queue[Event] = asyncio.Queue()
     tracer = Tracer()
 
@@ -254,11 +256,15 @@ async def run_conversation(
 
     # ── Carrier WebSocket reader ────────────────────────────────────
 
+    frames_in = 0
+
     async def read_carrier() -> None:
         """Background task to read from the carrier and push to the queue."""
+        nonlocal frames_in
         try:
             while True:
                 raw = await websocket.receive_text()
+                frames_in += 1
                 try:
                     data = json.loads(raw)
                 except json.JSONDecodeError:
@@ -287,8 +293,12 @@ async def run_conversation(
 
         except WebSocketDisconnect as e:
             # 1006 is an abnormal mid-call media drop and is otherwise
-            # invisible -- always log the code.
+            # invisible -- always log the code. The frame count goes with
+            # it: a call that ends having received one frame got the
+            # `start` and no audio at all, which is a carrier-side
+            # problem, not a pipeline one.
             code = getattr(e, "code", None)
+            logger.info(f"Carrier sent {frames_in} WebSocket frame(s) this call")
             if code == 1006:
                 logger.warning("Carrier WebSocket closed abnormally (1006) -- mid-call media drop")
             else:

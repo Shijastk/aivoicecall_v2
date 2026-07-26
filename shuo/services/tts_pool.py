@@ -90,6 +90,22 @@ class TTSPool:
             entry = self._ready.pop(0)
             age = time.monotonic() - entry.created_at
 
+            if not entry.tts.is_active:
+                # A pooled socket can die where it sits. ElevenLabs closes
+                # `stream-input` on its own inactivity timeout, and a
+                # refused generation or a network blip closes it sooner --
+                # none of which age can see. Dispensing the corpse is worse
+                # than having nothing warm: `send()` and `flush()` both
+                # return silently once `_running` is False, so the turn
+                # feeds an entire LLM response into a closed socket, gets
+                # no audio and no error, and hangs until the caller barges
+                # in. Liveness is the check that matters; age is only a
+                # proxy for it.
+                reason = entry.tts.fatal_error or "socket closed while pooled"
+                log.error(f"Discarded dead connection -- {reason}")
+                await entry.tts.cancel()
+                continue
+
             if age < self._ttl:
                 entry.tts.bind(on_audio, on_done)
                 age_ms = int(age * 1000)
@@ -172,7 +188,16 @@ class TTSPool:
 
         for entry in self._ready:
             age = now - entry.created_at
-            if age < self._ttl:
+            if not entry.tts.is_active:
+                # Same liveness rule as `get()`, applied proactively. Left
+                # in `_ready` a dead entry still counts toward `_pool_size`,
+                # so the fill loop would not replace it and the next turn
+                # would discard it and then block on a cold connect. Drop it
+                # here and the refill happens in the idle time instead.
+                reason = entry.tts.fatal_error or "socket closed while pooled"
+                log.error(f"Evicted dead connection -- {reason}")
+                await entry.tts.cancel()
+            elif age < self._ttl:
                 fresh.append(entry)
             else:
                 age_ms = int(age * 1000)
