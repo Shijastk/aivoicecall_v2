@@ -11,3 +11,8 @@ venv/
 ngrok.exe
 out/
 f5vocab.txt
+
+# Operator configuration written by the config API. Machine-local state,
+# and it holds whatever prompt and fact block the operator typed -- which
+# for the candidate persona is somebody's resume.
+var/
