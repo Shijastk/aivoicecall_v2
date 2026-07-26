@@ -101,8 +101,31 @@ Everything technical. Specifically: the re-specified latency targets (§0.2), Vo
 
 ```bash
 python -m pytest tests/ -v            # state machine — must stay green
-python main.py                        # server-only (inbound)
+python main.py                        # server-only (inbound)              :3040
 python main.py +91XXXXXXXXXX          # outbound call
+python config_api.py                  # operator config API (separate!)    :3041
 python scripts/bench_sarvam.py        # full-pipeline latency, no telephony needed
 curl localhost:3040/bench/ttft        # LLM TTFT comparison
+curl localhost:3041/v1/config         # what the agent would run with
+curl localhost:3041/v1/voices         # voices that can actually be synthesised
+python scripts/getfreevocies.py       # re-measure which voices the plan allows
+
+# W3 — test call. Needs BOTH processes, and SHUO_ADMIN_TOKEN set for both.
+curl -X POST localhost:3041/v1/test-call \
+     -H 'content-type: application/json' \
+     -d '{"phoneNumber":"+919876543210"}'   # rings a real phone, spends money
+curl localhost:3041/v1/test-call/status     # live state, transcript, latency
+curl "localhost:3041/v1/test-call/status?since=42"   # only what is new
+curl -X POST localhost:3041/v1/test-call/hangup
+curl localhost:3041/health                  # test_call_ready — is the token wired?
 ```
+
+`config_api.py` is a **second process, and must stay one** — see context.md
+decision 32. It serves the Next.js control panel; `main.py` serves calls on a
+20ms player deadline. Never mount config routes on `shuo/server.py`.
+
+W3 is the first feature that needs the two to talk, and it does so **over
+HTTP on loopback** ([call_client.py](shuo/call_client.py)) — never by
+importing across the seam. `SHUO_ADMIN_TOKEN` lives in both processes'
+environments and never in the browser: the panel can *ask* for a call, only
+the host can place one.
