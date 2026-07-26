@@ -14,7 +14,9 @@ import asyncio
 import time
 from typing import Optional, Callable, List, Dict
 
+from .call_monitor import CallRecorder
 from .carrier.base import CarrierSession
+from .runtime_config import CallSettings
 from .services.llm import LLMService
 from .services.tts import TTSService
 from .services.tts_pool import TTSPool
@@ -46,20 +48,37 @@ class Agent:
         tts_pool: TTSPool,
         tracer: Tracer,
         persona_id: str = "default",
+        settings: Optional[CallSettings] = None,
+        recorder: Optional[CallRecorder] = None,
     ):
         self._session = session
         self._on_done = on_done
         self._tts_pool = tts_pool
         self._tracer = tracer
+
+        # The operator's live view of this call (W3). Defaults to a disabled
+        # recorder so every publish site below can be unconditional -- an
+        # Agent built outside a call loop records nothing rather than
+        # needing a guard at each of the seven call sites.
+        self._recorder = recorder or CallRecorder.disabled()
         # Phase 1 threads the persona through and logs it. Phase 6.5
         # (shuo/persona/) uses it to select the system prompt, fact block,
         # voice and turn-taking profile.
         self._persona_id = persona_id
 
+        # This call's resolved configuration, read once at StreamStart by
+        # `runtime_config.load_call_settings`. `builtin()` rather than reading
+        # the store here: the agent is constructed inside the call loop, and a
+        # disk read at that point is exactly what the config/audio process
+        # split exists to prevent. A caller that passes nothing gets built-in
+        # defaults, not a surprise file open.
+        self._settings = settings or CallSettings.builtin()
+
         # Persistent LLM -- keeps conversation history across turns
         self._llm = LLMService(
             on_token=self._on_llm_token,
             on_done=self._on_llm_done,
+            system_prompt=self._settings.system_prompt,
         )
 
         # Active per-turn services (set during start, cleared on cancel)
@@ -75,6 +94,12 @@ class Agent:
 
         # Current turn number (for tracer)
         self._turn: int = 0
+
+        # This turn's tokens, for the panel's transcript. A list append per
+        # token and one join per turn: the token loop below is the streaming
+        # chain the whole latency argument rests on (CLAUDE.md rule 2), and a
+        # read-only preview does not get to put anything heavier in it.
+        self._response: List[str] = []
 
         # Latency milestones (monotonic timestamps, reset each turn)
         self._t0: float = 0.0
@@ -104,9 +129,11 @@ class Agent:
         self._t0 = time.monotonic()
         self._got_first_token = False
         self._got_first_audio = False
+        self._response = []
 
         # Begin tracing this turn
         self._turn = self._tracer.begin_turn(transcript)
+        self._recorder.turn_started(self._turn)
         self._tracer.begin(self._turn, "tts_pool")
 
         # Get TTS from pool (instant if warm, blocks if cold)
@@ -142,6 +169,13 @@ class Agent:
 
         # Mark turn as cancelled (ends all open spans)
         self._tracer.cancel_turn(self._turn)
+
+        # Publish what was generated before the barge-in, flagged. Without
+        # this the panel shows a caller line with no reply against it, which
+        # reads as the twin having failed to answer rather than having been
+        # interrupted -- and interruption handling is precisely what the
+        # candidate persona exists to stress (CLAUDE.md §4.4).
+        self._publish_response(interrupted=True)
 
         # Cancel in order: LLM -> TTS -> Player
         await self._llm.cancel()
@@ -179,8 +213,11 @@ class Agent:
             self._t_first_token = time.monotonic()
             self._tracer.mark(self._turn, "llm_first_token")
             self._tracer.begin(self._turn, "tts")
-            log.info(f"⏱  LLM first token  +{_ms_since(self._t0)}ms")
+            ttft = _ms_since(self._t0)
+            log.info(f"⏱  LLM first token  +{ttft}ms")
+            self._recorder.timing("llm_first_token", ttft, turn=self._turn)
 
+        self._response.append(token)
         await self._tts.send(token)
 
     async def _on_llm_done(self) -> None:
@@ -203,6 +240,7 @@ class Agent:
             ttft = _ms_since(self._t0)
             since_token = int((self._t_first_audio - self._t_first_token) * 1000) if self._got_first_token else 0
             log.info(f"⏱  TTS first audio  +{ttft}ms  (TTS latency {since_token}ms)")
+            self._recorder.timing("tts_first_audio", ttft, turn=self._turn)
 
         await self._player.send_chunk(audio_base64)
 
@@ -233,6 +271,14 @@ class Agent:
                 f"TTS produced no audio at +{_ms_since(self._t0)}ms -- "
                 f"ending turn (the caller heard silence)"
             )
+            # Say it in the panel too. Per decision 29 this failure is not
+            # something the operator can hear -- it is silence -- so a panel
+            # that showed only the transcript would make a vendor entitlement
+            # problem look like the twin having nothing to say.
+            self._recorder.note(
+                "TTS produced no audio for this turn — the caller heard "
+                "silence. Check the voice entitlement."
+            )
             self._end_turn(checkpoint=None)
 
     def _on_playback_done(self) -> None:
@@ -253,6 +299,7 @@ class Agent:
 
         total = _ms_since(self._t0)
         log.info(f"⏱  Playback dispatched  +{total}ms total")
+        self._recorder.timing("playback_dispatched", total, turn=self._turn)
 
         self._end_turn(checkpoint=self._checkpoint)
 
@@ -271,4 +318,21 @@ class Agent:
         self._player = None
         self._checkpoint = None
 
+        self._publish_response(interrupted=False)
+
         self._on_done(checkpoint)
+
+    def _publish_response(self, *, interrupted: bool) -> None:
+        """
+        Hand this turn's generated text to the operator's panel, once.
+
+        Joined here rather than accumulated as a string in `_on_llm_token`:
+        repeated `+=` on a growing string is O(n²) over a 20-45s answer, and
+        that cost would land in the token loop. The list is cleared so a
+        second call on the same turn -- `cancel_turn` after `_end_turn`, say
+        -- cannot publish the answer twice.
+        """
+        if not self._response:
+            return
+        text, self._response = "".join(self._response), []
+        self._recorder.agent_said(text, turn=self._turn, interrupted=interrupted)

@@ -15,18 +15,53 @@ from ..log import ServiceLogger
 log = ServiceLogger("TTS")
 
 
+# "George" -- premade, British (context.md decision 31, which reverses 26
+# conditionally). The fallback must be a voice that can actually be
+# *synthesised*, which is not the same question as whether it suits the
+# persona:
+#
+#   Rachel (the original default)  wrong accent, produces audio
+#   Krish  (decision 26)           right accent, produces NOTHING
+#                                  on a free plan -- payment_required
+#   George (here)                  wrong accent, produces audio
+#
+# Decision 26 ranked persona above accent-correctness, which was right while
+# the Indian voice worked. It does not any more, and a silent call is
+# strictly worse than an off-accent one: an accent break is a bad turn, no
+# audio is no conversation at all. Restore `MmiGAbOYCaIFzgNItUWa` here the
+# moment the plan is upgraded.
+FALLBACK_VOICE_ID = "JBFqnCBsd6RMkjVDRZzb"
+
+
+def env_voice_id() -> str:
+    """
+    The voice to use when nothing more specific was chosen.
+
+    Read through a function rather than at import so a test (or a deploy
+    that sets the variable late) is not stuck with whatever the environment
+    held when this module first loaded.
+
+    An ELEVENLABS_VOICE_ID set to the empty string resolves to the fallback
+    rather than to "", which is what a bare `os.getenv(name, default)`
+    would return -- an empty voice ID builds a URL that 404s, and the
+    symptom (a call with no audio) points nowhere near the environment.
+    """
+    return os.getenv("ELEVENLABS_VOICE_ID", "").strip() or FALLBACK_VOICE_ID
+
+
 class TTSService:
     """
     ElevenLabs streaming TTS service.
-    
+
     Sends text chunks, receives audio chunks via callback.
     Audio is returned as base64-encoded mulaw at 8kHz for Twilio.
     """
-    
+
     def __init__(
         self,
         on_audio: Callable[[str], Awaitable[None]],
         on_done: Callable[[], Awaitable[None]],
+        voice_id: Optional[str] = None,
     ):
         self._on_audio = on_audio
         self._on_done = on_done
@@ -47,22 +82,12 @@ class TTSService:
         self._fatal_error: Optional[str] = None
         
         self._api_key = os.getenv("ELEVENLABS_API_KEY", "")
-        # "George" -- premade, British (context.md decision 31, which
-        # reverses 26 conditionally). The fallback must be a voice that can
-        # actually be *synthesised*, which is not the same question as
-        # whether it suits the persona:
-        #
-        #   Rachel (the original default)  wrong accent, produces audio
-        #   Krish  (decision 26)           right accent, produces NOTHING
-        #                                  on a free plan -- payment_required
-        #   George (here)                  wrong accent, produces audio
-        #
-        # Decision 26 ranked persona above accent-correctness, which was
-        # right while the Indian voice worked. It does not any more, and a
-        # silent call is strictly worse than an off-accent one: an accent
-        # break is a bad turn, no audio is no conversation at all. Restore
-        # `MmiGAbOYCaIFzgNItUWa` here the moment the plan is upgraded.
-        self._voice_id = os.getenv("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")
+        # The operator's choice when one reached us (W2 resolves it from the
+        # config store before the pool warms), the environment otherwise.
+        # `voice_id` is a *provider* ID here, never a catalogue one -- the
+        # mapping happens in `shuo/runtime_config.py`, so nothing in this
+        # module has to know the catalogue exists.
+        self._voice_id = voice_id or env_voice_id()
     
     @property
     def is_active(self) -> bool:

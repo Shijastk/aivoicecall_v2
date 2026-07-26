@@ -2,14 +2,16 @@
 FastAPI server for shuo.
 
 Endpoints:
-- GET  /health          - Health check
-- *    /answer          - Call-control XML (inbound AND outbound)
-- *    /twiml           - Deprecated alias for /answer (Twilio wording)
-- POST /stream-status   - Carrier stream status callbacks
-- WS   /ws              - Media stream endpoint
-- GET  /call/{number}   - Initiate an outbound call
-- GET  /trace/latest    - Most recent call trace as JSON
-- GET  /bench/ttft      - Benchmark TTFT across LLM providers
+- GET  /health                - Health check
+- *    /answer                - Call-control XML (inbound AND outbound)
+- *    /twiml                 - Deprecated alias for /answer (Twilio wording)
+- POST /stream-status         - Carrier stream status callbacks
+- WS   /ws                    - Media stream endpoint
+- *    /call/{number}         - Initiate an outbound call
+- GET  /calls/live            - What the twin is doing right now (W3)
+- POST /calls/current/hangup  - End the call in progress (W3)
+- GET  /trace/latest          - Most recent call trace as JSON
+- GET  /bench/ttft            - Benchmark TTFT across LLM providers
 """
 
 import json
@@ -26,6 +28,7 @@ from fastapi.responses import JSONResponse
 from openai import AsyncOpenAI
 
 from . import config
+from .call_monitor import MONITOR
 from .carrier import get_carrier
 from .conversation import run_conversation
 from .types import CallContext, CallDirection
@@ -251,7 +254,7 @@ async def stream_status(request: Request):
     return {"status": "ok"}
 
 
-@app.get("/call/{phone_number:path}")
+@app.api_route("/call/{phone_number:path}", methods=["GET", "POST"])
 async def trigger_call(
     request: Request,
     phone_number: str,
@@ -262,6 +265,12 @@ async def trigger_call(
 
         curl -H "X-Shuo-Admin-Token: $SHUO_ADMIN_TOKEN" \\
              https://your-server/call/+919876543210
+
+    POST is the honest method for it -- placing a call is neither safe nor
+    idempotent -- and is what the config API's `/v1/test-call` uses. GET is
+    kept because it is the one-liner in CLAUDE.md §6 and in every runbook
+    written so far, and breaking that to make a point about verbs would cost
+    more than it buys.
     """
     denied = _require_admin(request)
     if denied is not None:
@@ -357,6 +366,99 @@ async def recording_status(request: Request):
         f"reason={payload.get('RecordingEndReason')}  url={url}"
     )
     return {"status": "ok"}
+
+
+# =============================================================================
+# LIVE CALL VIEW (W3)
+# =============================================================================
+
+@app.get("/calls/live")
+async def live_call(
+    request: Request,
+    since: int = Query(0, ge=0, description="`nextSeq` from the previous poll"),
+    call: Optional[str] = Query(None, description="Our call id, or the carrier's"),
+):
+    """
+    What the twin is doing right now. Operator-only -- this is a transcript.
+
+    Read straight out of the in-process ring buffer in `call_monitor.py`: a
+    list comprehension over at most 200 small dicts and one JSON encode. No
+    disk, no vendor call, nothing that can block.
+
+    **Polling, and deliberately not SSE.** This handler shares its event loop
+    with the media WebSocket and with the player, which emits a 160-byte
+    frame every 20ms against an accumulating deadline that no longer catches
+    up when it slips (decision 24). A poll costs tens of microseconds and
+    then nothing at all until the next one, and it costs exactly zero when
+    the panel is closed. An SSE response is a resident task with keepalives
+    that a client which never disconnects leaves running on that loop
+    forever. The :3041 -> browser hop can be SSE whenever the panel wants it;
+    that process carries no audio, which is the entire point of the split.
+
+    `since` is the previous response's `nextSeq`, so a steady-state poll
+    returns an empty `events` list. The sequence is global across calls, so
+    the cursor stays valid when a second call starts. `missed` is non-zero
+    when events aged out of the buffer before they were read -- a transcript
+    with a hole in it must say so, because judging whether the twin
+    contradicted itself three turns ago is the reason the panel exists.
+    """
+    denied = _require_admin(request)
+    if denied is not None:
+        return denied
+
+    return JSONResponse(MONITOR.snapshot(since=since, call_ref=call))
+
+
+@app.post("/calls/current/hangup")
+async def hangup_current_call(
+    request: Request,
+    expect: Optional[str] = Query(
+        None, description="Only hang up if the live call has this id"
+    ),
+):
+    """
+    End the call in progress. Operator-only -- this terminates a live call.
+
+    Keyed on the call the monitor is watching rather than on an id supplied
+    by the caller, because the id `originate` returns is **not** reliably the
+    carrier's `CallUUID` -- see the `/hangup` webhook handler above. The
+    authoritative value arrives on the media stream's `start` frame, which is
+    where `CallRecorder.identify` picks it up.
+
+    `expect` guards the one case that ordering cannot: a panel still showing
+    a finished call, pressed while a *different* call has since started.
+    Passing the id the panel is displaying turns that into a refusal instead
+    of hanging up someone else's conversation.
+    """
+    denied = _require_admin(request)
+    if denied is not None:
+        return denied
+
+    call = MONITOR.current()
+    if call is None:
+        return JSONResponse({"error": "no call in progress"}, status_code=409)
+
+    if expect and expect not in (call.id, call.call_id):
+        logger.warning(
+            f"Refused hangup: the panel expected {expect!r} but the live call "
+            f"is {call.id!r} ({call.call_id or 'no carrier id yet'})"
+        )
+        return JSONResponse({"error": "call mismatch"}, status_code=409)
+
+    if not call.call_id:
+        # The socket is up but the carrier's `start` frame has not landed, so
+        # there is no id to hang up by. Seconds, at most.
+        return JSONResponse({"error": "call not yet identified"}, status_code=409)
+
+    carrier = get_carrier()
+    try:
+        await carrier.hangup(call.call_id)
+    except Exception as e:
+        logger.error(f"Hangup failed for {call.call_id}: {e}")
+        return JSONResponse({"error": "hangup failed"}, status_code=502)
+
+    logger.info(f"Operator hung up {call.call_id} from the panel")
+    return {"status": "hangup", "id": call.id, "call_id": call.call_id}
 
 
 @app.get("/trace/latest")

@@ -6,7 +6,7 @@ Stale connections (past TTL) are evicted automatically.
 The pool auto-refills after a connection is dispensed.
 
 Usage:
-    pool = TTSPool(pool_size=1, ttl=8.0)
+    pool = TTSPool(pool_size=1, ttl=8.0, voice_id="JBFqnCBsd6RMkjVDRZzb")
     await pool.start()
 
     tts = await pool.get(on_audio=..., on_done=...)
@@ -50,11 +50,24 @@ class TTSPool:
     - Dispenses warm connections via get() with callback rebinding
     - Evicts connections older than `ttl` seconds
     - Auto-refills in the background after dispensing or eviction
+
+    **The pool is scoped to one voice**, which is why `voice_id` is set here
+    and not on `get()`. ElevenLabs binds the voice into the `stream-input`
+    URL at connect time, so a warm connection is already committed to a
+    voice before any turn asks for one -- a per-turn voice would throw away
+    the pre-connection that is the point of the pool. One call is one voice,
+    so the pool is built per call.
     """
 
-    def __init__(self, pool_size: int = 1, ttl: float = 8.0):
+    def __init__(
+        self,
+        pool_size: int = 1,
+        ttl: float = 8.0,
+        voice_id: Optional[str] = None,
+    ):
         self._pool_size = pool_size
         self._ttl = ttl
+        self._voice_id = voice_id
 
         self._ready: List[_Entry] = []
         self._running = False
@@ -119,7 +132,11 @@ class TTSPool:
 
         # No warm connections available -- create fresh (blocking)
         log.info("Pool empty, connecting fresh...")
-        tts = TTSService(on_audio=on_audio, on_done=on_done)
+        # The cold path takes the pool's voice too. Missing it here is the
+        # silent version of this bug: warm turns use the operator's voice and
+        # the occasional cold one does not, which reads as ElevenLabs being
+        # inconsistent rather than as a wiring error.
+        tts = TTSService(on_audio=on_audio, on_done=on_done, voice_id=self._voice_id)
         await tts.start()
         self._trigger_fill()
         return tts
@@ -154,7 +171,11 @@ class TTSPool:
 
                 # Fill to target
                 while self._running and len(self._ready) < self._pool_size:
-                    tts = TTSService(on_audio=_noop_audio, on_done=_noop_done)
+                    tts = TTSService(
+                        on_audio=_noop_audio,
+                        on_done=_noop_done,
+                        voice_id=self._voice_id,
+                    )
                     try:
                         await tts.start()
                         self._ready.append(

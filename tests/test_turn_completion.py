@@ -220,9 +220,13 @@ class StubFlux:
 
     instances = []
 
-    def __init__(self, on_end_of_turn=None, on_start_of_turn=None):
+    def __init__(self, on_end_of_turn=None, on_start_of_turn=None, on_interim=None):
         self.on_end_of_turn = on_end_of_turn
         self.on_start_of_turn = on_start_of_turn
+        # W3: interim text goes to the operator's panel and nowhere near the
+        # state machine. Accepted here so the stub keeps matching the real
+        # constructor.
+        self.on_interim = on_interim
         self.stopped = False
         StubFlux.instances.append(self)
 
@@ -264,8 +268,18 @@ class StubAgent:
 
     instances = []
 
-    def __init__(self, session, on_done, tts_pool, tracer, persona_id="default"):
+    def __init__(
+        self,
+        session,
+        on_done,
+        tts_pool,
+        tracer,
+        persona_id="default",
+        settings=None,
+        recorder=None,
+    ):
         self._on_done = on_done
+        self.settings = settings
         self.started = []
         self.cancelled = 0
         self.playing = None

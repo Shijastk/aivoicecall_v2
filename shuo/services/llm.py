@@ -12,24 +12,36 @@ from ..log import ServiceLogger
 
 log = ServiceLogger("LLM")
 
+# The prompt for an install nobody has configured. Kept here rather than in
+# the config store because a default invented *there* would put words in the
+# twin's mouth that no operator wrote (see
+# ConfigDocument.resolved_system_prompt) -- this module owns the fallback, and
+# `shuo/runtime_config.py` decides when to use it.
 SYSTEM_PROMPT = """You are a helpful voice assistant. Keep your responses concise and conversational, as they will be spoken aloud. Avoid using markdown, bullet points, or other formatting that doesn't work well in speech. Be friendly and natural."""
 
 
 class LLMService:
     """
     OpenAI streaming LLM service.
-    
+
     Manages conversation history and streams tokens via callback.
     """
-    
+
     def __init__(
         self,
         on_token: Callable[[str], Awaitable[None]],
         on_done: Callable[[], Awaitable[None]],
+        system_prompt: Optional[str] = None,
     ):
         self._on_token = on_token
         self._on_done = on_done
-        
+
+        # Fixed for the lifetime of this service, which is the lifetime of
+        # the call. A prompt that could change between turns is a twin that
+        # can contradict what it said three turns ago -- failure mode 3 in
+        # CLAUDE.md, introduced by our own plumbing rather than by the model.
+        self._system_prompt = system_prompt or SYSTEM_PROMPT
+
         self._client = AsyncOpenAI(
             api_key=os.getenv("GROQ_API_KEY", ""),
             base_url="https://api.groq.com/openai/v1",
@@ -81,7 +93,7 @@ class LLMService:
         
         try:
             messages = [
-                {"role": "system", "content": SYSTEM_PROMPT}
+                {"role": "system", "content": self._system_prompt}
             ] + self._history
             
             stream = await self._client.chat.completions.create(

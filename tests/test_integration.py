@@ -34,11 +34,14 @@ class StubFlux:
 
     instances = []
 
-    def __init__(self, on_end_of_turn=None, on_start_of_turn=None):
+    def __init__(self, on_end_of_turn=None, on_start_of_turn=None, on_interim=None):
         self.fed = []
         self.started = False
         self.stopped = False
         self.on_end_of_turn = on_end_of_turn
+        # W3: interim caller text, for the operator's panel only. It never
+        # becomes an Event, so the state machine is unchanged.
+        self.on_interim = on_interim
         StubFlux.instances.append(self)
 
     async def start(self):
@@ -57,6 +60,11 @@ class StubTTSPool:
 
     def __init__(self, *a, **kw):
         self.stopped = False
+        # The voice the call resolved. Recorded because the pool is where a
+        # configured voice either arrives or silently does not -- ElevenLabs
+        # binds it at connect time, so this is the last point it can be
+        # checked before a socket is open.
+        self.voice_id = kw.get("voice_id")
         StubTTSPool.instances.append(self)
 
     async def start(self):
@@ -581,6 +589,66 @@ class TestStreamTokenGate:
                 VobizProtocol.media("s1", MULAW_SILENCE_FRAME, seq=1, chunk=1)))
 
         assert StubFlux.instances[-1].fed
+
+
+class TestOperatorConfigReachesTheCall:
+    """
+    W2's whole claim, end to end: a Save in the panel changes what the *next
+    call* runs with.
+
+    The unit tests prove each hop in isolation. This proves they are actually
+    connected, which is the failure that cost W1 its usefulness for a week --
+    a config API that saved correctly to a file nothing read.
+    """
+
+    def test_the_saved_voice_and_prompt_reach_the_pipeline(
+        self, client, monkeypatch, tmp_path
+    ):
+        import shuo.conversation as conv
+        from shuo.config_store import AgentConfig, ConfigStore, KnowledgeConfig
+
+        path = tmp_path / "agent_config.json"
+        store = ConfigStore(path)
+        store.save_agent(
+            AgentConfig(voice_model="el-daniel", system_prompt="You are Priya Sharma.")
+        )
+        store.save_knowledge(KnowledgeConfig(context="Five years at Infosys."))
+        # The audio process resolves its own path, so point it at this file
+        # rather than reaching into the store it built.
+        monkeypatch.setenv("SHUO_CONFIG_PATH", str(path))
+
+        captured = []
+
+        class RecordingAgent:
+            def __init__(self, **kwargs):
+                captured.append(kwargs.get("settings"))
+
+            async def start_turn(self, transcript):
+                pass
+
+            async def cancel_turn(self):
+                pass
+
+            async def cleanup(self):
+                pass
+
+        monkeypatch.setattr(conv, "Agent", RecordingAgent)
+
+        with client.websocket_connect(ws_path()) as ws:
+            ws.send_text(json.dumps(VobizProtocol.start("s1", "c1")))
+
+        assert wait_for(lambda: captured), "the agent was never built"
+        settings = captured[0]
+
+        assert settings is not None, "the agent was built without settings"
+        assert "You are Priya Sharma." in settings.system_prompt
+        assert "Five years at Infosys." in settings.system_prompt
+        assert settings.voice_id == "onwK4e9ZLuTAKqWW03F9"  # el-daniel
+
+        # And the voice reached the pool, which is the only thing that can
+        # actually make the call sound different.
+        assert wait_for(lambda: StubTTSPool.instances), "the pool was never built"
+        assert StubTTSPool.instances[-1].voice_id == "onwK4e9ZLuTAKqWW03F9"
 
 
 class TriggeringFlux(StubFlux):

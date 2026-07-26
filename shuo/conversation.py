@@ -27,7 +27,7 @@ from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 
 from .types import (
-    AppState, CallContext,
+    AppState, CallContext, Phase,
     Event, StreamStartEvent, StreamStopEvent,
     FluxStartOfTurnEvent, FluxEndOfTurnEvent, AgentTurnDoneEvent,
     PlaybackMarkEvent, AudioClearedEvent, DtmfEvent,
@@ -35,7 +35,9 @@ from .types import (
 )
 from .state import process_event
 from . import config as cfg
+from .call_monitor import MONITOR, LISTENING, SPEAKING
 from .carrier import Carrier, get_carrier
+from .runtime_config import load_call_settings
 from .services.flux import FluxService
 from .services.tts_pool import TTSPool
 from .agent import Agent
@@ -224,7 +226,10 @@ async def run_conversation(
     tracer = Tracer()
 
     agent: Optional[Agent] = None
-    tts_pool = TTSPool(pool_size=1, ttl=8.0)
+    # Built at StreamStart rather than here. The pool is scoped to one voice
+    # (ElevenLabs binds it at connect time) and the voice is not known until
+    # the config store has been read, which happens when the stream starts.
+    tts_pool: Optional[TTSPool] = None
     recording_started = False
     background_tasks: set = set()
 
@@ -234,6 +239,15 @@ async def run_conversation(
         queue=event_queue,
         grace_seconds=cfg.checkpoint_grace_seconds(),
         on_timeout=lambda name: _trace_playback_timeout(tracer, name),
+    )
+
+    # The operator's live view of this call (W3). An observer at the dispatch
+    # boundary, exactly like `tracer` above: it takes no part in the loop, the
+    # state machine never learns it exists, and every method on it is a
+    # non-blocking append that cannot raise. See `call_monitor.py`.
+    recorder = MONITOR.begin(
+        persona=context.persona_id,
+        direction=context.direction.name.lower(),
     )
 
     logger.info(
@@ -249,9 +263,23 @@ async def run_conversation(
     async def on_flux_start_of_turn() -> None:
         await event_queue.put(FluxStartOfTurnEvent())
 
+    async def on_flux_interim(transcript: str) -> None:
+        """
+        In-progress caller text, for the panel only.
+
+        Deliberately **not** an event. Interim text is not a fact the
+        conversation may act on -- acting on it is how you answer half a
+        question -- so it never reaches `process_event`, never becomes an
+        Action, and the state machine stays exactly as it was. It is a single
+        string assignment on the monitor's summary, replaced in place, which
+        is also why it cannot flood the ring buffer.
+        """
+        recorder.caller_partial(transcript)
+
     flux = FluxService(
         on_end_of_turn=on_flux_end_of_turn,
         on_start_of_turn=on_flux_start_of_turn,
+        on_interim=on_flux_interim,
     )
 
     # ── Carrier WebSocket reader ────────────────────────────────────
@@ -315,6 +343,40 @@ async def run_conversation(
     state = AppState(call_id=context.call_id)
     reader_task = asyncio.create_task(read_carrier())
 
+    # The operator's configuration, read exactly once per call.
+    #
+    # Position and synchronicity are both deliberate:
+    #
+    #   after the reader task   nothing may delay the point at which we start
+    #                           draining the carrier's socket.
+    #   before the loop         it has to beat the TTS pool built at
+    #                           `StreamStart`. ElevenLabs binds the voice into
+    #                           the connection at connect time, so a pool
+    #                           warmed ahead of this read serves turn 1 in the
+    #                           environment's voice while the panel shows the
+    #                           operator's pick.
+    #   synchronous             `await` here would be a *cancellation point*
+    #                           between accepting the socket and building the
+    #                           agent. A call that ends in that window --
+    #                           which a carrier that dials and hangs up does,
+    #                           and which the transport tests do deliberately
+    #                           -- would tear down with `settings` unassigned.
+    #
+    # Blocking is affordable because decision 33 made it affordable: the read
+    # is one file open and one `json.loads`, no driver and no lock, which is
+    # why config is a JSON document and not SQLite. It costs tens of
+    # microseconds once per call, before any audio is flowing, so it is
+    # nowhere near the 20ms player deadline -- that deadline only binds once
+    # playback has started. `load_call_settings` never raises.
+    settings = load_call_settings()
+    logger.info(f"Config  {settings.describe()}")
+    # The same provenance line the log gets, in the panel. It is the answer
+    # to "did my save apply?" -- asked *while the call is running*, which is
+    # the only time it is cheap to answer.
+    recorder.configured(settings.describe())
+
+    ended_reason = "the call ended"
+
     try:
         while True:
             # ─── RECEIVE ────────────────────────────────────────────
@@ -324,6 +386,12 @@ async def run_conversation(
 
             # Initialize services on stream start
             if isinstance(event, StreamStartEvent):
+                # The carrier's own call id, which is only knowable now. Not
+                # the `request_uuid` that `originate` returned -- see the
+                # `/hangup` handler in server.py -- and hanging up from the
+                # panel is exactly where being wrong about that would matter.
+                recorder.identify(session.call_id or event.call_id or "")
+
                 # Dual-channel recording cannot be expressed in Vobiz's
                 # answer XML (its <Record> element has no channel
                 # attribute), so it starts over REST as soon as the call
@@ -345,6 +413,14 @@ async def run_conversation(
 
                 if agent is None:
                     await flux.start()
+                    # The voice has to be known *before* the pool warms: it is
+                    # bound into the TTS connection at connect time, so a pool
+                    # started ahead of this read would serve turn 1 in the
+                    # environment's voice while the panel showed the
+                    # operator's pick.
+                    tts_pool = TTSPool(
+                        pool_size=1, ttl=8.0, voice_id=settings.voice_id
+                    )
                     await tts_pool.start()
                     agent = Agent(
                         session=session,
@@ -352,6 +428,8 @@ async def run_conversation(
                         tts_pool=tts_pool,
                         tracer=tracer,
                         persona_id=context.persona_id,
+                        settings=settings,
+                        recorder=recorder,
                     )
                 else:
                     # A reconnect replays `start` on the same call. Keep
@@ -380,6 +458,13 @@ async def run_conversation(
             state, actions = process_event(state, event)
             event_log.transition(old_phase, state.phase)
 
+            # Phase -> panel state. Read *after* the machine has run and
+            # never written back into it: the mapping is one-way, so the
+            # panel cannot become an input to the conversation. The pipeline
+            # has two phases and the panel has four; `connecting` and `ended`
+            # are the edges of the call, which the machine has no opinion on.
+            recorder.phase(SPEAKING if state.phase == Phase.RESPONDING else LISTENING)
+
             # ─── DISPATCH (side effects) ────────────────────────────
             for action in actions:
                 event_log.action(action)
@@ -400,6 +485,10 @@ async def run_conversation(
                         # doubled because Phase 3 rewrites the machine to
                         # three phases, and this failure is silent.
                         completion.void("a new turn started")
+                        # Published here rather than inside the Agent so the
+                        # caller's line reaches the panel even on a call
+                        # where the agent failed to start the turn.
+                        recorder.caller_said(action.transcript)
                         if agent:
                             await agent.start_turn(action.transcript)
 
@@ -418,6 +507,10 @@ async def run_conversation(
                     # Drop back to LISTENING so the caller can simply
                     # repeat themselves.
                     event_log.error(f"Action {type(action).__name__} failed", e)
+                    recorder.note(
+                        f"{type(action).__name__} failed — this turn was "
+                        f"dropped. The caller can repeat themselves."
+                    )
                     if isinstance(action, StartAgentTurnAction):
                         if agent:
                             try:
@@ -436,9 +529,14 @@ async def run_conversation(
 
     except Exception as e:
         event_log.error("Call loop", e)
+        ended_reason = "the call loop failed — see the server log"
         raise
 
     finally:
+        # First thing in teardown: the panel should go grey the moment the
+        # call is over, not after the TTS pool and Deepgram have been closed.
+        recorder.ended(ended_reason)
+
         reader_task.cancel()
         try:
             await reader_task
@@ -459,7 +557,12 @@ async def run_conversation(
         if agent:
             await agent.cleanup()
 
-        await tts_pool.stop()
+        # Guarded: a call that dropped before `start` ever arrived never built
+        # a pool. That is not hypothetical -- a carrier that dials the socket
+        # and hangs up, or a rejected stream, both land here with `tts_pool`
+        # still None.
+        if tts_pool:
+            await tts_pool.stop()
         await flux.stop()
 
         # Tell the carrier the stream is over *before* anything tears the
