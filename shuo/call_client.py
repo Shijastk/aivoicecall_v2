@@ -361,8 +361,39 @@ async def live_call(since: int = 0, call: Optional[str] = None) -> Dict[str, Any
     )
 
 
+async def active_calls() -> Dict[str, Any]:
+    """
+    Every call the call server is running or has just run. `{"calls": [...]}`.
+
+    The live half of :3041's `/v1/calls/active`; the other half is read off the
+    disk in this process, because a ringing phone has no media socket and so
+    exists nowhere in :3040's memory.
+
+    Same timeout as the status poll -- it reads an in-memory list of at most
+    eight small dicts on the other side, so anything slow here is a symptom
+    rather than a response worth waiting for.
+    """
+    return await _request(
+        "GET",
+        "/calls/active",
+        timeout=POLL_TIMEOUT,
+        fallback=(
+            "The call server could not list the calls in progress. The calls "
+            "themselves are unaffected."
+        ),
+    )
+
+
 async def hangup(expect: Optional[str] = None) -> Dict[str, Any]:
-    """End the call in progress, optionally only if it is the one shown."""
+    """
+    End a call. `expect` names the one the panel is showing.
+
+    Since W5c it selects rather than merely asserting: :3040 can be running
+    eight calls, so "the current one" is not a thing a panel can safely mean.
+    Without it, the call server falls back to whichever call is most recent --
+    which is what the runbook's `curl` wants and what a panel should never rely
+    on.
+    """
     params = {"expect": expect} if expect else None
 
     return await _request(

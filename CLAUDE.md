@@ -110,6 +110,101 @@ curl localhost:3041/v1/config         # what the agent would run with
 curl localhost:3041/v1/voices         # voices that can actually be synthesised
 python scripts/getfreevocies.py       # re-measure which voices the plan allows
 
+# W4 — what each panel screen loads on page load, and the call log.
+curl localhost:3041/v1/agent/config     # /agent      prompt + voice
+curl localhost:3041/v1/agent/persona    # /persona    rules (the default when unset)
+curl localhost:3041/v1/agent/knowledge  # /knowledge  fact block
+curl "localhost:3041/v1/calls/history?limit=20"   # /call-logs  real records
+# Read from disk here, so it still loads with the call server stopped. Path is
+# on /health.
+
+# W5a (Phase 8) — every *attempt* is a row, not just the answered calls.
+# One call is one row with a stable `id` (the attempt id), written several
+# times as it progresses:
+#   pending -> ringing -> in_progress -> completed | missed | cancelled | failed
+# The file is still append-only: an update is a new line with the same id, and
+# `call_history.load` folds them. `cat var/call_history.jsonl` shows the
+# revisions; the API shows the folded rows.
+curl localhost:3040/health              # writes.dropped / writes.failed — the
+                                        # only signal that the log is lying by
+                                        # omission (the spool swallows errors)
+
+# W5b (Phase 8) — every call is recorded locally, for free, by teeing the
+# µ-law the pipeline already holds. Stereo: caller left, agent right, which is
+# what makes a barge-in audible as one. var/recordings/<id>.wav
+curl -o call.wav localhost:3041/v1/calls/<id>/recording   # Range-capable
+curl localhost:3041/health              # recordings_path / recordings_stored
+# SHUO_LOCAL_RECORDING=false turns it off. It is *separate* from RECORD_CALLS,
+# which governs the carrier's billable recording — turning that off to stop
+# paying for a second copy does not take the free local one with it.
+
+# W5c (Phase 8) — the live view, in the plural. Two polls at ~1Hz feed the
+# whole monitor screen, and there is deliberately no SSE or WebSocket on
+# either hop: :3040's loop paces a 160-byte frame every 20ms, and a resident
+# task with keepalives on it is the one thing decision 24 makes unrecoverable.
+#
+# `active` is the *union* of two sources, because neither knows every call: an
+# answered call is in :3040's memory, and a phone that is still ringing has no
+# media socket at all, so it exists only as a row in the log. A live-only view
+# is blank for exactly the window you sit watching.
+curl localhost:3041/v1/calls/active            # every call in flight
+curl "localhost:3041/v1/calls/live?call=<id>&since=42"   # one call, incremental
+curl localhost:3040/calls/active               # the live half only (needs the token)
+# `callServer: "unreachable"` is a *field*, not an error — with `main.py`
+# stopped, the ringing/pending rows still come back off disk.
+
+# W5e (Phase 8) — a call that ends says so. Three things the panel needs, and
+# none of them existed before: `/v1/calls/live` **falls back to the call log**
+# when :3040 has never heard of the call, which is the entire life of one that
+# is ringing and the whole life of one that is declined (neither opens a media
+# socket, so the live monitor never sees either);  a finished call stays in
+# `/v1/calls/active` for 20s with `live: false` so the transition is *seen*
+# rather than raced past;  and `declined` is a status of its own, split out of
+# `missed`.
+#
+# 🔴 Branch on `endedCode`, never on `endedReason`. The code is a closed set
+# (`remote_declined`, `remote_busy`, `no_answer`, `cancelled_by_us`,
+# `origination_refused`, `no_carrier_response`, `carrier_error`, `completed`,
+# `call_failed`); `endedReason` beside it is a sentence for a human and is not
+# a stable string.
+curl "localhost:3041/v1/calls/live?call=<id>"   # status/endedCode/endedAt/live
+#   -> {"status":"declined","endedCode":"remote_declined","live":false, ...}
+#      "source" says which half answered: "live" | "log" | "none"
+#
+# A carrier that never posts /hangup (unverified — see carrier/vobiz.py) is
+# covered too: after RING_TIMEOUT_SECONDS a still-ringing call is *reported*
+# as failed/no_carrier_response. Derived, never written — nothing on disk is
+# rewritten on a guess, so a late webhook still folds normally.
+#
+# `/v1/test-call/status` still answers identically; it is an alias now. And
+# pass `expect=<id>` when hanging up: with 8 concurrent calls "the current
+# call" is not something a panel can safely mean.
+curl -X POST "localhost:3041/v1/test-call/hangup?expect=<id>"
+
+# W5d (Phase 8) — push notifications, and they are OFF unless you set a URL.
+# Inbound call started / missed / failed, pushed from :3041 by a ~1Hz task that
+# watches the call log. Never from :3040 — an outbound TLS handshake has no
+# business on the loop that paces 20ms frames.
+#
+# 🔴 The topic name IS the credential: anyone who knows it reads every
+# notification. Generate it long and random, keep it in .env, never in the
+# panel, never in a log line. Nothing here ever prints it — /health shows
+# https://ntfy.sh/(redacted).
+#
+#   SHUO_NOTIFY_URL=https://ntfy.sh/shuo-$(openssl rand -hex 12)
+#   SHUO_NOTIFY_TOKEN=...        # optional bearer, not needed on a public topic
+#
+# Install the free ntfy app, subscribe to the topic, and a missed call rings
+# the operator's handset. Test the wiring without a real call by pointing
+# SHUO_NOTIFY_URL at any local HTTP server first.
+curl localhost:3041/health      # notifications.{enabled,running,sent,dropped,failed}
+                                # dropped/failed are the only signal the
+                                # operator is not being told something — the
+                                # notifier swallows its own failures on purpose.
+# It carries metadata (direction, number, persona, duration) and *never* a
+# transcript. It is the only thing in this system that sends call data off the
+# machine, which is why it defaults to off.
+
 # W3 — test call. Needs BOTH processes, and SHUO_ADMIN_TOKEN set for both.
 curl -X POST localhost:3041/v1/test-call \
      -H 'content-type: application/json' \

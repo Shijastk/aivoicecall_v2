@@ -35,9 +35,12 @@ from .types import (
 )
 from .state import process_event
 from . import config as cfg
+from . import call_history
+from . import recording
 from .call_monitor import MONITOR, LISTENING, SPEAKING
 from .carrier import Carrier, get_carrier
 from .runtime_config import load_call_settings
+from .spool import SPOOL
 from .services.flux import FluxService
 from .services.tts_pool import TTSPool
 from .agent import Agent
@@ -248,6 +251,26 @@ async def run_conversation(
     recorder = MONITOR.begin(
         persona=context.persona_id,
         direction=context.direction.name.lower(),
+        # Minted before the phone rang and signed into the <Stream> URL, so
+        # the live view, the pending row written at origination and the row
+        # written below are all one call as far as the panel is concerned.
+        attempt=context.attempt_id,
+        to_number=context.to_number or "",
+        from_number=context.from_number or "",
+    )
+
+    # The local stereo recording (W5b). Another dispatch-boundary observer:
+    # both of its tee points are a `bytearray.extend`, all disk work happens on
+    # the spool's worker thread, and a tape that is switched off no-ops without
+    # either site having to check.
+    #
+    # Keyed on the recorder's id -- the attempt id where there is one -- so the
+    # WAV, the live view and the call log all name the call the same way, and
+    # `/v1/calls/{id}/recording` can find the file from the row.
+    tape = (
+        recording.CallTape(recorder.id)
+        if recording.local_recording_enabled() and recorder.id
+        else recording.CallTape.disabled()
     )
 
     logger.info(
@@ -375,7 +398,10 @@ async def run_conversation(
     # the only time it is cheap to answer.
     recorder.configured(settings.describe())
 
+    # Prose for the operator, and the code the panel branches on. Two fields
+    # because they answer to two readers -- see `call_status`'s "Ended codes".
     ended_reason = "the call ended"
+    ended_code = call_history.CALL_COMPLETED
 
     try:
         while True:
@@ -391,6 +417,25 @@ async def run_conversation(
                 # `/hangup` handler in server.py -- and hanging up from the
                 # panel is exactly where being wrong about that would matter.
                 recorder.identify(session.call_id or event.call_id or "")
+
+                # The call is answered and live. Written here rather than at
+                # teardown because it is the moment an operator watching a
+                # `ringing` row wants to see change, and because a call that
+                # is dropped by a crash mid-conversation should not read as
+                # one that was never picked up.
+                #
+                # A `put_nowait` and a dict on the way past -- the disk work
+                # happens on the spool's worker thread, so this costs the
+                # `start` frame nothing.
+                SPOOL.submit(
+                    call_history.append,
+                    call_history.revision(
+                        recorder.id,
+                        status=call_history.IN_PROGRESS,
+                        callId=recorder.call_id,
+                        answeredAt=call_history.now_iso(),
+                    ),
+                )
 
                 # Dual-channel recording cannot be expressed in Vobiz's
                 # answer XML (its <Record> element has no channel
@@ -430,6 +475,7 @@ async def run_conversation(
                         persona_id=context.persona_id,
                         settings=settings,
                         recorder=recorder,
+                        tape=tape,
                     )
                 else:
                     # A reconnect replays `start` on the same call. Keep
@@ -464,12 +510,26 @@ async def run_conversation(
             # has two phases and the panel has four; `connecting` and `ended`
             # are the edges of the call, which the machine has no opinion on.
             recorder.phase(SPEAKING if state.phase == Phase.RESPONDING else LISTENING)
+                
 
             # ─── DISPATCH (side effects) ────────────────────────────
             for action in actions:
                 event_log.action(action)
                 try:
                     if isinstance(action, FeedFluxAction):
+                        # The recording's left channel (W5b), teed at the
+                        # dispatch boundary exactly like the monitor is.
+                        #
+                        # This branch runs for *every* inbound media frame in
+                        # every phase -- `process_event` never drops caller
+                        # audio, because barge-in requires listening while the
+                        # twin speaks -- which is what makes this track a
+                        # continuous clock for the agent's, and what makes the
+                        # two line up in the finished file.
+                        #
+                        # Before the `await`, so a frame is recorded even if
+                        # Deepgram is the thing that fails.
+                        tape.caller(action.audio_bytes)
                         await flux.send(action.audio_bytes)
 
                     elif isinstance(action, StartAgentTurnAction):
@@ -530,12 +590,13 @@ async def run_conversation(
     except Exception as e:
         event_log.error("Call loop", e)
         ended_reason = "the call loop failed — see the server log"
+        ended_code = call_history.CALL_FAILED
         raise
 
     finally:
         # First thing in teardown: the panel should go grey the moment the
         # call is over, not after the TTS pool and Deepgram have been closed.
-        recorder.ended(ended_reason)
+        recorder.ended(ended_reason, ended_code)
 
         reader_task.cancel()
         try:
@@ -573,6 +634,33 @@ async def run_conversation(
         # Traces are keyed on call_id, not stream_id: a reconnect changes
         # the stream id mid-call and would otherwise split the trace.
         tracer.save(session.call_id or context.call_id or "unknown")
+
+        # The call log the panel reads (`/v1/calls/history`), as the last
+        # revision of this call's row.
+        #
+        # 🔴 It goes through the spool, and the reason is a bug this used to
+        # have. The old comment here said a blocking write was safe because
+        # "the socket is closed, the pool is stopped and no player is pacing
+        # frames" -- true of *this* call and false of the process. With a
+        # second call live, an fsync in this teardown blocks the loop that is
+        # pacing its 20ms frames, which decision 24 makes permanent stream
+        # delay rather than one late frame.
+        #
+        # Then awaited, which is not the same thing as blocking: `drain`
+        # suspends this coroutine while the loop keeps serving every other
+        # call. It buys the property the old blocking write had by accident --
+        # that the row is on disk before the call is over, so a restart a
+        # second later cannot lose it.
+        SPOOL.submit(call_history.append, recorder.record())
+
+        # Flush the last of the audio and queue the conversion to WAV. After
+        # the row above rather than before it, because the spool has one
+        # worker: the conversion's own revision -- the one that gives the
+        # panel a play button -- must land on top of a row that already
+        # exists, not race it.
+        tape.close()
+
+        await SPOOL.drain()
 
         Logger.websocket_disconnected()
 

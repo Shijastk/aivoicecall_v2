@@ -39,6 +39,7 @@ from typing import List, Optional, Callable
 
 from ..carrier.base import CarrierSession
 from ..log import ServiceLogger
+from ..recording import CallTape
 
 log = ServiceLogger("Player")
 
@@ -100,10 +101,16 @@ class AudioPlayer:
         session: CarrierSession,
         on_done: Optional[Callable[[], None]] = None,
         checkpoint_name: Optional[str] = None,
+        tape: Optional["CallTape"] = None,
     ):
         self._session = session
         self._on_done = on_done
         self._checkpoint_name = checkpoint_name
+        # The local recording's right channel (W5b). Defaults to a disabled
+        # tape so `_send_frame` stays unconditional -- a player built outside
+        # a call loop records nothing rather than needing a guard on the one
+        # line in this module that runs 50 times a second.
+        self._tape = tape or CallTape.disabled()
 
         # Decoded mu-law awaiting reframing. A byte buffer rather than a
         # chunk list because frame boundaries do not line up with chunk
@@ -398,9 +405,22 @@ class AudioPlayer:
         return deadline
 
     async def _send_frame(self, frame: bytes) -> None:
-        """Send exactly one 20ms frame through the carrier."""
+        """
+        Send exactly one 20ms frame through the carrier.
+
+        The tape tee is here rather than anywhere else in this module because
+        this is the last point at which the audio is still raw µ-law and is
+        already known to be going out: after the reframing, after the pacing
+        gate, before the base64. Recording the buffer instead would record
+        bytes a barge-in was about to discard.
+
+        It costs one `bytearray.extend` and two integers -- deliberately the
+        same cost class as `call_monitor`'s publish, because this line runs 50
+        times a second inside the loop decision 24 made unforgiving.
+        """
         self._bytes_sent += len(frame)
         self._frames_sent += 1
+        self._tape.agent(frame)
         await self._session.play_audio(base64.b64encode(frame).decode("ascii"))
 
     def _decode(self, payload: str) -> bytes:

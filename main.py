@@ -24,6 +24,7 @@ from dotenv import load_dotenv
 from shuo import config
 from shuo.server import app
 from shuo.carrier import get_carrier
+from shuo.spool import SPOOL
 from shuo.log import setup_logging, Logger, get_logger
 import shuo.server as server_module
 
@@ -95,6 +96,25 @@ def start_server(port: int) -> None:
     )
     _uvicorn_server = uvicorn.Server(config_)
     _uvicorn_server.run()
+
+
+async def _place_and_flush(phone_number: str, persona_id: str, carrier):
+    """
+    Place the CLI's call and wait for its rows to reach the disk.
+
+    The flush is the whole reason this wrapper exists. `asyncio.run` closes
+    its loop the moment the coroutine returns, and the spool's worker lives on
+    that loop -- so without draining inside it, the pending row for a call
+    placed from the command line would be queued onto a loop that is about to
+    stop existing. The server thread has its own loop and its own worker; this
+    one is short-lived by construction.
+    """
+    try:
+        return await server_module.place_outbound_call(
+            phone_number, persona_id, carrier=carrier
+        )
+    finally:
+        await SPOOL.drain()
 
 
 def main():
@@ -170,17 +190,15 @@ def main():
     try:
         if phone_number:
             Logger.call_initiating(phone_number)
+            # Through the server's origination site, not `carrier.originate`
+            # directly. They were two copies before Phase 8 and only one of
+            # them knew about the call log, so a call placed from the runbook
+            # appeared in no table anywhere -- including when it was the call
+            # that failed.
             result = asyncio.run(
-                carrier.originate(
-                    phone_number,
-                    answer_url=config.answer_url(
-                        persona_id=persona_id, direction="outbound"
-                    ),
-                    persona_id=persona_id,
-                    record=config.record_calls(),
-                )
+                _place_and_flush(phone_number, persona_id, carrier)
             )
-            Logger.call_initiated(result.call_id)
+            Logger.call_initiated(result.get("call_id") or "")
             logger.info("Waiting for call to connect... (Ctrl+C to end)")
         else:
             logger.info("Server-only mode — waiting for inbound calls (Ctrl+C to end)")

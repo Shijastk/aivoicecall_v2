@@ -325,6 +325,8 @@ class VobizCarrier(Carrier):
         answer_url: str,
         persona_id: str = "default",
         record: bool = False,
+        ring_url: Optional[str] = None,
+        hangup_url: Optional[str] = None,
     ) -> OriginateResult:
         self._require_credentials()
         if not self._from_number:
@@ -338,6 +340,29 @@ class VobizCarrier(Carrier):
             "answer_url": answer_url,
             "answer_method": "POST",
         }
+
+        # 🔴 UNVERIFIED, and the one thing in Phase 8 that needs a live call.
+        #
+        # Before this, `originate` sent only `answer_url`, so `server.py`'s
+        # `/ring` and `/hangup` handlers may never have fired at all -- they
+        # would only have been reached if the same URLs happened to be
+        # configured application-side in the Vobiz console. The parameter
+        # names here are Plivo's, which Vobiz's REST API mirrors elsewhere
+        # (`answer_url`/`answer_method` are already proven), but that is an
+        # inference from a consistent API and not a measurement.
+        #
+        # What breaks if the names are wrong: nothing. Vobiz either ignores
+        # unknown body keys or 400s the create; if it 400s, that surfaces
+        # immediately as "origination failed" on the very first test call
+        # rather than as silent data loss. What is *lost* is the ability to
+        # tell `missed` from `cancelled`, because those two are only knowable
+        # from the hangup cause.
+        if ring_url:
+            body["ring_url"] = ring_url
+            body["ring_method"] = "POST"
+        if hangup_url:
+            body["hangup_url"] = hangup_url
+            body["hangup_method"] = "POST"
 
         # Answering-machine detection is OFF by default and stays off:
         # machine_detection_initial_silence defaults to 4500ms, which
