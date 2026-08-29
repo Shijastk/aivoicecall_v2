@@ -13,7 +13,7 @@ import hmac
 import time
 import base64
 import hashlib
-from urllib.parse import urlencode, urlsplit, urlunsplit
+from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 from typing import Optional
 
 
@@ -126,24 +126,37 @@ def _stream_secret() -> str:
 STREAM_TOKEN_TTL_SECONDS = 300
 
 
-def mint_stream_token(*, persona_id: str, direction: str, expires_at: int) -> str:
+def mint_stream_token(
+    *, persona_id: str, direction: str, expires_at: int, attempt: str = ""
+) -> str:
     """
-    Bind a /ws URL to one persona, direction and expiry.
+    Bind a /ws URL to one persona, direction, attempt and expiry.
 
     Without this the media WebSocket accepts any connection: the
     signature gate on /answer proves nothing about who dials /ws, and the
     persona is otherwise attacker-chosen.
+
+    `attempt` is signed for the same reason the others are. It is not a
+    privilege -- it names a row in the call log -- but an unsigned one would
+    let anyone who can reach /ws write a transcript into somebody else's call
+    record, and a call log that can be written to by the caller is not a
+    record of anything.
     """
     secret = _stream_secret()
     if not secret:
         return ""
-    msg = f"{persona_id}|{direction}|{expires_at}".encode("utf-8")
+    msg = f"{persona_id}|{direction}|{expires_at}|{attempt}".encode("utf-8")
     digest = hmac.new(secret.encode("utf-8"), msg, hashlib.sha256).digest()
     return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
 
 
 def verify_stream_token(
-    token: str, *, persona_id: str, direction: str, expires_at: str
+    token: str,
+    *,
+    persona_id: str,
+    direction: str,
+    expires_at: str,
+    attempt: str = "",
 ) -> bool:
     """Validate a /ws token. Any malformed or expired input fails closed."""
     secret = _stream_secret()
@@ -156,17 +169,17 @@ def verify_stream_token(
     if exp < int(time.time()):
         return False
     expected = mint_stream_token(
-        persona_id=persona_id, direction=direction, expires_at=exp
+        persona_id=persona_id, direction=direction, expires_at=exp, attempt=attempt
     )
     return bool(expected) and hmac.compare_digest(token, expected)
 
 
-def websocket_url(*, persona_id: str, direction: str) -> str:
+def websocket_url(*, persona_id: str, direction: str, attempt: str = "") -> str:
     """
     The wss:// URL the carrier should fork media to.
 
-    Persona and direction travel in the query string rather than in a
-    carrier-specific custom-parameter mechanism, because every carrier
+    Persona, direction and attempt travel in the query string rather than in
+    a carrier-specific custom-parameter mechanism, because every carrier
     forks to exactly the URL it is given. Twilio has <Parameter>, Vobiz's
     equivalent is unconfirmed -- the query string needs neither.
 
@@ -181,8 +194,13 @@ def websocket_url(*, persona_id: str, direction: str) -> str:
 
     expires_at = int(time.time()) + STREAM_TOKEN_TTL_SECONDS
     params = {"persona": persona_id, "direction": direction, "exp": str(expires_at)}
+    if attempt:
+        params["attempt"] = attempt
     token = mint_stream_token(
-        persona_id=persona_id, direction=direction, expires_at=expires_at
+        persona_id=persona_id,
+        direction=direction,
+        expires_at=expires_at,
+        attempt=attempt,
     )
     if token:
         params["token"] = token
@@ -190,21 +208,66 @@ def websocket_url(*, persona_id: str, direction: str) -> str:
     return urlunsplit((scheme, parts.netloc, "/ws", urlencode(params), ""))
 
 
-def answer_url(*, persona_id: str, direction: str) -> str:
+def answer_url(*, persona_id: str, direction: str, attempt: str = "") -> str:
     """The https:// URL the carrier fetches call-control XML from."""
     base = public_url()
     if not base:
         raise ValueError("PUBLIC_URL (or TWILIO_PUBLIC_URL) is not set")
-    query = urlencode({"persona": persona_id, "direction": direction})
-    return f"{base}/answer?{query}"
+    params = {"persona": persona_id, "direction": direction}
+    if attempt:
+        params["attempt"] = attempt
+    return f"{base}/answer?{urlencode(params)}"
 
 
-def status_callback_url() -> str:
+# ── Carrier callbacks ────────────────────────────────────────────────
+#
+# Every one of these carries `?attempt=` when there is one, and that query
+# string is the *only* way a callback can be tied back to the call attempt
+# that caused it.
+#
+# Nothing else would do the job. `originate` returns a `request_uuid` which is
+# not reliably the `CallUUID` the webhooks quote (server.py's /hangup handler
+# has said so since Phase 1), and the authoritative `CallUUID` only exists once
+# the media `start` frame lands -- which on an unanswered call never happens.
+# An attempt id minted before the carrier is called is the one identifier that
+# spans the whole attempt, so it rides on the URL the carrier will call back on.
+
+
+def _callback_url(path: str, attempt: str = "") -> str:
     base = public_url()
-    return f"{base}/stream-status" if base else ""
+    if not base:
+        return ""
+    return f"{base}{path}?attempt={quote(attempt)}" if attempt else f"{base}{path}"
 
 
-def recording_callback_url() -> str:
+def status_callback_url(attempt: str = "") -> str:
+    return _callback_url("/stream-status", attempt)
+
+
+def recording_callback_url(attempt: str = "") -> str:
     """Where the carrier posts RecordStop when a recording is ready."""
-    base = public_url()
-    return f"{base}/recording-status" if base else ""
+    return _callback_url("/recording-status", attempt)
+
+
+def ring_url(attempt: str = "") -> str:
+    """
+    Where the carrier posts when the far end starts ringing.
+
+    🔴 Whether Vobiz posts here at all is unverified -- `originate` did not
+    send this URL before Phase 8, so `/ring` may never have fired. See
+    docs/phase8-plan.md §1.5. Everything downstream degrades to the row
+    staying `pending` until a later signal, so a carrier that ignores it costs
+    a column, not a call.
+    """
+    return _callback_url("/ring", attempt)
+
+
+def hangup_url(attempt: str = "") -> str:
+    """
+    Where the carrier posts when the call ends, on every termination path.
+
+    The only signal an *unanswered* call produces, which makes it the one
+    thing that can tell `missed` from `cancelled` from `failed`. Same
+    unverified status as `ring_url`.
+    """
+    return _callback_url("/hangup", attempt)

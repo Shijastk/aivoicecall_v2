@@ -277,6 +277,12 @@ class StubAgent:
         persona_id="default",
         settings=None,
         recorder=None,
+        # Observers the loop hands every Agent -- `recorder` (W3), `tape`
+        # (W5b), and whatever comes next. Swallowed rather than named one by
+        # one: these tests are about turn completion, and a stub that has to be
+        # edited every time an observer is added is a stub that fails for
+        # reasons unrelated to what it is testing.
+        **observers,
     ):
         self._on_done = on_done
         self.settings = settings

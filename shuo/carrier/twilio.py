@@ -152,6 +152,8 @@ class TwilioCarrier(Carrier):
         answer_url: str,
         persona_id: str = "default",
         record: bool = False,
+        ring_url: Optional[str] = None,
+        hangup_url: Optional[str] = None,
     ) -> OriginateResult:
         from twilio.rest import Client
 
@@ -169,11 +171,23 @@ class TwilioCarrier(Carrier):
         )
 
         def _create():
-            return client.calls.create(
-                to=to_number,
-                from_=self._from_number,
-                url=answer_url,
-            )
+            # Twilio has no ring_url/hangup_url pair; it has one status
+            # callback subscribed to named events, and the event name arrives
+            # in the body as `CallStatus`. `/hangup` is the URL used because
+            # both handlers read the same form and `completed` is the event
+            # that carries the outcome; `ring_url` is accepted and folded into
+            # the same subscription rather than being silently dropped.
+            kwargs: Dict[str, Any] = {
+                "to": to_number,
+                "from_": self._from_number,
+                "url": answer_url,
+            }
+            callback = hangup_url or ring_url
+            if callback:
+                kwargs["status_callback"] = callback
+                kwargs["status_callback_event"] = ["ringing", "answered", "completed"]
+                kwargs["status_callback_method"] = "POST"
+            return client.calls.create(**kwargs)
 
         # The Twilio SDK is synchronous; keep it off the event loop.
         call = await asyncio.to_thread(_create)

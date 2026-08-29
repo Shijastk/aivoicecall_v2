@@ -25,10 +25,46 @@ from shuo.call_monitor import (
     CONNECTING,
     ENDED,
     LISTENING,
+    MAX_CALLS,
     SPEAKING,
     CallMonitor,
     CallRecorder,
 )
+from shuo.call_status import COMPLETED, IN_PROGRESS, MISSED
+
+
+def ring(monitor, recorder):
+    """
+    The deque a call's events actually live in.
+
+    Reaching into the internals deliberately, and in one place: the tests that
+    prove the monitor cannot raise have to be able to break the buffer, and
+    since W5c there is one buffer per call rather than one per process.
+    """
+    return monitor._calls[recorder.id].events
+
+
+class Exploding:
+    """
+    A ring that fails on write and reads as empty.
+
+    Stands in for the deque in the never-raises tests. No `maxlen`, on
+    purpose: `_append` reads it with `getattr` precisely so a buffer that is
+    only an `append` cannot fail there instead, which would prove the guard
+    catches the wrong exception.
+    """
+
+    def append(self, _):
+        raise RuntimeError("buffer is gone")
+
+    def __iter__(self):
+        return iter(())
+
+    def __len__(self):
+        return 0
+
+    def __bool__(self):
+        return False
 
 
 @pytest.fixture
@@ -316,6 +352,248 @@ class TestTheCursor:
         assert monitor.snapshot(since=cursor)["missed"] == 0
 
 
+# =============================================================================
+# CONCURRENT CALLS (W5c)
+# =============================================================================
+
+class TestConcurrentCalls:
+    """
+    The regression this slice exists to prevent.
+
+    Until W5c there was **one 200-event ring for the whole process**, so two
+    overlapping calls evicted each other: a busy receptionist line could flush
+    an interview's opening turns out of the buffer from the other side of the
+    event loop, and the transcript an operator was reading would lose its
+    beginning for reasons that had nothing to do with that call.
+    """
+
+    def test_a_flood_on_one_call_does_not_evict_another(self):
+        monitor = CallMonitor(max_events=10, max_calls=4)
+
+        quiet = monitor.begin(persona="candidate", direction="outbound")
+        quiet.caller_said("So, tell me about yourself.")
+        quiet.agent_said("Haan ji, I have four years in Python.", turn=1)
+
+        busy = monitor.begin(persona="receptionist", direction="inbound")
+        for i in range(200):
+            busy.caller_said(f"line {i}")
+
+        kept = monitor.snapshot(call_ref=quiet.id)
+        assert texts(kept, "caller") == ["So, tell me about yourself."]
+        assert texts(kept, "agent") == ["Haan ji, I have four years in Python."]
+        assert kept["missed"] == 0
+
+    def test_eight_calls_each_keep_their_own_transcript(self, monitor):
+        recorders = [
+            monitor.begin(persona="candidate", direction="outbound")
+            for _ in range(MAX_CALLS)
+        ]
+        for index, recorder in enumerate(recorders):
+            recorder.caller_said(f"question for call {index}")
+
+        for index, recorder in enumerate(recorders):
+            snapshot = monitor.snapshot(call_ref=recorder.id)
+            assert texts(snapshot, "caller") == [f"question for call {index}"]
+
+    def test_missed_is_per_call_not_per_process(self):
+        """
+        🔴 The old `missed` was `oldest_seq_in_the_buffer - since - 1`, which is
+        a count of lost events only while the sequence numbers in the buffer are
+        contiguous. With one ring per call they are not -- call A's ring skips
+        every seq that belonged to call B -- so that arithmetic would report the
+        whole of B's traffic as holes in A's transcript, and every concurrent
+        call would accuse the others of losing its events.
+        """
+        monitor = CallMonitor(max_events=10, max_calls=4)
+
+        quiet = monitor.begin(persona="candidate", direction="outbound")
+        quiet.caller_said("one line, read and never evicted")
+        cursor = monitor.snapshot(call_ref=quiet.id)["nextSeq"]
+
+        busy = monitor.begin(persona="receptionist", direction="inbound")
+        for i in range(100):
+            busy.caller_said(f"line {i}")
+
+        assert monitor.snapshot(call_ref=quiet.id, since=cursor)["missed"] == 0
+
+    def test_a_call_that_did_lose_events_still_says_so(self):
+        monitor = CallMonitor(max_events=5, max_calls=4)
+
+        first = monitor.begin(persona="candidate", direction="outbound")
+        first.caller_said("first")
+        cursor = monitor.snapshot(call_ref=first.id)["nextSeq"]
+
+        # Another call in between, so the sequence numbers are interleaved --
+        # which is the case the old arithmetic could not survive.
+        monitor.begin(persona="receptionist", direction="inbound").caller_said("other")
+
+        for i in range(20):
+            first.caller_said(f"line {i}")
+
+        snapshot = monitor.snapshot(call_ref=first.id, since=cursor)
+        assert snapshot["missed"] > 0, "a hole in the transcript must be admitted"
+
+    def test_the_cursor_survives_a_call_boundary(self, monitor):
+        """
+        The reason `_seq` stays global while the rings went per call. A panel
+        holding cursor 40 across a hangup must neither replay nor skip.
+        """
+        first = monitor.begin(persona="candidate", direction="outbound")
+        first.caller_said("call one")
+        first.ended("done")
+
+        cursor = monitor.snapshot()["nextSeq"]
+
+        second = monitor.begin(persona="receptionist", direction="inbound")
+        second.caller_said("call two")
+
+        assert texts(monitor.snapshot(since=cursor), "caller") == ["call two"]
+        assert monitor.snapshot(since=cursor)["missed"] == 0
+
+
+class TestSummaries:
+    def test_an_empty_monitor_has_nothing_active(self, monitor):
+        assert monitor.summaries() == []
+
+    def test_every_call_appears_newest_first(self, monitor):
+        first = monitor.begin(persona="candidate", direction="outbound")
+        second = monitor.begin(persona="receptionist", direction="inbound")
+
+        assert [s["id"] for s in monitor.summaries()] == [second.id, first.id]
+
+    def test_a_summary_carries_what_the_panel_lists(self, monitor):
+        recorder = monitor.begin(
+            persona="candidate",
+            direction="outbound",
+            attempt="att-abc123",
+            to_number="+919876543210",
+            from_number="+911234567890",
+        )
+        recorder.identify("MZ-live")
+        recorder.turn_started(3)
+
+        summary = monitor.summaries()[0]
+
+        assert summary["id"] == "att-abc123"
+        assert summary["callId"] == "MZ-live"
+        assert summary["persona"] == "candidate"
+        assert summary["direction"] == "outbound"
+        assert summary["to"] == "+919876543210"
+        assert summary["from"] == "+911234567890"
+        assert summary["state"] == CONNECTING
+        assert summary["live"] is True
+        assert summary["turns"] == 3
+        assert summary["startedAt"]
+
+    def test_a_summary_carries_no_transcript(self, monitor, recorder):
+        """
+        The panel polls this for every call at once. Transcripts come from
+        `snapshot`, for the one call an operator has open.
+        """
+        recorder.caller_said("So, tell me about yourself.")
+
+        summary = monitor.summaries()[0]
+
+        assert "events" not in summary
+        assert "transcript" not in summary
+        assert "So, tell me about yourself." not in json.dumps(summary)
+
+    def test_a_live_call_is_in_progress_in_the_logs_vocabulary(self, monitor, recorder):
+        recorder.identify("MZ-live")
+        recorder.phase(SPEAKING)
+
+        summary = monitor.summaries()[0]
+
+        # Two vocabularies, both reported, because they answer different
+        # questions: `state` is what the twin is doing this second, `status` is
+        # how the attempt is going.
+        assert summary["state"] == SPEAKING
+        assert summary["status"] == IN_PROGRESS
+
+    def test_an_ended_call_carries_its_derived_outcome(self, monitor, recorder):
+        recorder.identify("MZ-live")
+        recorder.caller_said("Thanks for your time.")
+        recorder.ended("caller hung up")
+
+        summary = monitor.summaries()[0]
+
+        assert summary["live"] is False
+        assert summary["state"] == ENDED
+        assert summary["status"] == COMPLETED
+        assert summary["endedReason"] == "caller hung up"
+
+    def test_a_call_nobody_spoke_on_is_missed(self, monitor, recorder):
+        recorder.identify("MZ-live")
+        recorder.ended("no answer")
+
+        assert monitor.summaries()[0]["status"] == MISSED
+
+    def test_the_duration_freezes_when_the_call_ends(self, monitor, recorder):
+        recorder.ended("done")
+
+        first = monitor.summaries()[0]["durationMs"]
+        time.sleep(0.02)
+
+        assert monitor.summaries()[0]["durationMs"] == first
+
+    def test_summaries_are_bounded_by_the_call_ceiling(self, monitor):
+        for _ in range(MAX_CALLS + 5):
+            monitor.begin(persona="candidate", direction="outbound")
+
+        assert len(monitor.summaries()) <= MAX_CALLS
+
+    def test_it_is_cheap_enough_for_a_one_hertz_poll(self, monitor):
+        """
+        Not a hot-path guard -- this runs in the HTTP handler -- but it shares
+        the event loop with the media socket, so "a comprehension over eight
+        dataclasses" is a claim worth holding to.
+        """
+        for _ in range(MAX_CALLS):
+            recorder = monitor.begin(persona="candidate", direction="outbound")
+            for i in range(200):
+                recorder.caller_said(f"line {i}")
+
+        start = time.perf_counter()
+        for _ in range(1_000):
+            monitor.summaries()
+        elapsed_ms = (time.perf_counter() - start) * 1000
+
+        assert elapsed_ms < 250, (
+            f"1,000 summaries took {elapsed_ms:.0f}ms — something in the read "
+            f"path is now walking the events"
+        )
+
+
+class TestFindingACallByName:
+    def test_it_finds_a_call_by_our_id(self, monitor):
+        recorder = monitor.begin(
+            persona="candidate", direction="outbound", attempt="att-abc123"
+        )
+        monitor.begin(persona="receptionist", direction="inbound")
+
+        found = monitor.find("att-abc123")
+        assert found is not None and found.id == recorder.id
+
+    def test_it_finds_a_call_by_the_carriers_id(self, monitor):
+        recorder = monitor.begin(persona="candidate", direction="outbound")
+        recorder.identify("MZ-one")
+        monitor.begin(persona="receptionist", direction="inbound")
+
+        found = monitor.find("MZ-one")
+        assert found is not None and found.call_id == "MZ-one"
+
+    def test_an_unknown_name_is_not_the_latest_call(self, monitor):
+        """
+        `find` must never fall back the way `snapshot` does. It is what
+        `/calls/current/hangup?expect=` resolves through, and a fallback there
+        would end a call the operator was not looking at.
+        """
+        monitor.begin(persona="candidate", direction="outbound")
+
+        assert monitor.find("att-nothing") is None
+        assert monitor.find("") is None
+
+
 class TestSelectingACall:
     def test_the_latest_call_is_the_default(self, monitor):
         monitor.begin(persona="candidate", direction="outbound")
@@ -343,11 +621,23 @@ class TestSelectingACall:
         assert texts(monitor.snapshot(), "caller") == ["call two line"]
 
     def test_old_calls_are_evicted(self, monitor):
-        for _ in range(10):
+        for _ in range(MAX_CALLS + 7):
             monitor.begin(persona="candidate", direction="outbound")
 
         # Bounded, so a long-running server cannot accumulate calls.
-        assert len(monitor._calls) <= 3
+        assert len(monitor._calls) <= MAX_CALLS
+
+    def test_the_bound_is_the_one_this_monitor_was_given(self):
+        """
+        The eviction loop read the module constant until W5c, so a monitor
+        built with a different ceiling silently ignored it -- which meant the
+        bound could only ever be tested at whatever the default happened to be.
+        """
+        monitor = CallMonitor(max_calls=2)
+        for _ in range(6):
+            monitor.begin(persona="candidate", direction="outbound")
+
+        assert len(monitor._calls) == 2
 
     def test_an_empty_monitor_answers_rather_than_failing(self, monitor):
         snapshot = monitor.snapshot()
@@ -397,20 +687,7 @@ class TestItCannotCostACall:
         asserting in a docstring. A monitor that can throw is a monitor that
         can hang up on a caller.
         """
-        class Exploding:
-            def append(self, _):
-                raise RuntimeError("buffer is gone")
-
-            def __iter__(self):
-                return iter(())
-
-            def __len__(self):
-                return 0
-
-            def __bool__(self):
-                return False
-
-        monitor._events = Exploding()
+        monitor._calls[recorder.id].events = Exploding()
 
         recorder.caller_said("this must not raise")
         recorder.agent_said("nor this", turn=1)
@@ -419,20 +696,7 @@ class TestItCannotCostACall:
         assert monitor.snapshot()["events"] == []
 
     def test_it_warns_once_and_not_on_every_turn(self, monitor, recorder, caplog):
-        class Exploding:
-            def append(self, _):
-                raise RuntimeError("buffer is gone")
-
-            def __iter__(self):
-                return iter(())
-
-            def __len__(self):
-                return 0
-
-            def __bool__(self):
-                return False
-
-        monitor._events = Exploding()
+        monitor._calls[recorder.id].events = Exploding()
 
         with caplog.at_level("WARNING"):
             for i in range(50):
@@ -440,6 +704,40 @@ class TestItCannotCostACall:
 
         warnings = [r for r in caplog.records if "monitor" in r.getMessage()]
         assert len(warnings) == 1
+
+    def test_publishing_never_touches_the_disk(self, monitor, monkeypatch):
+        """
+        🔴 The property the import allowlist below argues for, held directly.
+
+        Every publish site is inside the loop that paces 20ms frames, where
+        decision 24 makes a stall permanent stream delay rather than one late
+        frame. W5c added arithmetic to `_append`; this is what stops the next
+        addition being a file.
+        """
+        import builtins
+
+        recorders = [
+            monitor.begin(persona="candidate", direction="outbound")
+            for _ in range(MAX_CALLS)
+        ]
+
+        def forbidden(*args, **kwargs):
+            raise AssertionError("the monitor opened a file on the hot path")
+
+        monkeypatch.setattr(builtins, "open", forbidden)
+
+        for turn, recorder in enumerate(recorders, start=1):
+            recorder.turn_started(turn)
+            recorder.caller_partial("So, tell me about")
+            recorder.caller_said("So, tell me about your Python experience.")
+            recorder.timing("llm_first_token", 210, turn=turn)
+            recorder.agent_said("Haan ji, four years.", turn=turn)
+            recorder.note("tts refused")
+            recorder.ended("done")
+
+        # And the read paths are on the same loop.
+        monitor.summaries()
+        monitor.snapshot()
 
     def test_no_publish_method_is_a_coroutine(self):
         """
@@ -491,7 +789,23 @@ class TestHotPathCost:
         for i in range(5_000):
             recorder.caller_said(f"line {i}")
 
-        assert len(monitor._events) <= 200
+        assert len(ring(monitor, recorder)) <= 200
+
+    def test_the_bound_holds_across_every_call_at_once(self, monitor):
+        """
+        Per-call rings multiply the ceiling; they must not remove it. Eight
+        calls of 200 events is the whole heap this observer can ever hold.
+        """
+        recorders = [
+            monitor.begin(persona="candidate", direction="outbound")
+            for _ in range(MAX_CALLS + 4)
+        ]
+        for recorder in recorders:
+            for i in range(500):
+                recorder.caller_said(f"line {i}")
+
+        total = sum(len(call.events) for call in monitor._calls.values())
+        assert total <= 200 * MAX_CALLS
 
 
 # =============================================================================
@@ -549,7 +863,39 @@ class TestPurityIsUnaffected:
         assert imported <= {
             "__future__", "time", "collections", "dataclasses", "datetime",
             "typing", ".log", "log",
+            # Phase 8's status vocabulary. Admitted only because the test
+            # below proves it imports nothing itself -- `call_history` owns
+            # the same names and is deliberately NOT allowed here, because a
+            # module that can write a file is a module that can fsync on the
+            # hot path.
+            ".call_status", "call_status",
         }, f"unexpected import in call_monitor: {imported}"
+
+    def test_the_status_vocabulary_imports_nothing_at_all(self):
+        """
+        🔴 The premise of the allowance above.
+
+        `call_status` is on the monitor's import list on the strength of being
+        inert. The day somebody adds `import json` to it for a convenience
+        helper, this module quietly regains the ability to do I/O on the
+        publish path and nothing else would notice.
+        """
+        import ast
+        import inspect
+
+        import shuo.call_status as status_module
+
+        tree = ast.parse(inspect.getsource(status_module))
+        imported = {
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.Import, ast.ImportFrom))
+        }
+
+        assert not imported, (
+            "call_status must import nothing — it is on call_monitor's "
+            "allowlist purely because it cannot reach a disk"
+        )
 
 
 # =============================================================================

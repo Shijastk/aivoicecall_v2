@@ -9,6 +9,7 @@ Endpoints:
 - WS   /ws                    - Media stream endpoint
 - *    /call/{number}         - Initiate an outbound call
 - GET  /calls/live            - What the twin is doing right now (W3)
+- GET  /calls/active          - Every live and recent call, shallowly (W5c)
 - POST /calls/current/hangup  - End the call in progress (W3)
 - GET  /trace/latest          - Most recent call trace as JSON
 - GET  /bench/ttft            - Benchmark TTFT across LLM providers
@@ -17,27 +18,53 @@ Endpoints:
 import json
 import os
 import hmac
+import re
+import secrets
 import time
 import asyncio
 import random
 from collections import defaultdict
-from typing import List, Optional
+from contextlib import asynccontextmanager
+from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, WebSocket, Request, Response, Query
 from fastapi.responses import JSONResponse
 from openai import AsyncOpenAI
 
+from . import call_history
 from . import config
 from .call_monitor import MONITOR
 from .carrier import get_carrier
 from .conversation import run_conversation
+from .spool import SPOOL
 from .types import CallContext, CallDirection
 from .tracer import TRACE_DIR
 from .log import get_logger
-
 logger = get_logger("shuo.server")
 
-app = FastAPI(title="shuo", docs_url=None, redoc_url=None)
+
+@asynccontextmanager
+async def _lifespan(_: FastAPI):
+    """
+    Nothing to warm; queued call-log writes to flush.
+
+    Without this, a restart between a call ending and its row reaching the
+    disk loses the row -- which is most likely on the call that mattered most,
+    because a deploy usually follows the call somebody was watching.
+    """
+    yield
+    await SPOOL.close()
+
+
+app = FastAPI(
+    title="Shuo Call Server (v2)", 
+    docs_url="/docs", 
+    redoc_url=None, 
+    lifespan=_lifespan
+)
+
+from shuo.v2.api_v2 import router as v2_router
+app.include_router(v2_router)
 
 # ── Graceful shutdown / connection draining ───────────────────────────
 _draining = False          # Set True on SIGTERM — reject new calls
@@ -166,8 +193,20 @@ async def _authenticate(request: Request) -> Optional[Response]:
 
 @app.get("/health")
 async def health():
-    """Health check endpoint."""
-    return {"status": "ok", "carrier": config.carrier_name(), "draining": _draining}
+    """
+    Health check endpoint.
+
+    `writes` is the call-log spool's counters. `dropped` and `failed` are the
+    two worth watching: both mean the call log is lying by omission, and
+    neither is visible any other way -- the spool swallows its failures on
+    purpose, because a write that can end a call is worse than a missing row.
+    """
+    return {
+        "status": "ok",
+        "carrier": config.carrier_name(),
+        "draining": _draining,
+        "writes": SPOOL.stats(),
+    }
 
 
 @app.api_route("/answer", methods=["GET", "POST"])
@@ -211,23 +250,84 @@ async def answer(request: Request):
         "outbound" if direction_raw == "outbound" else _infer_direction(form)
     )
 
+    dialled = str(form.get("To") or form.get("to") or "")
+    caller = str(form.get("From") or form.get("from") or "")
+
     # Outbound: persona was chosen when the call was placed.
     # Inbound: route on the number that was dialled.
     persona_id = params.get("persona")
     if not persona_id:
-        dialled = form.get("To") or form.get("to")
         persona_id = config.persona_for_did(dialled)
 
-    ws_url = config.websocket_url(persona_id=persona_id, direction=direction)
+    # Outbound calls arrive here carrying the attempt id minted before the
+    # carrier was ever called. Inbound calls have no such moment -- this
+    # handler *is* the first the system hears of them -- so one is minted here
+    # and the row starts at `ringing`, which is the truth: the carrier is
+    # asking what to do because a phone is ringing.
+    attempt = _clean_attempt(params.get("attempt"))
+    if not attempt:
+        attempt = new_attempt_id()
+        SPOOL.submit(
+            call_history.append,
+            call_history.revision(
+                attempt,
+                status=call_history.RINGING,
+                startedAt=call_history.now_iso(),
+                ringingAt=call_history.now_iso(),
+                direction=direction,
+                persona=persona_id,
+                to=dialled,
+                **{"from": caller},
+            ),
+        )
+    else:
+        # Outbound: the carrier only fetches this URL once the callee picks
+        # up, so reaching it is itself the answer signal. `in_progress` proper
+        # is written when the media socket's `start` frame lands; this fills in
+        # what the origination stub could not know.
+        SPOOL.submit(
+            call_history.append,
+            call_history.revision(
+                attempt,
+                answeredAt=call_history.now_iso(),
+                **{"from": caller},
+            ),
+        )
+
+    ws_url = config.websocket_url(
+        persona_id=persona_id, direction=direction, attempt=attempt
+    )
     xml = carrier.answer_xml(
         ws_url,
-        status_callback_url=config.status_callback_url(),
+        status_callback_url=config.status_callback_url(attempt),
         record=config.record_calls(),
-        recording_callback_url=config.recording_callback_url(),
+        recording_callback_url=config.recording_callback_url(attempt),
     )
 
-    logger.info(f"Answer  direction={direction}  persona={persona_id}  ws={ws_url}")
+    logger.info(
+        f"Answer  direction={direction}  persona={persona_id}  "
+        f"attempt={attempt}  ws={ws_url}"
+    )
     return Response(content=xml, media_type="application/xml")
+
+
+# An attempt id is minted by `new_attempt_id` and travels back to us through
+# URLs the carrier controls, so it is treated as untrusted input on the way
+# in: it names a file in W5b and a row in the call log now, and neither wants
+# a path separator in it. Anything that does not match is dropped rather than
+# rejected -- a malformed id is a call that goes unlogged, never a call that
+# does not happen.
+_ATTEMPT = re.compile(r"^att-[0-9a-f]{6,32}$")
+
+
+def _clean_attempt(raw: Optional[str]) -> str:
+    candidate = (raw or "").strip()
+    if not candidate:
+        return ""
+    if not _ATTEMPT.match(candidate):
+        logger.warning(f"Ignoring a malformed attempt id: {candidate[:40]!r}")
+        return ""
+    return candidate
 
 
 def _infer_direction(form: dict) -> str:
@@ -252,6 +352,109 @@ async def stream_status(request: Request):
         payload = {}
     logger.info(f"Stream status: {payload}")
     return {"status": "ok"}
+
+
+# =============================================================================
+# ORIGINATION
+# =============================================================================
+
+def new_attempt_id() -> str:
+    """
+    An id for one call attempt, minted before the carrier is told anything.
+
+    Random rather than sequential because it is threaded through URLs the
+    carrier calls back on, and a guessable id there is a call log any caller
+    could write into. `secrets`, not `random`: this file already seeds
+    `random` for the benchmark's shuffle.
+    """
+    return f"att-{secrets.token_hex(6)}"
+
+
+async def place_outbound_call(
+    phone_number: str,
+    persona_id: str,
+    *,
+    carrier=None,
+) -> Dict[str, Any]:
+    """
+    Originate a call and record the attempt. **This spends money.**
+
+    **The single origination site.** `trigger_call` below is the HTTP skin on
+    it and `main.py`'s CLI path calls it directly, because before Phase 8 they
+    were two independent copies and only one of them was ever going to be
+    taught about the call log -- so a call placed from the runbook appeared in
+    no table anywhere.
+
+    The pending row is written *before* the carrier is called, not after.
+    Between the two lies a REST round trip that can take seconds and can
+    fail, and a row written afterwards would leave the exact case the operator
+    most needs explained -- "I pressed call and nothing happened" -- with
+    nothing on disk at all.
+
+    Both writes go through the spool, so this coroutine never waits on a disk.
+    """
+    carrier = carrier or get_carrier()
+    attempt = new_attempt_id()
+
+    SPOOL.submit(
+        call_history.append,
+        call_history.revision(
+            attempt,
+            status=call_history.PENDING,
+            startedAt=call_history.now_iso(),
+            direction="outbound",
+            persona=persona_id,
+            to=phone_number,
+            carrier=carrier.name,
+        ),
+    )
+
+    try:
+        result = await carrier.originate(
+            phone_number,
+            answer_url=config.answer_url(
+                persona_id=persona_id, direction="outbound", attempt=attempt
+            ),
+            persona_id=persona_id,
+            record=config.record_calls(),
+            ring_url=config.ring_url(attempt) or None,
+            hangup_url=config.hangup_url(attempt) or None,
+        )
+    except Exception:
+        SPOOL.submit(
+            call_history.append,
+            call_history.revision(
+                attempt,
+                status=call_history.FAILED,
+                endedAt=call_history.now_iso(),
+                endedCode=call_history.ORIGINATION_REFUSED,
+                endedReason=call_history.sentence_for(
+                    call_history.ORIGINATION_REFUSED
+                ),
+            ),
+        )
+        raise
+
+    # `request_uuid`, which is *not* reliably the `CallUUID` the webhooks and
+    # the media `start` frame quote -- see the /hangup handler. Recorded as
+    # `requestId` rather than as `callId` so the two cannot be confused later;
+    # `callId` is written only where the authoritative value is known.
+    SPOOL.submit(
+        call_history.append,
+        call_history.revision(attempt, requestId=result.call_id),
+    )
+
+    return {
+        "status": "calling",
+        "to": phone_number,
+        "carrier": carrier.name,
+        "persona": persona_id,
+        "call_id": result.call_id,
+        # The id every later report on this call is keyed by. The panel keeps
+        # it so it can follow a call that is still ringing, which has no
+        # carrier id and no live view to be found in.
+        "attempt": attempt,
+    }
 
 
 @app.api_route("/call/{phone_number:path}", methods=["GET", "POST"])
@@ -283,22 +486,9 @@ async def trigger_call(
         phone_number = f"+{phone_number}"
 
     persona_id = persona or config.default_persona()
-    carrier = get_carrier()
 
     try:
-        result = await carrier.originate(
-            phone_number,
-            answer_url=config.answer_url(persona_id=persona_id, direction="outbound"),
-            persona_id=persona_id,
-            record=config.record_calls(),
-        )
-        return {
-            "status": "calling",
-            "to": phone_number,
-            "carrier": carrier.name,
-            "persona": persona_id,
-            "call_id": result.call_id,
-        }
+        return await place_outbound_call(phone_number, persona_id)
     except Exception as e:
         # Log the detail; do not echo the carrier's raw response body back
         # to the client.
@@ -315,6 +505,23 @@ async def hangup(request: Request):
     returned when a call is created is NOT reliably the same value.
     It also fires on every termination path, including caller hangup,
     which the stream status callback does not.
+
+    **It is also the only signal an unanswered call produces at all.** A call
+    that rings out never fetches `/answer`, never opens a media socket and
+    never reaches `conversation.py`, so without this handler writing a row
+    there is nothing anywhere to say it happened -- which is the gap Phase 8
+    exists to close.
+
+    The status written here is deliberately provisional: `best_status` in the
+    fold ranks a terminal outcome from the call loop above anything derived
+    from a hangup cause, so this cannot overwrite what actually happened on a
+    call that was answered.
+
+    **It is also the fastest path a panel has to a terminal state.** A declined
+    test call produces this webhook and nothing else -- no media socket ever
+    opens, so `call_monitor` never hears of the call at all -- which is why the
+    row written here carries `endedCode` as well as `status`. Without it a
+    ringing screen has nothing to branch on but prose.
     """
     denied = await _authenticate(request)
     if denied is not None:
@@ -324,22 +531,90 @@ async def hangup(request: Request):
     except Exception:
         payload = {}
 
+    cause = str(
+        payload.get("HangupCause") or payload.get("HangupCauseName") or ""
+    )
+    source = str(payload.get("HangupSource") or "")
+    call_uuid = str(payload.get("CallUUID") or "")
+
+    status, ended_code = call_history.classify_hangup(cause, source)
+
     logger.info(
-        f"Call ended  uuid={payload.get('CallUUID')}  "
+        f"Call ended  uuid={call_uuid or '(none)'}  "
         f"from={payload.get('From')} to={payload.get('To')}  "
         f"duration={payload.get('Duration')}s  "
-        f"cause={payload.get('HangupCause') or payload.get('HangupCauseName')}  "
-        f"source={payload.get('HangupSource')}"
+        f"cause={cause or '(none)'}  source={source or '(none)'}  "
+        f"-> {status}/{ended_code}"
     )
+
+    attempt = _clean_attempt(request.query_params.get("attempt"))
+    if attempt:
+        SPOOL.submit(
+            call_history.append,
+            call_history.revision(
+                attempt,
+                status=status,
+                callId=call_uuid,
+                endedAt=call_history.now_iso(),
+                # The machine-readable half, for the panel. `endedReason` beside
+                # it is the sentence for the same code -- a call that never
+                # reached the loop has no prose of its own, and an empty reason
+                # on a declined call reads as "we do not know" rather than as
+                # "they pressed decline".
+                #
+                # `merge` is last-write-wins on both, but a call that *was*
+                # answered has already written its own pair from teardown and
+                # `best_status` keeps its status, so this cannot restate a real
+                # conversation as a decline.
+                endedCode=ended_code,
+                endedReason=call_history.sentence_for(ended_code),
+                hangupCause=cause,
+                hangupSource=source,
+                # The carrier's own duration, kept under its own key. The
+                # authoritative one is the loop's frozen monotonic measurement
+                # (`durationSeconds`), and letting a webhook that may arrive
+                # after teardown overwrite it would silently replace a measured
+                # number with a billed one.
+                carrierDurationSeconds=_as_int(payload.get("Duration")),
+            ),
+        )
+
     return {"status": "ok"}
+
+
+def _as_int(raw: Any) -> Optional[int]:
+    """A carrier form field as an int, or None. Form values are strings."""
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
 
 
 @app.api_route("/ring", methods=["GET", "POST"])
 async def ring(request: Request):
-    """Carrier callback fired when the far end starts ringing."""
+    """
+    Carrier callback fired when the far end starts ringing.
+
+    🔴 Whether this fires at all is unverified -- `originate` only started
+    sending a `ring_url` in Phase 8. If it never fires the row simply stays
+    `pending` until the hangup callback or the media socket moves it on, which
+    is a missing column rather than a missing call.
+    """
     denied = await _authenticate(request)
     if denied is not None:
         return denied
+
+    attempt = _clean_attempt(request.query_params.get("attempt"))
+    if attempt:
+        SPOOL.submit(
+            call_history.append,
+            call_history.revision(
+                attempt,
+                status=call_history.RINGING,
+                ringingAt=call_history.now_iso(),
+            ),
+        )
+
     return {"status": "ok"}
 
 
@@ -409,6 +684,41 @@ async def live_call(
     return JSONResponse(MONITOR.snapshot(since=since, call_ref=call))
 
 
+@app.get("/calls/active")
+async def active_calls(request: Request):
+    """
+    Every call this process is running or has just run. Operator-only.
+
+    The plural of `/calls/live`, and the reason W5c exists: that route answers
+    for *one* call -- the latest, or a named one -- so there was no way to ask
+    "what is happening right now" when more than one thing was. A receptionist
+    line and an interview overlapping was simply not a question the panel could
+    put.
+
+    Shallow on purpose. One dict per call with no transcript in it (see
+    `_Call.to_summary`), so the panel lists calls from here and reads the one
+    an operator has open from `/calls/live`. At most `MAX_CALLS` of them: a
+    comprehension over eight dataclasses and one JSON encode of a few hundred
+    bytes, which is the only shape of work allowed on this loop.
+
+    Polled, not pushed, for the reason written out at length on `/calls/live`
+    above: an SSE response is a resident task with keepalives on the event loop
+    that paces 20ms frames, and this route existing does not change that
+    arithmetic -- it makes it worse, because a panel watching every call would
+    hold the stream open for the whole shift rather than for one test call.
+
+    `pending` and `ringing` calls are **not** here, and cannot be: a phone that
+    is ringing has no media socket, so this process has never heard of it. They
+    come from the call log on disk, and :3041's `/v1/calls/active` is what
+    unions the two.
+    """
+    denied = _require_admin(request)
+    if denied is not None:
+        return denied
+
+    return JSONResponse({"calls": MONITOR.summaries()})
+
+
 @app.post("/calls/current/hangup")
 async def hangup_current_call(
     request: Request,
@@ -429,19 +739,38 @@ async def hangup_current_call(
     a finished call, pressed while a *different* call has since started.
     Passing the id the panel is displaying turns that into a refusal instead
     of hanging up someone else's conversation.
+
+    Since W5c, `expect` also **selects**. `MONITOR.current()` is "the most
+    recently opened live call", which was an unambiguous phrase while the
+    monitor held one call and is not while it holds eight: an operator ending
+    the interview they are watching, in a process that has since answered the
+    receptionist line, would have hung up the receptionist. So a supplied
+    `expect` names the call to end; only the no-`expect` form -- the runbook's
+    `curl`, with one call up -- still means "whichever is current".
     """
     denied = _require_admin(request)
     if denied is not None:
         return denied
 
-    call = MONITOR.current()
+    call = MONITOR.find(expect) if expect else MONITOR.current()
+
     if call is None:
+        if expect:
+            # Named a call this process has never seen, or one that has already
+            # aged out of the buffer. Same sentence as "nothing is up", because
+            # from the panel's side it is the same situation: the call it is
+            # looking at is not one that can be ended.
+            logger.warning(
+                f"Refused hangup: the panel asked for {expect!r}, which is not "
+                f"a call this process is running"
+            )
+            return JSONResponse({"error": "call mismatch"}, status_code=409)
         return JSONResponse({"error": "no call in progress"}, status_code=409)
 
-    if expect and expect not in (call.id, call.call_id):
+    if not call.live:
         logger.warning(
-            f"Refused hangup: the panel expected {expect!r} but the live call "
-            f"is {call.id!r} ({call.call_id or 'no carrier id yet'})"
+            f"Refused hangup: {call.id!r} has already ended "
+            f"({call.ended_reason or 'no reason recorded'})"
         )
         return JSONResponse({"error": "call mismatch"}, status_code=409)
 
@@ -498,16 +827,22 @@ async def websocket_endpoint(websocket: WebSocket):
     params = websocket.query_params
     persona_id = params.get("persona") or config.default_persona()
     direction_raw = (params.get("direction") or "outbound").lower()
+    # Verified as part of the token below, then re-validated for shape: it is
+    # signed, so it cannot be substituted, but the signature says nothing
+    # about what characters are in it.
+    attempt_raw = params.get("attempt") or ""
 
     # Verify BEFORE accepting. The signature gate on /answer says nothing
     # about who dials this socket, and persona/direction are otherwise
     # attacker-chosen. The token is minted into the <Stream> URL by
-    # config.websocket_url and is bound to persona, direction and expiry.
+    # config.websocket_url and is bound to persona, direction, attempt and
+    # expiry.
     if not config.verify_stream_token(
         params.get("token") or "",
         persona_id=persona_id,
         direction=direction_raw,
         expires_at=params.get("exp") or "",
+        attempt=attempt_raw,
     ):
         logger.warning(
             f"Rejected /ws connection from "
@@ -527,11 +862,14 @@ async def websocket_endpoint(websocket: WebSocket):
 
     # call_id is unknown until the carrier's `start` frame arrives; the
     # session fills it in and the loop keys everything on it from there.
+    # attempt_id is known now and never changes, which is why the call log and
+    # the live view both key on it instead.
     context = CallContext(
         call_id="",
         direction=direction,
         persona_id=persona_id,
         carrier=carrier.name,
+        attempt_id=_clean_attempt(attempt_raw),
     )
 
     logger.info(f"Call connected  (active: {_active_calls})")

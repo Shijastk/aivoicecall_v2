@@ -407,6 +407,259 @@ class TestReadEndpoints:
 
 
 # =============================================================================
+# THE NOTIFIER IN THE APP (W5d)
+# =============================================================================
+
+class TestTheNotifierIsWiredButOff:
+    """
+    W5d lives in *this* process, and the property worth pinning is that it is
+    **off**: an unconfigured install must create no task and send nothing. The
+    notifier's own behaviour is `tests/test_notify.py`; this is the seam.
+    """
+
+    def test_health_reports_it_off_on_a_fresh_install(self, client, monkeypatch):
+        monkeypatch.delenv("SHUO_NOTIFY_URL", raising=False)
+
+        block = client.get("/health").json()["notifications"]
+
+        assert block["enabled"] is False
+        assert block["target"] == ""
+        assert block["sent"] == 0
+
+    def test_no_poller_runs_when_it_is_not_configured(self, store, monkeypatch):
+        monkeypatch.delenv("SHUO_NOTIFY_URL", raising=False)
+        from shuo import notify
+
+        notify.NOTIFIER.reset()
+        with TestClient(config_api.app) as client:
+            assert client.get("/health").json()["notifications"]["running"] is False
+
+    def test_the_lifespan_starts_and_stops_the_poller(self, store, monkeypatch):
+        monkeypatch.setenv("SHUO_NOTIFY_URL", "https://ntfy.sh/a-secret-topic")
+        from shuo import notify
+
+        notify.NOTIFIER.reset()
+        with TestClient(config_api.app) as client:
+            body = client.get("/health").json()["notifications"]
+            assert body["enabled"] is True
+            assert body["running"] is True
+
+        # Stopped on the way out, so a reload does not leave a task behind.
+        #
+        # Asserted on `_task is None` rather than only on `running`, because a
+        # closing event loop cancels pending tasks by itself -- so `running`
+        # goes false whether or not the lifespan ever called `stop()`, and a
+        # test that checked only that would pass with the shutdown deleted.
+        # Releasing the pooled HTTP client is the part nothing else does.
+        assert notify.NOTIFIER._task is None
+        assert notify.NOTIFIER.stats()["running"] is False
+
+    def test_health_never_carries_the_topic(self, store, monkeypatch):
+        """
+        🔴 On ntfy the topic in the URL *is* the credential, and `/health` is
+        the endpoint people paste into issues.
+        """
+        monkeypatch.setenv("SHUO_NOTIFY_URL", "https://ntfy.sh/a-secret-topic")
+        from shuo import notify
+
+        notify.NOTIFIER.reset()
+        with TestClient(config_api.app) as client:
+            assert "a-secret-topic" not in client.get("/health").text
+
+
+# =============================================================================
+# THE THREE PER-SCREEN READS
+# =============================================================================
+
+class TestTheThreeReads:
+    """
+    The read half of the three form screens.
+
+    What these defend is the reload: before they existed the panel came back
+    from a refresh with three empty textareas, which does not mean "nothing is
+    configured", it means "this screen does not know". An operator who then
+    pressed Save wrote that emptiness over a working prompt.
+    """
+
+    def test_each_read_answers_in_the_shape_its_write_returns(self, client):
+        """
+        One shape per screen, not two. The panel already types the PUT
+        response; a read that answered in a different shape would need a
+        second type on that side and would be free to drift from this one.
+        """
+        client.put(
+            "/v1/agent/config", json={"voiceModel": VOICE, "systemPrompt": "Be brief."}
+        )
+
+        body = client.get("/v1/agent/config").json()
+        assert set(body) == {"voiceModel", "systemPrompt", "updatedAt"}
+        assert body["voiceModel"] == VOICE
+        assert body["systemPrompt"] == "Be brief."
+        assert body["updatedAt"]
+
+    def test_a_saved_prompt_survives_a_reload(self, client):
+        client.put(
+            "/v1/agent/config",
+            json={"voiceModel": VOICE, "systemPrompt": "Answer as a candidate."},
+        )
+
+        assert (
+            client.get("/v1/agent/config").json()["systemPrompt"]
+            == "Answer as a candidate."
+        )
+
+    def test_a_saved_knowledge_block_survives_a_reload(self, client):
+        client.put("/v1/agent/knowledge", json={"context": "Three years at X."})
+
+        body = client.get("/v1/agent/knowledge").json()
+        assert set(body) == {"context", "updatedAt"}
+        assert body["context"] == "Three years at X."
+
+    def test_nothing_configured_reads_as_empty_strings_not_null(self, client):
+        """
+        🔴 React renders `null` in a `defaultValue` as a field with no value
+        -- the same blank box this endpoint exists to prevent, reached by a
+        different route. An empty string is a textarea showing its
+        placeholder, which is what "nothing configured" should look like.
+        """
+        body = client.get("/v1/agent/config").json()
+
+        assert body["voiceModel"] == ""
+        assert body["systemPrompt"] == ""
+        assert body["updatedAt"] is None
+
+        assert client.get("/v1/agent/knowledge").json()["context"] == ""
+
+    def test_unconfigured_persona_rules_read_as_the_default(self, client):
+        """
+        The screen has to show the constraints that are actually in force, and
+        on an install nobody has configured those are the ruleset -- the same
+        answer `runtime_config` gets, from the same property, so the panel and
+        the call cannot disagree.
+        """
+        body = client.get("/v1/agent/persona").json()
+
+        assert set(body) == {"rules", "updatedAt"}
+        assert body["rules"] == DEFAULT_PERSONA_RULES
+        assert body["updatedAt"] is None
+
+    def test_a_deliberately_cleared_ruleset_reads_back_empty(self, client):
+        """
+        🔴 The asymmetry that makes the whole read path safe. "Never saved"
+        and "saved empty" are different states, and only the first resolves to
+        the default. If a clear read back as the ruleset, a reload would
+        resurrect the rules and the next Save would write them to disk --
+        undoing an operator's decision with a page load.
+        """
+        client.put("/v1/agent/persona", json={"rules": ""})
+
+        body = client.get("/v1/agent/persona").json()
+        assert body["rules"] == ""
+        assert body["updatedAt"], "the clear was still a save and is stamped"
+
+    def test_a_read_never_says_nothing_was_saved(self, client):
+        """
+        The outcome sentence has to describe what happened to the operator's
+        data. On a read nothing happened to it, and "Nothing was saved."
+        describes a save they never asked for.
+        """
+        response = client.get("/v1/agent/nonexistent")
+
+        assert response.status_code == 404
+        assert "Nothing was saved" not in response.json()["message"]
+
+    def test_an_unresolvable_saved_voice_is_returned_unchanged(
+        self, client, store, monkeypatch
+    ):
+        """
+        Entitlements lapse under a file nobody touched. Substituting a working
+        voice here would make that look like a save that never happened; the
+        picker simply will not find it and falls back to its own default.
+        """
+        from shuo.config_store import AgentSection
+
+        document = store.load()
+        document.agent = AgentSection(
+            voice_model="el-retired", system_prompt="p", updated_at="2026-01-01T00:00:00+00:00"
+        )
+        store._write(document)
+
+        assert client.get("/v1/agent/config").json()["voiceModel"] == "el-retired"
+
+
+# =============================================================================
+# THE CALL LOG
+# =============================================================================
+
+class TestCallHistoryEndpoint:
+    """
+    Read straight off disk here rather than proxied from :3040 -- history is
+    a file, not live state, so the log loads with `main.py` stopped and no
+    route is added to the app that paces 20ms audio frames.
+    """
+
+    @pytest.fixture
+    def history(self, tmp_path, monkeypatch):
+        path = tmp_path / "call_history.jsonl"
+        monkeypatch.setenv("SHUO_CALL_HISTORY_PATH", str(path))
+        return path
+
+    def _write(self, path, *records):
+        path.write_text(
+            "\n".join(json.dumps(record) for record in records) + "\n",
+            encoding="utf-8",
+        )
+
+    def test_no_calls_yet_is_an_empty_list_not_an_error(self, client, history):
+        response = client.get("/v1/calls/history")
+
+        assert response.status_code == 200
+        assert response.json() == {"calls": [], "count": 0}
+
+    def test_it_serves_the_newest_call_first(self, client, history):
+        self._write(
+            history,
+            {"id": "call-1", "callId": "MZ-1", "status": "completed"},
+            {"id": "call-2", "callId": "MZ-2", "status": "missed"},
+        )
+
+        body = client.get("/v1/calls/history").json()
+        assert [row["callId"] for row in body["calls"]] == ["MZ-2", "MZ-1"]
+        assert body["count"] == 2
+
+    def test_limit_is_honoured_and_bounded(self, client, history):
+        self._write(
+            history,
+            *[{"id": f"call-{i}", "callId": f"MZ-{i}"} for i in range(5)],
+        )
+
+        assert client.get("/v1/calls/history?limit=2").json()["count"] == 2
+        # Above the ceiling is a rejection, not a silent clamp: a panel asking
+        # for ten thousand rows has a bug, and serving 200 hides it.
+        assert client.get("/v1/calls/history?limit=100000").status_code == 400
+
+    def test_a_torn_record_does_not_break_the_screen(self, client, history):
+        history.write_text(
+            json.dumps({"id": "call-1", "callId": "MZ-1"}) + "\n" + '{"id": "call-2',
+            encoding="utf-8",
+        )
+
+        body = client.get("/v1/calls/history").json()
+        assert [row["callId"] for row in body["calls"]] == ["MZ-1"]
+
+    def test_health_says_where_the_call_log_is(self, client, history):
+        """
+        An empty call-log screen has two very different causes -- no calls
+        yet, or the two processes disagreeing about the path. This is the only
+        place that tells them apart.
+        """
+        body = client.get("/health").json()
+
+        assert body["call_history_path"] == str(history)
+        assert body["calls_recorded"] == 0
+
+
+# =============================================================================
 # THE VOICE CATALOGUE
 # =============================================================================
 

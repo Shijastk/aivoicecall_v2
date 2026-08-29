@@ -248,6 +248,8 @@ Start from [.env.example](.env.example), which documents every variable and the 
 | `SHUO_CALL_SERVER_URL` | Default `http://127.0.0.1:3040`. Where `:3041` finds the call server for the test-call button. |
 | `SHUO_CONFIG_API_TOKEN` | Optional shared secret for `:3041`, sent as `X-Shuo-Config-Token`. Deliberately *not* `SHUO_ADMIN_TOKEN` — the panel sends no auth header today, so reusing that one would silently break every save. |
 | `SHUO_STREAM_SECRET` | Signs the `wss://` URL in the answer XML, binding the media socket to one persona, direction and expiry. Defaults to `VOBIZ_AUTH_TOKEN`. |
+| `SHUO_NOTIFY_URL` | Optional. Push notifications for inbound / missed / failed calls, from `:3041` only. **Unset means off — no task, no request.** 🔴 On ntfy the topic in the URL *is* the credential: anyone holding it reads every notification, so generate it long and random and keep it out of the panel and out of logs (nothing prints it; `/health` shows `https://ntfy.sh/(redacted)`). It is also **the only thing in the system that sends call data off the machine** — metadata only, never a transcript. |
+| `SHUO_NOTIFY_TOKEN` | Optional bearer credential for the notification target. A public ntfy.sh topic does not need one. |
 | `VALIDATE_WEBHOOK_SIGNATURES` | Default `true`. A *missing* signature header is a failure, not a reason to skip the check. Only set false against a carrier whose signing secret you do not hold — the bundled fake Vobiz signs correctly, so tests do not need it. |
 
 Generate the tokens with:

@@ -41,6 +41,12 @@ class CallContext:
     persona_id: str = "default"
     carrier: str = "unknown"
 
+    # The id minted before the carrier was called, and the only identifier
+    # that spans a whole attempt: `call_id` above is the carrier's, and on a
+    # call nobody answers it never exists. Empty when the media socket was
+    # opened without one, in which case the monitor mints its own.
+    attempt_id: str = ""
+
 
 # =============================================================================
 # STATE

@@ -274,8 +274,18 @@ class Carrier(ABC):
         answer_url: str,
         persona_id: str = "default",
         record: bool = False,
+        ring_url: Optional[str] = None,
+        hangup_url: Optional[str] = None,
     ) -> OriginateResult:
-        """Place an outbound call."""
+        """
+        Place an outbound call.
+
+        `ring_url` and `hangup_url` are where the carrier reports progress on
+        an attempt that may never be answered. They are optional because a
+        carrier that does not support them must still be able to place a call
+        -- the call log then simply cannot distinguish a missed call from a
+        cancelled one, which is a poorer log rather than a broken one.
+        """
 
     @abstractmethod
     async def hangup(self, call_id: str) -> None:

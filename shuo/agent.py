@@ -16,6 +16,7 @@ from typing import Optional, Callable, List, Dict
 
 from .call_monitor import CallRecorder
 from .carrier.base import CarrierSession
+from .recording import CallTape
 from .runtime_config import CallSettings
 from .services.llm import LLMService
 from .services.tts import TTSService
@@ -50,11 +51,19 @@ class Agent:
         persona_id: str = "default",
         settings: Optional[CallSettings] = None,
         recorder: Optional[CallRecorder] = None,
+        tape: Optional[CallTape] = None,
     ):
         self._session = session
         self._on_done = on_done
         self._tts_pool = tts_pool
         self._tracer = tracer
+
+        # The local recording (W5b). Held only to hand to each turn's player,
+        # which is the thing that sees outbound frames -- a fresh `AudioPlayer`
+        # is built per turn, so the tape has to be threaded rather than
+        # attached once. Disabled by default for the same reason `recorder`
+        # is: an Agent built outside a call loop records nothing.
+        self._tape = tape or CallTape.disabled()
 
         # The operator's live view of this call (W3). Defaults to a disabled
         # recorder so every publish site below can be unconditional -- an
@@ -150,6 +159,7 @@ class Agent:
             session=self._session,
             on_done=self._on_playback_done,
             checkpoint_name=self._checkpoint,
+            tape=self._tape,
         )
 
         # Start LLM
