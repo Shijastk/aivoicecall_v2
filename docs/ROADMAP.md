@@ -13,8 +13,8 @@ been added by Phase 2.
 | Phase | Scope and complete phase contract | Status |
 |---|---|---|
 | 1 | [Hardware/runtime contract](phases/PHASE_01_RUNTIME_CONTRACT.md) | Complete: supplied runtime evidence |
-| 2 | [Isolated adapter and codec](phases/PHASE_02_ADAPTER_AND_CODEC.md) | Implemented/tested; closeout pending documentation sync and explicit queue-budget decision |
-| 3 | [PipeWire capture/playback integration](phases/PHASE_03_PIPEWIRE_INTEGRATION.md) | Implemented and reference-hardware validated; production SHUO/lifecycle integration pending |
+| 2 | [Isolated adapter and codec](phases/PHASE_02_ADAPTER_AND_CODEC.md) | Complete for Phase 2 scope; production numeric queue/latency budget intentionally deferred to integrated measurement |
+| 3 | [PipeWire capture/playback integration](phases/PHASE_03_PIPEWIRE_INTEGRATION.md) | Complete on reference hardware; Phase 4 SHUO media integration and Phase 6 lifecycle ownership remain pending |
 | 4 | [SHUO conversation pipeline integration](phases/PHASE_04_SHUO_PIPELINE_INTEGRATION.md) | Planned / pending approval |
 | 5 | [Controlled cellular end-to-end validation](phases/PHASE_05_CELLULAR_E2E.md) | Planned / pending approval |
 | 6 | [Call control and lifecycle ownership](phases/PHASE_06_CALL_CONTROL_AND_LIFECYCLE.md) | Planned / pending approval |
@@ -126,23 +126,32 @@ Base implementation revision:
 97076cd1739e2456843ced239eeebeedcfefa70b
 ```
 
-Local closeout changes after that base add AI-only route isolation/session
-resources and capture shutdown draining. Record a new revision after those local
-changes are reviewed and committed.
+Closeout changes after that base add AI-only route isolation/session resources,
+capture shutdown draining, bounded route-restore retry, and safe handling when
+selected BlueZ call ports disappear during hangup. Record the final closeout
+revision after this code/docs change set is committed.
 
 Executed evidence:
 
-- Phase 3/route/cleanup focused selection: **21 passed, 1 warning**
-- Full Bluetooth-focused selection: **51 passed, 1 warning**
+- Phase 3/route/cleanup focused selection before disappearance hardening:
+  **21 passed, 1 warning**
+- Full Bluetooth-focused selection after capture cleanup fix:
+  **51 passed, 1 warning**
+- Final focused route/session/process cleanup selection:
+  **25 passed, 1 warning**
 - Real active-call AI-only lifecycle: **20 seconds, clean start/stop**
-- During session: physical laptop mic -> Bluetooth uplink absent
-- During session: Bluetooth downlink -> physical laptop speaker absent
-- After stop: prior routes restored
-- After stop: no `pw-cat` process remained
-- Prior unread-capture shutdown timeout reproduced and then resolved
+- Five consecutive fresh start/stop cycles: **all 5 completed cleanly**
+- During active session: physical laptop mic -> Bluetooth uplink absent
+- During active session: Bluetooth downlink -> physical laptop speaker absent
+- After normal stop: prior routes restored
+- After normal and call-cut teardown: no `pw-cat` process remained
+- Prior unread-capture shutdown timeout reproduced and resolved
+- Real call-cut route-restore race reproduced, fixed and retested successfully
+- Latest full root suite: **826 passed, 4 failed, 4 warnings**
+- The four failures match the documented pre-existing baseline identities
 
-The remaining advancement gate is not "make the 20-second timer longer".
-Production behavior must bind the Bluetooth session to the real call/conversation
-lifecycle: start isolation when the Bluetooth AI session starts and keep it active
-until teardown. Phase 4 owns the SHUO media-pipeline seam; Phase 6 owns complete
-automated call-control/lifecycle behavior.
+Phase 3 is complete for its defined reference-hardware gate. The next integration
+boundary is Phase 4: connect Bluetooth media to the existing SHUO conversation
+pipeline without changing carrier/browser defaults. Phase 6 still owns complete
+automated call-control and lifecycle behavior, while reconnect/soak/coexistence
+qualification remains in the resilience phases.

@@ -50,7 +50,7 @@ errors or past code differences cannot be ruled out; do not invent a diagnosis.
 |---|---|---|
 | Python 3.12 `audioop` dependency | `shuo/bluetooth/codec.py` uses stdlib `audioop`; focused suite passes, but Python warns that it is deprecated and removed in Python 3.13 | Phase 2 accepted limitation; Python 3.13+ replacement requires separate review/approval |
 | Live PipeWire I/O not implemented | Resolved for Phase 3 reference path: real `pw-dump` discovery and explicit `pw-cat` process ownership are implemented and hardware-validated | RESOLVED in Phase 3 reference scope |
-| Production queue budget uncalibrated | `BoundedAudioQueue` requires explicit `max_frames` and overflow policy, but Phase 2 does not choose a production numeric latency budget | Phase 3 measurement/decision |
+| Production queue budget uncalibrated | `BoundedAudioQueue` requires explicit `max_frames` and overflow policy; Phase 3 uses bounded runtime values for reference validation, but the final product budget still needs integrated latency measurement | Phase 4/5 integrated measurement |
 | Real digital duplex/echo isolation unverified | Partially resolved: live AI-only route isolation is hardware-validated and physical mic mixing root cause identified; full SHUO cellular E2E/self-audio/echo validation remains pending | Phase 5 for full E2E |
 | Broader codec/device compatibility unverified | Only mSBC / S16LE / 16 kHz / mono reference contract is supported by Phase 2 selection rules | Future compatibility qualification |
 | Production Bluetooth entrypoint/lifecycle integration not implemented | Phase 3 resources are callable from a validation harness, but default `main.py` does not start them and no fixed-duration test harness is production behavior | Phase 4/6 runtime and lifecycle integration |
@@ -95,8 +95,8 @@ isolated boundary, with Python 3.13+ replacement still unresolved. Do not read l
 | Finding | Evidence/status | Next owner |
 |---|---|---|
 | Production lifecycle seam not connected | 20-second manual harness passes, but default application startup does not own the Bluetooth session | Phase 4 for SHUO media integration; Phase 6 for complete call lifecycle |
-| Production queue/latency budget still unapproved | `PwCatConfig` has runtime values used for validation, but product budget has not been measured/accepted | Phase 3 measurement / later E2E latency work |
-| Device disappearance/recreation not fully qualified | Real discovery works for the reference active call; reconnect/node recreation behavior is not yet accepted | Phase 7 / resilience |
-| EnumFormat capability vs actual negotiation needs review | Current discovery accepts explicit compatible EnumFormat or direct audio props; capability advertisement is not always proof of current negotiated state | Phase 3/compatibility hardening |
+| Production queue/latency budget still unapproved | `PwCatConfig` has bounded runtime values used for reference validation, but the end-to-end product budget has not been measured/accepted | Phase 4/5 integrated pipeline and E2E latency work |
+| Call-end BlueZ disappearance cleanup validated; reconnect still not qualified | Real call-cut teardown now passes cleanly with bounded restore retry and no orphan `pw-cat`; reconnect after a dropped/recreated session is still a separate resilience concern | Phase 7 / resilience |
+| EnumFormat capability vs actual negotiation needs review | Current discovery accepts explicit compatible EnumFormat or direct audio props; capability advertisement is not always proof of current negotiated state | Compatibility hardening / broader device qualification |
 | Monitor/headset listening mode deferred | AI-only mode intentionally removes local speaker route; no human monitor branch is implemented | Future optional feature after core E2E |
 | Python 3.13+ remains unsupported for current codec path | `audioop` warning remains in passing suites | Separate codec replacement review |

@@ -214,6 +214,14 @@ Bluetooth nodes and local mic/speaker. At session stop it restores only the link
 that session removed.
 
 The 20-second real-call run was only a manual validation harness. No production
-timer is intended. `main.py` currently remains unchanged: running the default app
-does not automatically create a Bluetooth AI-only session, and call start/end do
-not yet own this Phase 3 resource.
+timer is intended. Phase 3 closeout also validated five consecutive fresh
+start/stop cycles and an intentional cellular-call cut while the AI-only session
+was active. The call-cut path now handles transient BlueZ port disappearance/
+recreation with bounded fresh-graph restore retry; if the selected call port stays
+gone, the old call-stream route is no longer treated as restorable. Teardown left
+no orphan `pw-cat` process in the validated run.
+
+`main.py` currently remains unchanged: running the default app does not
+automatically create a Bluetooth AI-only session. Phase 4 must attach the media
+boundary to the SHUO conversation pipeline, and Phase 6 still owns complete
+automated call-control/lifecycle reconciliation.

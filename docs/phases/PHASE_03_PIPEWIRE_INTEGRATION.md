@@ -1,6 +1,6 @@
 # Bluetooth Phase 3 — PipeWire capture/playback integration
 
-**Status: IMPLEMENTED / REFERENCE HARDWARE VALIDATED; PRODUCTION PIPELINE INTEGRATION PENDING.**
+**Status: COMPLETE FOR PHASE 3 ON REFERENCE HARDWARE; PHASE 4 PIPELINE INTEGRATION PENDING.**
 
 Shared contracts: [Roadmap](../ROADMAP.md), [requirements](../REQUIREMENTS.md),
 [Bluetooth architecture](../BLUETOOTH_ARCHITECTURE.md),
@@ -63,9 +63,10 @@ Implementation base revision:
 
 That revision added the real PipeWire process/discovery foundation in
 `shuo/bluetooth/process.py` and `shuo/bluetooth/pipewire_live.py`.
-Subsequent local Phase 3 closeout work added AI-only route isolation/session
-resources and the capture-shutdown fix. These local changes must be committed
-separately before a repository revision can be cited for the complete closeout.
+Subsequent Phase 3 closeout work added AI-only route isolation/session
+resources, capture-shutdown cleanup, bounded route-restore retry for transient
+BlueZ node recreation, and call-end/device-disappearance handling. The code and
+tests are ready to be committed as the final Phase 3 closeout change set.
 
 Reference hardware:
 
@@ -141,6 +142,36 @@ drains unread capture stdout during shutdown only; normal capture remains direct
 streaming through `read()`. The repeated focused suites and 20-second hardware
 lifecycle test passed after that fix.
 
+Additional closeout validation on 2026-09-13:
+
+- five consecutive fresh AI-only session start/stop cycles completed cleanly;
+- during an active cycle, explicit `pw-cat --record` and `pw-cat --playback`
+  processes targeted the selected Bluetooth nodes;
+- after the repeated lifecycle test, `pgrep -a pw-cat` returned no output;
+- a real call-cut test reproduced a PipeWire route-restore race while BlueZ HFP
+  ports were disappearing/reappearing;
+- route restoration was hardened with fresh graph inspection and bounded retry;
+- if the selected Bluetooth call port remains absent for the bounded retry
+  window, the old route is treated as obsolete because that call stream no
+  longer exists;
+- real restore failures unrelated to selected Bluetooth-port disappearance
+  remain fail-closed and retain ownership for retry;
+- focused route/session/process cleanup tests then passed: `25 passed, 1 warning`;
+- the real call-cut retest completed with
+  `SESSION STOPPED CLEANLY AFTER CALL CUT`;
+- after the call-cut retest, `pgrep -a pw-cat` returned no output;
+- after hangup, the BlueZ call nodes were absent and only normal local audio
+  endpoints remained, which is expected once the HFP call stream is gone.
+
+Latest full-suite regression supplied by the task owner before Phase 3 closeout:
+
+```text
+826 passed, 4 failed, 4 warnings
+```
+
+The four failures are the same known baseline identities already documented; no
+new Bluetooth-related failure identity was introduced.
+
 ### What Phase 3 does not yet mean
 
 The 20-second duration belongs only to the validation harness. It is not a
@@ -155,7 +186,10 @@ Phase 3 does not complete:
 
 - SHUO STT/LLM/TTS conversation integration;
 - automated call answer/hangup ownership;
-- remote-disconnect/reconnect handling;
-- production queue/latency budget approval;
-- device-disappearance and repeated long-run resilience qualification;
+- full remote-disconnect/reconnect lifecycle ownership;
+- production end-to-end queue/latency budget approval;
+- long-run soak, reconnect, concurrency and coexistence qualification;
 - broader device/codec compatibility.
+
+The Phase 3 reference-hardware gate itself is complete. Reconnect/soak/general
+resilience remains intentionally assigned to later lifecycle/resilience phases.

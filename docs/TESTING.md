@@ -185,13 +185,17 @@ Executed Phase 3 evidence now confirms on the reference environment:
 - clean capture/playback shutdown with no orphan `pw-cat`
 - reproduction and fix of the unread-capture stdout shutdown timeout
 
-Still pending for Phase 3 closeout / later qualification:
+Phase 3 closeout status:
 
-- stronger distinction between supported EnumFormat capability and actual negotiated state
-- device disappearance handling
-- measured/approved production queue and latency budget
-- repeated/long-run hardware cycles beyond the executed validation
-- broader device/codec compatibility
+- reference-hardware device/call disappearance teardown: **validated**
+- repeated lifecycle: **validated with 5 consecutive fresh start/stop cycles**
+- no orphan `pw-cat` after normal or call-cut teardown: **validated**
+- stronger distinction between supported EnumFormat capability and actual
+  negotiated state: remains compatibility hardening
+- measured/approved end-to-end production queue and latency budget: remains for
+  integrated pipeline/E2E measurement
+- long-run soak/reconnect/concurrency/coexistence: remains later resilience work
+- broader device/codec compatibility: remains later compatibility qualification
 
 ### Later phases
 
@@ -280,3 +284,90 @@ therefore in asyncio subprocess cleanup/reaping with unread capture stdout, not
 persistent orphan process ownership. The capture endpoint was changed to drain
 stdout during shutdown only. Focused tests and the real 20-second lifecycle
 validation passed after the change.
+
+### Phase 3 final closeout evidence — 2026-09-13
+
+Repeated lifecycle test:
+
+```text
+CYCLE 1/5 ... SESSION STOPPED CLEANLY
+CYCLE 2/5 ... SESSION STOPPED CLEANLY
+CYCLE 3/5 ... SESSION STOPPED CLEANLY
+CYCLE 4/5 ... SESSION STOPPED CLEANLY
+CYCLE 5/5 ... SESSION STOPPED CLEANLY
+ALL 5 CYCLES COMPLETED CLEANLY
+```
+
+During an active repeated-lifecycle cycle:
+
+```text
+pw-cat --record   --target bluez_input.00_C7_11_7B_84_21.0 ...
+pw-cat --playback --target bluez_output.00_C7_11_7B_84_21.1 ...
+```
+
+After teardown:
+
+```text
+pgrep -a pw-cat
+# no output
+```
+
+The first intentional call-cut test exposed a route-restore race:
+
+```text
+RouteIsolationError:
+failed to restore PipeWire link ...
+failed to link ports: No such file or directory
+```
+
+The process cleanup itself was already successful: `pgrep -a pw-cat` returned no
+output. The failure was narrowed to BlueZ HFP port disappearance/recreation while
+the session attempted to restore links.
+
+The route-isolation stop path was hardened to inspect a fresh PipeWire graph and
+retry restoration for a short bounded window. If the selected Bluetooth call port
+remains absent for the full window, the old link is obsolete because the call
+stream no longer exists. Other restoration failures continue to fail closed.
+
+Final focused test selection:
+
+```text
+25 passed, 1 warning
+```
+
+Final real call-cut retest:
+
+```text
+Starting AI-only session...
+SESSION STARTED
+NOW CUT THE CELLULAR CALL while this is still running.
+Stopping session after call cut...
+SESSION STOPPED CLEANLY AFTER CALL CUT
+```
+
+Post-teardown:
+
+```text
+pgrep -a pw-cat
+# no output
+```
+
+After hangup, BlueZ call nodes were absent from the graph and only normal local
+audio endpoints remained, which is expected once the HFP call stream ends.
+
+Latest full regression supplied before Phase 3 closeout:
+
+```text
+826 passed, 4 failed, 4 warnings
+```
+
+The four failing identities remain the same documented baseline failures:
+
+```text
+scripts/test_v2_keys.py::test_shunya_key
+scripts/test_v2_keys.py::test_azure_key
+tests/test_config_api.py::TestIsolation::test_the_call_server_has_no_config_routes
+tests/test_test_call.py::TestTheProcessSplitSurvives::test_the_call_server_has_no_test_call_routes
+```
+
+No new Bluetooth-related failure identity was observed.
