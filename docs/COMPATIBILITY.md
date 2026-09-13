@@ -23,7 +23,7 @@ No universal Android/Linux support is promised.
 | Manual call-control support | Validated: manual D-Bus Answer and manual disconnect/hangup successfully exercised; task-owner evidence, not reproduced here |
 | Automated SHUO call control | Unimplemented/unverified; lifecycle reconciliation, reconnect behavior and general-device compatibility also unimplemented/unverified; Phase 6 still required |
 | Audio status | Validated runtime stream availability/explicit targeting only |
-| SHUO integration / release status | Partial evidence; digital E2E and release support untested |
+| Bluetooth software status | Phase 2 hardware-free codec/selection/lifecycle contracts implemented and unit-tested; real PipeWire capture/playback remains Phase 3 and digital E2E/release support remain untested |
 | Quirks/limits | Numeric IDs unstable; laptop acoustic route remained; other codecs not validated |
 | Provenance | Task-owner Phase 1 evidence; date/raw artifact/version details not supplied |
 
@@ -34,7 +34,7 @@ being outside the reference environment is not evidence of technical impossibili
 ## Platform boundary
 
 Existing SHUO core/carrier Windows/Linux portability remains mandatory. Only the
-future isolated, optional PipeWire adapter may be Linux-specific, with OS-specific
+live isolated, optional PipeWire adapter implemented in a later phase may be Linux-specific, with OS-specific
 behavior behind an injected boundary. Default production entrypoints must neither
 import nor start it; Windows development and carrier startup remain unchanged.
 Unsupported platforms must fail clearly without side effects. This permission
@@ -64,3 +64,23 @@ support. Manual answer/hangup evidence applies only to the reference combination
 5. Attach sanitized commands/results, session date, repository revision and scope;
    add a matrix row and update audio contracts, known issues and phase evidence.
    Only promote a capability after its gate passes and review approves it.
+
+
+## Phase 2 software evidence
+
+Phase 2 implementation revision:
+
+```text
+6f4c8c423a0d2741d033439c510fc21a1052a91e
+```
+
+Hardware-free test evidence supplied by the task owner:
+
+- Bluetooth-focused suite: 27 passed, 1 warning
+- Relevant SHUO regression selection: 99 passed, 2 warnings
+- Full root suite: 802 passed, 4 failed, 4 warnings
+- No new failure identity was observed from Phase 2.
+
+This software evidence does **not** promote any additional phone/host combination
+to validated hardware support. Real PipeWire capture/playback, broader device
+compatibility, digital E2E and release support remain unvalidated.

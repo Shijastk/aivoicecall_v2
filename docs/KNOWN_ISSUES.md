@@ -1,14 +1,17 @@
 # Known issues, evidence limits and documentation conflicts
 
-No issue was fixed in this documentation task. All fixes below are **OUT OF SCOPE**
-and **not authorized**. Source findings are VERIFIED IN CODE at the snapshot;
-impact at runtime is unverified unless explicitly attributed to supplied history.
-Every listed code issue predates any Bluetooth implementation in this task.
+The historical issues below remain outside the Bluetooth Phase 2 implementation
+scope unless explicitly noted. Phase 2 added isolated hardware-free Bluetooth
+modules/tests but did not authorize unrelated fixes in the existing carrier/V2
+code. Existing issues are not permission for unrelated refactoring.
 
 ## Recorded historical failures
 
-Historical 775 passed / 4 failed is task-owner evidence only, not a current result.
-Full provenance and signatures are UNKNOWN; see [TESTING](TESTING.md).
+Historical 775 passed / 4 failed remains preserved task-owner evidence.
+
+A later Phase 2 root-suite execution reported **802 passed / 4 failed / 4 warnings**.
+The four failing test identities were the same four identities recorded historically.
+See [TESTING](TESTING.md) for the executed commands and current signatures.
 
 | Issue / affected test | Evidence/status | Predates Bluetooth? | Scope / fix authorization |
 |---|---|---|---|
@@ -40,6 +43,18 @@ errors or past code differences cannot be ruled out; do not invent a diagnosis.
 | Malayalam speech recognition not established | V2 language route selects Azure TTS but FluxService.start remains flux-general-en | Yes | Document only / no |
 | Multiple V2 implementations can drift | api_v2 owns active loop; conversation_v2 contains another; services/tts_router is used while v2/tts_router duplicates it | Yes | Document only / no |
 
+
+## Bluetooth Phase 2 known limitations
+
+| Finding | Evidence/status | Scope / next owner |
+|---|---|---|
+| Python 3.12 `audioop` dependency | `shuo/bluetooth/codec.py` uses stdlib `audioop`; focused suite passes, but Python warns that it is deprecated and removed in Python 3.13 | Phase 2 accepted limitation; Python 3.13+ replacement requires separate review/approval |
+| Live PipeWire I/O not implemented | Phase 2 `pipewire.py` is hardware-free target/selection contract only; no `pw-cat` process ownership yet | Phase 3 |
+| Production queue budget uncalibrated | `BoundedAudioQueue` requires explicit `max_frames` and overflow policy, but Phase 2 does not choose a production numeric latency budget | Phase 3 measurement/decision |
+| Real digital duplex/echo isolation unverified | Unit tests structurally separate inbound/outbound but do not prove live PipeWire routing or acoustic/network echo behavior | Phase 3/5 |
+| Broader codec/device compatibility unverified | Only mSBC / S16LE / 16 kHz / mono reference contract is supported by Phase 2 selection rules | Future compatibility qualification |
+| `bluetooth_main.py` not implemented | No live optional Bluetooth entrypoint was added in Phase 2 | Later runtime/integration phase |
+
 ## Older documentation versus inspected code
 
 These conflicts are reported, not resolved by changing application code or
@@ -70,6 +85,7 @@ manual D-Bus Answer and disconnect/hangup; this was not reproduced here.
 Automated SHUO call-control integration, lifecycle reconciliation, reconnect
 behavior and general-device compatibility remain unimplemented and unverified;
 Phase 6 is still required. Digital E2E and latency/echo also remain unverified. These are roadmap gates, not
-current defects with authorized fixes. Discovery property schema, codec library,
-queue/latency budgets, integrated manual-abort runbook and release support policy remain
-TBD. Do not read live devices to fill gaps during this task.
+current defects with authorized fixes. Discovery property schema for live enumeration, production queue/latency budgets,
+integrated manual-abort runbook and release support policy remain TBD. Phase 2
+codec implementation is no longer TBD: Python 3.12 `audioop` is used at the
+isolated boundary, with Python 3.13+ replacement still unresolved. Do not read live devices to fill gaps during this task.

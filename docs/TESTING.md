@@ -1,8 +1,8 @@
 # Testing and evidence policy
 
-No tests were run in this documentation task. **VERIFIED IN CODE** means inspected
-assertions/fixtures, never a current green suite. No services, providers or hardware
-were contacted. Dependencies were not installed.
+This document distinguishes inspected code, historical test evidence and executed
+Phase 2 evidence. A green unit suite does not by itself prove live PipeWire,
+Bluetooth, provider or cellular-call behavior.
 
 ## Existing organization
 
@@ -17,107 +17,207 @@ were contacted. Dependencies were not installed.
 | `tests/test_call_history.py`, `test_call_monitor.py` | Revisions/folding, live monitoring and bounded observation |
 | `tests/test_recording.py`, `test_spool.py`, `test_notify.py`, `test_log.py` | Audio tee, deferred writes, notifications and logging |
 | `scripts/test_v2_keys.py` | External Shunya/Azure probes; not offline fixtures |
+| `tests/test_bluetooth_codec.py` | Bluetooth/SHUO format contracts, stateful rate conversion, fragmented samples, duration behavior |
+| `tests/test_bluetooth_transport.py` | Bounded queue policies and structural inbound/outbound separation |
+| `tests/test_bluetooth_pipewire.py` | Hardware-free capability matching, ambiguity rejection and platform gate |
+| `tests/test_bluetooth_telephony.py` | Hardware-free telephony observer fake; no live D-Bus |
+| `tests/test_bluetooth_runtime.py` | Ordered start, rollback and idempotent stop |
 
-`tests/conftest.py` adds repository/scripts to import paths and autouse-isolates
-history/recordings with tmp_path and monkeypatch. `test_integration.py` uses
-FastAPI TestClient, StubFlux, StubTTSPool and `scripts/fake_vobiz.py::VobizProtocol`;
-`test_player.py::FakeSession`/`TimingSession` capture sends and timing. Inspect
-fixture isolation before executing any selection; shared fixtures are not a
-universal guarantee against every provider call or import-time environment load.
+## Historical baseline — preserved history
 
-## Commands found in the repository
+Task-owner previously recorded historical result: **775 passed, 4 failed**.
+That result remains historical evidence and is not replaced or rewritten.
 
-Root `README.md` testing section lists these exact commands; `CLAUDE.md` and
-`docs/phase8-plan.md` also list the verbose suite command:
+Historical failing identities:
 
-```bash
-python -m pytest tests/test_update.py -v
-python -m pytest tests/ -v
-python -m pytest tests/ -q
+- `scripts/test_v2_keys.py::test_shunya_key`
+- `scripts/test_v2_keys.py::test_azure_key`
+- `tests/test_config_api.py::TestIsolation::test_the_call_server_has_no_config_routes`
+- `tests/test_test_call.py::TestTheProcessSplitSurvives::test_the_call_server_has_no_test_call_routes`
+
+Existing failures are not permission to fix unrelated code. Compare by test
+identity and failure signature, never by count alone.
+
+## Phase 2 executed evidence
+
+Implementation revision:
+
+```text
+6f4c8c423a0d2741d033439c510fc21a1052a91e
 ```
 
-These are documented commands, not executions in this task. The shell used for
-text generation here had no `python` command; `python3` was available. Interpreter,
-virtual environment and installed-package readiness for pytest remain UNKNOWN.
-Do not install or alter dependencies to resolve that during documentation work.
+Environment supplied by task owner for this execution:
 
-**PROPOSED focused selections** for later authorized code work (same runner,
-actual files; not claimed as pre-existing runbook commands):
-
-```bash
-python -m pytest tests/test_carrier.py tests/test_vobiz.py -v
-python -m pytest tests/test_player.py tests/test_turn_completion.py tests/test_tts_failure.py -v
-python -m pytest tests/test_integration.py tests/test_runtime_config.py -v
+```text
+Repository: ~/Projects/aivoicecall_v2
+Virtual environment active
+Python runtime: project Python 3.12 environment
 ```
 
-Choose only the affected group first, then full `tests/` regression when the task
-authorizes it. Do not run bare root-wide pytest casually: it can discover
-`scripts/test_v2_keys.py`. `main.py`, fake-carrier services, benchmark scripts,
-`/bench/ttft` and provider probes are execution/integration tools, not non-mutating
-Markdown validation. They were not authorized here.
+### Bluetooth-focused suite
 
-## Historical baseline — NOT reproduced
+Command:
 
-Task-owner recorded historical result: **775 passed, 4 failed**.
-Command, revision, interpreter/dependency versions, date and failure signatures
-were not supplied. It is not the current baseline and cannot be equated with
-`python -m pytest tests/ -v`, because two named failures are under `scripts/`.
+```bash
+PYTHONDONTWRITEBYTECODE=1 python -m pytest -q \
+  tests/test_bluetooth_codec.py \
+  tests/test_bluetooth_transport.py \
+  tests/test_bluetooth_pipewire.py \
+  tests/test_bluetooth_telephony.py \
+  tests/test_bluetooth_runtime.py \
+  -p no:cacheprovider
+```
 
-| Historical failing identity | Current evidence |
-|---|---|
-| `scripts/test_v2_keys.py::test_shunya_key` | Function exists; historical signature/cause UNKNOWN |
-| `scripts/test_v2_keys.py::test_azure_key` | Function exists; historical signature/cause UNKNOWN |
-| `tests/test_config_api.py::TestIsolation::test_the_call_server_has_no_config_routes` | Assertion exists; historical signature/cause UNKNOWN |
-| `tests/test_test_call.py::TestTheProcessSplitSurvives::test_the_call_server_has_no_test_call_routes` | Assertion exists; historical signature/cause UNKNOWN |
+Result:
 
-Do not explain those failures as invalid keys or mounted config routes without
-tracebacks. The inspected `shuo/server.py` mounts V2, not config routes, so the
-failure name alone cannot establish the original cause.
+```text
+27 passed, 1 warning
+```
 
-For a later authorized baseline, record command/selection, revision/dirty state,
-Python/dependency environment, result, exact node ID and sanitized exception/
-assertion signature. Compare before/after by identity **and signature**. Equal
-failure counts can conceal regressions. Existing failures are not permission to
-fix unrelated code; obtain scope for each fix. Preserve historical results as history.
+Warning:
 
-## Bluetooth test layers — PLANNED
+```text
+shuo/bluetooth/codec.py:
+DeprecationWarning: 'audioop' is deprecated and slated for removal in Python 3.13
+```
 
-- Phase 2: injected discovery/process/provider/clock boundaries; synthetic PCM and
-  µ-law fixtures; known vectors, endian/rate/channel rejection, arbitrary chunk
-  splits, converter continuity/reset, bounded overflow and idempotent cleanup.
-  No device access, process streams or active-call audio.
-- Phase 3: separately authorized real PipeWire streams with synthetic signals;
-  confirm direction, selection, negotiated contract, process failure/exit and
-  device disappearance before attaching the live SHUO pipeline.
-- Phase 4: injected conversation integration; no actual provider traffic without
-  additional authorization. Preserve carrier/browser tests and completion rules.
-- Phase 5: separately authorized controlled cellular E2E, digital duplex,
-  audio integrity, STT self-audio/echo checks, latency and manual abort.
-- Phase 6: authorized answer/hangup/remote-disconnect/cancellation tests; complete
-  ownership across partial start, duplicate events and bounded shutdown.
-- Phase 7: disconnect/reconnect, stale audio, concurrency, coexistence, provider
-  failure, overload, resource leak, security/privacy and full regression checks.
-- Phase 8: operator configuration, supported installation matrix, diagnostics,
-  packaged startup, feature-off operation and release/rollback rehearsal.
+### Relevant SHUO regression selection
+
+Command:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python -m pytest -q \
+  tests/test_update.py \
+  tests/test_player.py \
+  tests/test_carrier.py \
+  tests/test_turn_completion.py \
+  -p no:cacheprovider
+```
+
+Result:
+
+```text
+99 passed, 2 warnings
+```
+
+### Full root suite
+
+Command:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python -m pytest -q -p no:cacheprovider
+```
+
+Result:
+
+```text
+802 passed, 4 failed, 4 warnings
+```
+
+Observed full-suite failures:
+
+```text
+scripts/test_v2_keys.py::test_shunya_key
+scripts/test_v2_keys.py::test_azure_key
+tests/test_config_api.py::TestIsolation::test_the_call_server_has_no_config_routes
+tests/test_test_call.py::TestTheProcessSplitSurvives::test_the_call_server_has_no_test_call_routes
+```
+
+Observed signatures:
+
+- Shunya/Azure probe tests: async test functions collected without a suitable
+  pytest async framework marker/plugin path for those functions.
+- Config/test-call isolation tests: route enumeration encountered an
+  `_IncludedRouter` object without a `.path` attribute.
+
+These identities are the same four identities previously recorded as failures.
+No new failure identity was observed from Phase 2. This document does not claim
+the current signatures are necessarily identical to every historical run unless
+a historical traceback is available.
+
+## Phase 2 codec-specific evidence
+
+The initial test assumption that every isolated 8 kHz → 16 kHz 20 ms conversion
+must emit exactly 640 S16LE bytes was corrected after observing Python 3.12
+`audioop.ratecv` behavior.
+
+Stateful behavior verified by tests:
+
+```text
+first 160-byte µ-law chunk -> 638 S16LE bytes
+subsequent 20 ms chunks     -> 640 S16LE bytes
+```
+
+A multi-frame duration test verifies this is a fixed one-sample interpolation
+startup boundary rather than a 2-byte-per-frame accumulating drift. The codec
+does not add fake padding solely to force chunk geometry.
+
+## Bluetooth test layers
+
+### Phase 2 — implemented/tested
+
+Hardware-free coverage includes:
+
+- supported format/rate/channel validation
+- 16 kHz S16LE mono → 8 kHz µ-law conversion
+- 8 kHz µ-law → 16 kHz S16LE mono conversion
+- arbitrary/odd fragmented S16 input handling
+- stateful converter continuity
+- independent direction state
+- explicit bounded queue overflow semantics
+- no shared inbound/outbound queue object
+- capability-based PipeWire target selection contracts
+- ambiguity/no-match fail-closed behavior
+- unsupported-platform rejection without import-time hardware access
+- telephony fakes with no live D-Bus
+- partial-start rollback and idempotent stop
+
+No device access, real process streams or active-call audio is claimed.
+
+### Phase 3 — planned / separate authorization
+
+Real PipeWire streams with synthetic/controlled signals must confirm:
+
+- target discovery and direction
+- negotiated contract
+- explicit `pw-cat` targeting
+- capture/playback process failure/exit behavior
+- device disappearance
+- cleanup/no orphan process
+- no silent fallback to physical laptop mic/speaker
+- measured queue/latency budget
+
+### Later phases
+
+Phase 4: injected SHUO conversation integration.
+
+Phase 5: separately authorized controlled cellular E2E, digital duplex,
+audio integrity, STT self-audio/echo checks, latency and manual abort.
+
+Phase 6: automated answer/hangup/remote-disconnect/cancellation and lifecycle.
+
+Phase 7: reconnect, stale audio, concurrency, coexistence, overload,
+resource leak and security/privacy.
+
+Phase 8: supported installation, diagnostics, packaged startup and rollback.
 
 ## Measurements and completion evidence
 
+Phase 2 intentionally does not claim live Bluetooth latency.
+
+Production queue capacity/latency is still uncalibrated. `BoundedAudioQueue`
+requires explicit capacity and overflow policy so no unbounded queue or silent
+default policy is introduced. Phase 3 must choose and measure numeric budgets.
+
 Measure capture-to-STT, EOT-to-first-token, token-to-first-TTS, conversion/queue
-residence, first-uplink-sample and caller mouth-to-ear independently. Use monotonic
-clock timestamps for local durations and synchronized/correlated approved signals
-for cross-device latency; do not subtract unsynchronized wall clocks. Record
-warm/cold runs and distributions. Bluetooth thresholds, sample size, duration,
-queue budgets and echo acceptance are **TBD pending approval before the gate**.
+residence, first-uplink-sample and caller mouth-to-ear independently in the
+appropriate later phases.
 
-Use distinguishable uplink/downlink signals, compare duration and sample counts,
-check clipping/discontinuities, and show outbound-only signals do not reach STT.
-For cleanup, compare task/process/handle counts before/after start, stop, partial
-failure and repeated cycles; for reconnect, verify fresh contract and empty queues.
-For concurrency, prove session isolation and preserve carrier player timing under
-approved simultaneous load. Existing player tests have their own timing assertions;
-these do not establish Bluetooth latency.
+Use distinguishable uplink/downlink signals and prove outbound-only signals do
+not reach STT. For cleanup, compare task/process/handle counts before/after start,
+stop, partial failure and repeated cycles.
 
-A phase-completion record needs scoped authorization, revision, commands, fixtures,
-environment/capability versions, gate results, failure identities/signatures,
-sanitized artifacts, known limitations, rollback result and explicit approval to
-advance. Phase 1 is the special supplied-runtime record, not re-run here.
+A phase-completion record needs scoped authorization, revision, commands,
+fixtures, environment/capability versions, gate results, failure
+identities/signatures, sanitized artifacts, known limitations, rollback result
+and explicit approval to advance.
