@@ -1,5 +1,7 @@
 # Phase 8 — call management, recording, live logs, notifications
 
+> Historical carrier call-management Phase 8, not Bluetooth Phase 8. Retained results below are historical, not rerun by the 2026-09-13 knowledge setup. See [current architecture](CURRENT_ARCHITECTURE.md) for inspected behavior (including player pacing differences), [testing](TESTING.md) for baseline provenance, and [Bluetooth roadmap](ROADMAP.md) for the separate future phases.
+
 **Status: W5a, W5b, W5c and W5d shipped. Phase 8 backend is complete.**
 
 **W5d shipped 2026-07-27** — decision 50, 757 tests green (+52), 14/14 mutations

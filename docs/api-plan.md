@@ -1,5 +1,7 @@
 # Secure Configurable Call API
 
+> Historical API proposal, not the current implemented route contract or an approved Bluetooth phase. Its unauthenticated-call description predates the inspected admin-gated implementation. See [CURRENT_ARCHITECTURE.md](CURRENT_ARCHITECTURE.md) for routes and [ROADMAP.md](ROADMAP.md) for Bluetooth planning. Original proposal retained below.
+
 ## Context
 
 The project currently has a bare `GET /call/{phone_number}` endpoint with no auth and hardcoded config (system prompt, LLM model, voice, etc). We need a proper API with:

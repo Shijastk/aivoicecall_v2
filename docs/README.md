@@ -1,0 +1,76 @@
+# SHUO documentation index
+
+Snapshot: 2026-09-13, source revision `569559d6dc32738fc6b8e57313b126a816f959c2`.
+Initial worktree was clean. This knowledge setup inspected source, tests,
+dependency declarations and existing documentation; it ran no application,
+provider, device or test suite. No Bluetooth implementation was added.
+
+Instruction audit: no pre-existing AGENTS.md or AGENTS.override.md was found in
+the repository, its ancestor directories or the user Codex instruction location.
+The new root AGENTS.md preserves existing CLAUDE.md/rules.md restrictions by
+reference; both files remain byte-for-byte unchanged.
+
+## Find the right document
+
+| Question | Source of truth | Evidence type |
+|---|---|---|
+| What does this backend do? | [PROJECT.md](PROJECT.md) | VERIFIED IN CODE |
+| How do calls, audio and processes work? | [CURRENT_ARCHITECTURE.md](CURRENT_ARCHITECTURE.md) | VERIFIED IN CODE |
+| What is the final product? | [PRODUCT_VISION.md](PRODUCT_VISION.md) | PLANNED direction |
+| What must be preserved or built? | [REQUIREMENTS.md](REQUIREMENTS.md) | Requirements, not proof of compliance |
+| What did hardware validation establish? What is the adapter design? | [BLUETOOTH_ARCHITECTURE.md](BLUETOOTH_ARCHITECTURE.md) | Supplied runtime evidence / PROPOSED design |
+| Which systems have compatibility evidence? | [COMPATIBILITY.md](COMPATIBILITY.md) | Reference evidence and validation policy |
+| What is next, and what permits advancing? | [ROADMAP.md](ROADMAP.md), [phases/](phases/) | Phase 1 complete; 2–8 planned/pending |
+| How should changes be tested? | [TESTING.md](TESTING.md) | Code inventory, historical baseline, future gates |
+| What is uncertain or problematic? | [KNOWN_ISSUES.md](KNOWN_ISSUES.md) | Recorded failures, source findings, unknowns |
+| Why these boundaries? | [DECISIONS.md](DECISIONS.md) | Decisions, evidence and revisit conditions |
+| What instructions govern work? | [../AGENTS.md](../AGENTS.md) | Permanent repository guidance |
+
+## Evidence vocabulary
+
+- **VERIFIED IN CODE**: inspected at the revision above; not runtime success.
+- **VERIFIED AT RUNTIME**: observed execution with provenance and scope. Here,
+  Bluetooth observations are supplied by the task owner, not reproduced.
+- **VALIDATED REFERENCE HARDWARE**: only the recorded runtime capability was
+  demonstrated on that combination; not a released SHUO integration.
+- **PLANNED**: future work pending implementation approval.
+- **PROPOSED**: reviewable design or acceptance gate, not yet approved.
+- **ASSUMPTION**: hypothesis needing evidence. **UNKNOWN**: evidence absent.
+- **OUT OF SCOPE**: excluded from this task or phase; not silently fixed.
+
+A test assertion is evidence of intended coverage, not a passing result.
+Provider format requests are not proof of actual returned bytes. Current support
+means an implementation exists unless runtime validation is explicitly stated.
+
+## Existing documents and precedence
+
+This index owns navigation for the inspected snapshot and Bluetooth roadmap.
+It does not repeal restrictions in `CLAUDE.md` or `rules.md`.
+The root [README](../README.md) remains the setup/runbook entrypoint;
+[context.md](../context.md) retains historical milestones/decisions.
+[plan.md](../plan.md) is legacy carrier/provider research, subject to CLAUDE.md
+corrections. [phase8-plan.md](phase8-plan.md) concerns earlier carrier call
+management, not Bluetooth Phase 8. [api-plan.md](api-plan.md) is an older API
+proposal, not the implemented route contract. The [V2 PRD](../v2%20prd.md) and
+[TTS handoff](../handoff-tts-swap.md) retain historical intent/handoff material.
+
+Do not transfer phase numbers, test totals, latency claims or provider plans
+from those documents to this Bluetooth roadmap. See KNOWN_ISSUES for drift.
+If a claim conflicts, inspect the named code and report the difference;
+implementation truth does not authorize changing a restriction or fixing code.
+
+## Maintenance contract
+
+Update the owning document in the same task as the affected implementation:
+PROJECT/CURRENT_ARCHITECTURE for behavior/interfaces; REQUIREMENTS for scope;
+BLUETOOTH_ARCHITECTURE and COMPATIBILITY for formats/hardware; TESTING and
+KNOWN_ISSUES for commands/results; DECISIONS for rationale; ROADMAP and the
+specific phase for status. Keep detailed gates in phase documents and summaries
+in ROADMAP. Link instead of copying whole sections. Update snapshot/revision
+when re-inspecting; attach sanitized evidence and distinguish retained history.
+Preserve the existing context.md milestone and append-only decision-log practice.
+
+Never mark a phase complete from code existence alone. Record gate results,
+limitations, rollback evidence and approval. No future phase is authorized by
+this setup. Report documentation conflicts; do not rewrite requirements after
+implementation merely to hide noncompliance.

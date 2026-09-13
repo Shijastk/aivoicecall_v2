@@ -1,5 +1,7 @@
 # context.md — living project state
 
+> Knowledge setup milestone (2026-09-13): [docs/README.md](docs/README.md) indexes the inspected source snapshot and the separate Bluetooth roadmap. Bluetooth Phase 1 is complete only on supplied runtime evidence; Phases 2–8 remain planned. No application code or tests changed. This historical milestone/decision log and its existing instructions remain intact; see [known documentation differences](docs/KNOWN_ISSUES.md).
+
 **Last updated:** 2026-07-27
 **Maintained by:** Claude. Update at every milestone. This is the recovery point if conversation context is lost.
 

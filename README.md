@@ -1,5 +1,7 @@
 # shuo 说
 
+> Documentation snapshot (2026-09-13): start with [docs/README.md](docs/README.md) for the code-grounded current application map and the separate Bluetooth roadmap. Older implementation, latency and test claims below retain their historical context; documented differences are listed in [KNOWN_ISSUES](docs/KNOWN_ISSUES.md). Existing engineering restrictions remain unchanged.
+
 A **multi-persona, emotionally intelligent voice Digital Twin** for Indian telephony — a real-time AI voice agent that answers and places phone calls over a standard 10-digit Indian DID, in ~2,500 lines of Python behind a Next.js control panel.
 
 ```bash
