@@ -12,7 +12,7 @@ candidate locations unless explicitly identified as existing code.
 
 Identify an active-call Linux Bluetooth audio contract before designing software.
 
-Native Ubuntu reference host/phone; HFP Audio Gateway role; mSBC, S16LE/16 kHz/mono; capture/playback node availability and explicit pw-cat targeting.
+Native Ubuntu reference host/phone; HFP Audio Gateway role; mSBC, S16LE/16 kHz/mono; capture/playback node availability and explicit pw-cat targeting; exposed `org.pipewire.Telephony.Call1` and `org.ofono.VoiceCall`; successful manual D-Bus Answer and manual disconnect/hangup.
 
 ## Explicit exclusions
 
@@ -24,11 +24,11 @@ Task-owner Phase 1 observations, transcribed in BLUETOOTH_ARCHITECTURE. No repea
 
 ## Files and boundaries
 
-No application files. BLUETOOTH_ARCHITECTURE.md and COMPATIBILITY.md own the evidence; this phase links to them.
+No application files. BLUETOOTH_ARCHITECTURE.md and COMPATIBILITY.md own the evidence; see the linked Bluetooth architecture and [compatibility matrix](../COMPATIBILITY.md).
 
 ## Tests and measurable acceptance gate
 
-Accepted on the supplied observations only: separate call streams available, explicit targeting possible, numeric IDs unstable. Exact runtime versions/session date/raw logs are UNKNOWN. No runtime command or test was re-executed here.
+Accepted on the supplied observations only: separate call streams available, explicit targeting possible, numeric IDs unstable; manual answer/hangup capability validated on the reference environment. Automated SHUO call-control integration, lifecycle reconciliation, reconnect behavior and general-device compatibility remain unimplemented and unverified. Phase 6 is still required. Exact runtime versions/session date/raw logs are UNKNOWN. No runtime command or test was re-executed here.
 
 ## Risks
 

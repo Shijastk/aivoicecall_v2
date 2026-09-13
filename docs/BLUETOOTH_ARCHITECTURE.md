@@ -18,6 +18,8 @@ were not supplied. Do not invent them or use the documentation date as test date
 | Physical route | Laptop speaker and microphone were still in the route |
 | Feasibility | Direct digital bridge technically possible; integrated bridge not demonstrated |
 | Dependencies | No new dependency was proven necessary in Phase 1 |
+| Telephony interfaces | Reference environment exposed `org.pipewire.Telephony.Call1` and `org.ofono.VoiceCall` |
+| Manual call control | Manual D-Bus Answer and manual disconnect/hangup were successfully exercised on the reference environment |
 
 Reference fixture identifiers (not product constants or selection defaults):
 
@@ -29,14 +31,22 @@ Phone uplink playback node:   bluez_output.00_C7_11_7B_84_21.1
 
 These node names support the recorded session only. mSBC/16 kHz is the sole
 validated contract, not a promise that subsequent sessions or phones negotiate it.
-Audio visibility does not demonstrate automated answer/hangup capability.
+**Manual answer/hangup capability was validated on the reference environment.**
+This corrected evidence is supplied by the task owner, not reproduced here.
+Automated SHUO call-control integration, lifecycle reconciliation, reconnect
+behavior and general-device compatibility remain unimplemented and unverified.
+Phase 6 is still required. The exposed interface names do not establish a
+universal backend or method-to-interface mapping for other systems.
 
 ## General design — PROPOSED, no adapter implemented
 
 Keep Bluetooth optional and isolated from default `shuo/server.py` imports.
 Suggested new module area: `shuo/bluetooth/` (does not exist in this snapshot).
-A separate opt-in entrypoint is proposed; its name and process model require
-Phase 2/4 review. Hardware/process/provider objects must be injected.
+`bluetooth_main.py` is the candidate opt-in entrypoint; candidate files and their
+Phase 2 limits are listed in [Phase 2](phases/PHASE_02_ADAPTER_AND_CODEC.md),
+subject to source inspection. The process model still requires Phase 2/4 review.
+Hardware/process/provider objects must be injected. Phase 2 `telephony.py`
+contains interfaces/fakes only: no live D-Bus access or call control.
 
 Define a device descriptor, negotiated audio contract and distinct capture and
 playback interfaces. Discovery should inspect validated PipeWire/BlueZ properties,
@@ -57,6 +67,22 @@ Proposed responsibilities:
 | Session/lifecycle | Own cancellation, startup rollback, failure propagation, stop deadlines and later call control |
 | Observation | Report selected capabilities, loss, queue delay and errors without payloads or secrets |
 
+## Codec and platform scope — task-owner clarification
+
+Existing rules.md C1/C2 remain mandatory for the current carrier and shared
+SHUO core pipeline. For Bluetooth only, S16LE PCM is permitted inside the isolated
+boundary because the validated HFP/mSBC runtime exposes S16LE 16 kHz mono. It must
+be converted to/from the existing SHUO µ-law 8 kHz boundary. No PCM/L16 route may
+be added to Vobiz, Twilio or the existing shared carrier path; Bluetooth PCM must
+never leak into existing carrier interfaces. This narrows the scope of C1/C2
+without removing or weakening carrier protections.
+
+Existing core and carrier code retain their Windows/Linux portability requirements.
+The future PipeWire adapter may be Linux-specific only as an isolated, optional
+component behind an injected adapter boundary. It must not be imported or started
+by default production entrypoints; existing Windows development and carrier
+startup remain unchanged. Unsupported platforms must fail clearly without side
+effects. This is a future adapter constraint, not a claim of implemented support.
 ## Audio direction contract
 
 ```text

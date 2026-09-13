@@ -24,11 +24,15 @@ Phase 2 accepted. Explicit device authorization; versioned environment, known or
 
 ## Files and boundaries
 
-PROPOSED shuo/bluetooth/ discovery and process/stream modules, injected integration tests and opt-in device test harness. No default server import.
+PROPOSED shuo/bluetooth/ discovery and process/stream modules, injected integration tests and opt-in device test harness. No default production entrypoint may import or start the adapter. Linux-specific
+PipeWire behavior is permitted only inside the isolated, optional, injected
+adapter boundary; core/carrier Windows/Linux portability and Windows development/
+carrier startup remain unchanged. Unsupported platforms must fail clearly without
+side effects.
 
 ## Tests and measurable acceptance gate
 
-Record selected properties/role/profile/format and versions. Feed distinct synthetic uplink/downlink signals; prove targeting, no default-route fallback and correct frame duration/byte order. Exercise missing/ambiguous nodes, process exit, device disappearance and repeated start/stop; no owned processes/handles or stale queues remain. Approve duration and timing budgets before acceptance.
+Record selected properties/role/profile/format and versions. Feed distinct synthetic uplink/downlink signals; prove targeting, no default-route fallback and correct frame duration/byte order. Exercise missing/ambiguous nodes, process exit, device disappearance and repeated start/stop; no owned processes/handles or stale queues remain. Also verify the injected platform guard rejects unsupported platforms without side effects and preserves default Windows/core/carrier startup. Approve duration and timing budgets before acceptance.
 
 ## Risks
 

@@ -17,6 +17,12 @@ need approval before implementation. Evidence: [current architecture](CURRENT_AR
 - **PRES-5:** preserve default startup without importing/starting Bluetooth code;
   no unrelated provider swaps, architecture rewrite or dependency changes.
 
+- **PRES-6:** rules.md C1/C2 remain mandatory for the current carrier and shared
+  SHUO core pipeline. No PCM/L16 route may be added to Vobiz, Twilio or the existing
+  shared carrier path; Bluetooth PCM must never leak into carrier interfaces.
+- **PRES-7:** retain existing Windows/Linux portability of core/carrier code and
+  preserve Windows development and carrier startup unchanged.
+
 ## Bluetooth functionality and compatibility
 
 - **BT-1:** explicitly opt into the new transport; discover/select paired device
@@ -28,10 +34,18 @@ need approval before implementation. Evidence: [current architecture](CURRENT_AR
   narrowband or other formats until separately designed and tested.
 - **BT-4:** do not use numeric PipeWire IDs as stable configuration. Reference
   device names/addresses/node names are fixtures, not universal constants.
-- **BT-5:** use boundary codecs to meet the existing SHUO inbound/outbound contract;
-  future formats must not force a rewrite of the core conversation pipeline.
+- **BT-5:** S16LE PCM is permitted only inside the isolated Bluetooth boundary
+  because the validated HFP/mSBC runtime exposes S16LE 16 kHz mono. Convert it
+  to/from the existing SHUO µ-law 8 kHz boundary. This scopes C1/C2 without
+  removing or weakening carrier protections; future formats must not force a
+  rewrite of the core conversation pipeline.
 - **BT-6:** advertise only matrix-validated capabilities; audio and call-control
   support are separate. Other phones/systems are untested, not promised.
+
+- **BT-7:** only the future PipeWire adapter may be Linux-specific, provided it
+  remains isolated and optional, is not imported or started by default production
+  entrypoints, keeps OS-specific behavior behind an injected adapter boundary,
+  and fails clearly without side effects on unsupported platforms. PRES-7 applies.
 
 ## Realtime, direction and echo isolation
 
@@ -56,7 +70,11 @@ need approval before implementation. Evidence: [current architecture](CURRENT_AR
 - **LIFE-2:** release resources after partial start, end, remote disconnect,
   provider/process failure, device loss and cancellation; no orphan task/process.
 - **LIFE-3:** Phase 5 must have a proven manual abort path and bounded media cleanup
-  before any live call. Phase 6 owns automated answer/hangup/event reconciliation.
+  before any live call. Manual answer/hangup was validated on the reference
+  environment (supplied Phase 1 evidence); it does not validate automated SHUO
+  integration, lifecycle reconciliation, reconnect or general-device compatibility.
+  These remain unimplemented/unverified. Phase 6 is still required for automated
+  answer/hangup/event reconciliation.
 - **LIFE-4:** reconnect must rediscover/revalidate; no replay of stale audio or
   cross-call data. Do not silently redial or resume an uncertain call.
 

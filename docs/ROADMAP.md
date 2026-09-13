@@ -25,7 +25,12 @@ codec work from Linux process/device variability. Phase 3 validates targeting be
 provider integration. Phase 4 must address the existing carrier-specific session,
 checkpoint, recording and history assumptions (`CarrierSession`, `run_conversation`)
 without copying the browser PCM path. Phase 5 measures the actual cellular path.
-Phase 6 validates control capabilities, which cannot be inferred from audio nodes.
+Phase 1 supplied evidence includes exposed `org.pipewire.Telephony.Call1` and
+`org.ofono.VoiceCall` interfaces and successfully exercised manual D-Bus Answer
+and disconnect/hangup on the reference environment. Automated SHUO control,
+lifecycle reconciliation, reconnect and general-device compatibility remain
+unimplemented/unverified. Phase 6 is still required; manual control success does
+not complete it.
 Phase 7 validates faults/coexistence before Phase 8 packages a supported release.
 
 One safety clarification is necessary: minimum lifecycle ownership, partial-start
@@ -37,6 +42,13 @@ streams only exist during calls, obtain separate call authorization for a narrow
 controlled stream test; never treat device-only scope as implicit call permission.
 No risky phase is compressed or described as already implemented.
 
+The future PipeWire adapter alone may be Linux-specific, isolated and optional
+behind an injected OS boundary. Core/carrier Windows/Linux portability and
+Windows development/startup remain unchanged; default production entrypoints
+must neither import nor start the adapter, and unsupported platforms must fail
+clearly without side effects. Phase 2 specifies hardware-free interfaces/fakes
+and the [candidate file list](phases/PHASE_02_ADAPTER_AND_CODEC.md); Phase 3
+implements real PipeWire integration only after separate approval.
 ## Per-phase contracts and acceptance
 
 The linked phase documents are part of this roadmap: each owns its goal, included

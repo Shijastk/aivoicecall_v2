@@ -10,6 +10,13 @@ the repository, its ancestor directories or the user Codex instruction location.
 The new root AGENTS.md preserves existing CLAUDE.md/rules.md restrictions by
 reference; both files remain byte-for-byte unchanged.
 
+Documentation correction (task-owner clarification): Phase 1 also validated
+manual D-Bus answer/hangup on the reference environment; automated SHUO control
+and Phase 6 remain pending. See the corrected [evidence ledger](BLUETOOTH_ARCHITECTURE.md)
+and [compatibility matrix](COMPATIBILITY.md). AGENTS.md and the Bluetooth
+requirements now explicitly scope the PCM and Linux-only adapter exceptions;
+carrier/core protections remain mandatory. [Phase 2](phases/PHASE_02_ADAPTER_AND_CODEC.md)
+lists candidate files only; no implementation is authorized or added.
 ## Find the right document
 
 | Question | Source of truth | Evidence type |

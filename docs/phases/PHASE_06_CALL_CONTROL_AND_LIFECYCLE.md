@@ -22,6 +22,13 @@ Unvalidated universal Android control, unattended redial, multi-device release g
 
 Phase 5 accepted; explicit control/device/call authorization. Determine actual available control API and permissions through validated evidence; do not assume BlueZ/PipeWire audio nodes expose answer/hangup.
 
+The supplied Phase 1 reference exposed `org.pipewire.Telephony.Call1` and
+`org.ofono.VoiceCall`; manual D-Bus Answer and disconnect/hangup succeeded.
+This validates manual capability only on that environment. Automated SHUO
+integration, lifecycle reconciliation, reconnect behavior and general-device
+compatibility remain unimplemented/unverified, so Phase 6 is still required.
+Reconfirm the selected environment and authorized control scope before execution;
+Phase 2 telephony interfaces/fakes do not perform live D-Bus access or control.
 ## Files and boundaries
 
 PROPOSED shuo/bluetooth/ control/lifecycle modules and tests; review types/events, call_status and monitor/history integration. D-Bus backend selection remains TBD.

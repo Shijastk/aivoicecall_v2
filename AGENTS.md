@@ -17,6 +17,17 @@ implementation claims against source (see docs/KNOWN_ISSUES.md).
 - Bluetooth is additive and isolated. Future device code must not be imported
   by the production server by default. Preserve the carrier µ-law 8 kHz contract;
   proposed Bluetooth PCM conversion belongs only at its separate boundary.
+- Bluetooth-only codec clarification: rules.md C1/C2 remain mandatory for the
+  current carrier and shared SHUO core pipeline. S16LE PCM (validated HFP/mSBC,
+  16 kHz mono) is permitted only inside the isolated Bluetooth boundary and
+  must convert to/from SHUO µ-law 8 kHz. No PCM/L16 route may be added to Vobiz,
+  Twilio or the existing shared carrier path; PCM must never leak into carrier
+  interfaces. This scopes C1/C2 without removing or weakening carrier protections.
+- Preserve existing core/carrier Windows/Linux portability. Only the future
+  PipeWire adapter may be Linux-specific, behind an injected, isolated, optional
+  boundary. Default production entrypoints must neither import nor start it;
+  Windows development and carrier startup remain unchanged. Unsupported
+  platforms must fail clearly without side effects.
 - Never hard-code transient numeric PipeWire IDs. The reference phone model,
   Bluetooth address and node names are fixture data, never the only supported
   device. Select by validated capabilities; require explicit selection if ambiguous.

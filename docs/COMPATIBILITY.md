@@ -19,7 +19,9 @@ No universal Android/Linux support is promised.
 | Format / sample rate / channels | S16LE / 16,000 Hz / mono |
 | Capture discovery result | Explicit downlink target found; fixture name in BLUETOOTH_ARCHITECTURE; automated discovery untested |
 | Playback discovery result | Explicit uplink target found; fixture name in BLUETOOTH_ARCHITECTURE; automated discovery untested |
-| Call-control support | UNKNOWN; no automated answer/hangup validation supplied |
+| Exposed telephony interfaces | `org.pipewire.Telephony.Call1` and `org.ofono.VoiceCall` on the reference environment |
+| Manual call-control support | Validated: manual D-Bus Answer and manual disconnect/hangup successfully exercised; task-owner evidence, not reproduced here |
+| Automated SHUO call control | Unimplemented/unverified; lifecycle reconciliation, reconnect behavior and general-device compatibility also unimplemented/unverified; Phase 6 still required |
 | Audio status | Validated runtime stream availability/explicit targeting only |
 | SHUO integration / release status | Partial evidence; digital E2E and release support untested |
 | Quirks/limits | Numeric IDs unstable; laptop acoustic route remained; other codecs not validated |
@@ -29,6 +31,15 @@ Exact node/address fixtures live only in [BLUETOOTH_ARCHITECTURE](BLUETOOTH_ARCH
 No other phone has a validated row. WSL and other host environments are untested;
 being outside the reference environment is not evidence of technical impossibility.
 
+## Platform boundary
+
+Existing SHUO core/carrier Windows/Linux portability remains mandatory. Only the
+future isolated, optional PipeWire adapter may be Linux-specific, with OS-specific
+behavior behind an injected boundary. Default production entrypoints must neither
+import nor start it; Windows development and carrier startup remain unchanged.
+Unsupported platforms must fail clearly without side effects. This permission
+does not validate any additional Linux environment or promise Windows Bluetooth
+support. Manual answer/hangup evidence applies only to the reference combination.
 ## Status rules
 
 - **Validated:** named capability demonstrated with reproducible evidence on the

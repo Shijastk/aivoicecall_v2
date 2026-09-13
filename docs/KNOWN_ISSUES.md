@@ -63,8 +63,13 @@ restrictions were removed, and no old runtime/test claims were promoted to curre
 ## Hardware/product unknowns
 
 The Phase 1 supplied reference lacks versioned runtime artifacts and session date;
-its audio availability is validated but digital E2E, automated call control,
-latency/echo and broader compatibility are not. These are roadmap gates, not
+its audio availability and manual answer/hangup capability are validated on the
+reference environment. The task owner's corrected evidence reports exposed
+`org.pipewire.Telephony.Call1` and `org.ofono.VoiceCall` interfaces and successful
+manual D-Bus Answer and disconnect/hangup; this was not reproduced here.
+Automated SHUO call-control integration, lifecycle reconciliation, reconnect
+behavior and general-device compatibility remain unimplemented and unverified;
+Phase 6 is still required. Digital E2E and latency/echo also remain unverified. These are roadmap gates, not
 current defects with authorized fixes. Discovery property schema, codec library,
-queue/latency budgets, manual-abort procedure and release support policy remain
+queue/latency budgets, integrated manual-abort runbook and release support policy remain
 TBD. Do not read live devices to fill gaps during this task.
