@@ -408,9 +408,37 @@ class PwCatCaptureEndpoint(_PwCatBase):
     Phone downlink capture only.
 
     No default source is ever opened: `--target <validated node.name>` is mandatory.
+
+    Capture data is still read directly by read(); there is no hidden production
+    buffering policy here. During stop(), however, stdout is drained concurrently
+    so asyncio can fully reap a pw-cat process even when the consumer has not been
+    reading capture data. This prevents a full/unread PIPE from making proc.wait()
+    time out after terminate/kill.
     """
 
+    def __init__(
+        self,
+        target: PipeWireTarget,
+        runner: ProcessRunner,
+        config: PwCatConfig,
+        *,
+        system_name: Optional[str] = None,
+    ):
+        super().__init__(
+            target,
+            runner,
+            config,
+            system_name=system_name,
+        )
+        self._read_lock = asyncio.Lock()
+        self._stopping = False
+        self._stdout_drain_task: asyncio.Task[None] | None = None
+
     async def start(self) -> None:
+        if self.running:
+            return
+
+        self._stopping = False
         await self._start_process(
             direction=StreamDirection.DOWNLINK,
             stdin=False,
@@ -418,24 +446,78 @@ class PwCatCaptureEndpoint(_PwCatBase):
         )
 
     async def read(self) -> bytes:
-        proc = self._proc
+        async with self._read_lock:
+            if self._stopping:
+                raise PipeWireStreamError("capture is stopping")
 
-        if proc is None or proc.stdout is None:
-            raise PipeWireStreamError("capture is not started")
+            proc = self._proc
 
-        chunk = await proc.stdout.read(self._config.read_size)
+            if proc is None or proc.stdout is None:
+                raise PipeWireStreamError("capture is not started")
 
-        if chunk:
-            return chunk
+            chunk = await proc.stdout.read(self._config.read_size)
 
-        code = await proc.wait()
-        raise ProcessExitedError(
-            f"pw-cat capture exited with code {code}: "
-            f"{self.stderr_tail.decode('utf-8', errors='replace')}"
-        )
+            if chunk:
+                return chunk
+
+            code = await proc.wait()
+            raise ProcessExitedError(
+                f"pw-cat capture exited with code {code}: "
+                f"{self.stderr_tail.decode('utf-8', errors='replace')}"
+            )
+
+    async def _drain_stdout_for_stop(self, proc: RunningProcess) -> None:
+        """
+        Drain only during shutdown.
+
+        asyncio's subprocess transport may delay completion of Process.wait()
+        while PIPE stdout still contains unread data. Taking the same read lock
+        prevents two coroutines from reading one StreamReader concurrently.
+        """
+        if proc.stdout is None:
+            return
+
+        async with self._read_lock:
+            reader = proc.stdout
+
+            while True:
+                chunk = await reader.read(self._config.read_size)
+                if not chunk:
+                    return
+
+    async def _finish_stdout_drain_task(self) -> None:
+        task = self._stdout_drain_task
+        self._stdout_drain_task = None
+
+        if task is None:
+            return
+
+        if not task.done():
+            task.cancel()
+
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
     async def stop(self) -> None:
-        await self._stop_process()
+        proc = self._proc
+        self._stopping = True
+
+        if (
+            proc is not None
+            and proc.stdout is not None
+            and self._stdout_drain_task is None
+        ):
+            self._stdout_drain_task = asyncio.create_task(
+                self._drain_stdout_for_stop(proc)
+            )
+
+        try:
+            await self._stop_process()
+        finally:
+            await self._finish_stdout_drain_task()
+            self._stopping = False
 
 
 class PwCatPlaybackEndpoint(_PwCatBase):
