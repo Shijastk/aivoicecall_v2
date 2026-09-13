@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -83,6 +84,23 @@ def parse_pw_link_listing(payload: bytes | str) -> set[PipeWireLink]:
     return links
 
 
+def parse_pw_link_ports(payload: bytes | str) -> set[str]:
+    """Return all top-level port names reported by ``pw-link -l``."""
+    if isinstance(payload, bytes):
+        payload = payload.decode("utf-8", errors="replace")
+
+    ports: set[str] = set()
+    for raw_line in payload.splitlines():
+        stripped = raw_line.strip()
+        if not stripped or raw_line[:1].isspace():
+            continue
+        if stripped.startswith("|->") or stripped.startswith("|<-"):
+            continue
+        ports.add(stripped)
+
+    return ports
+
+
 def find_ai_only_forbidden_links(
     links: Iterable[PipeWireLink],
     *,
@@ -138,10 +156,19 @@ class AiOnlyRouteIsolation:
         downlink: PipeWireTarget,
         uplink: PipeWireTarget,
         runner: ProcessRunner,
+        restore_retry_attempts: int = 5,
+        restore_retry_delay_seconds: float = 0.10,
     ) -> None:
+        if restore_retry_attempts <= 0:
+            raise ValueError("restore_retry_attempts must be positive")
+        if restore_retry_delay_seconds < 0:
+            raise ValueError("restore_retry_delay_seconds must be non-negative")
+
         self._downlink = downlink
         self._uplink = uplink
         self._runner = runner
+        self._restore_retry_attempts = restore_retry_attempts
+        self._restore_retry_delay_seconds = restore_retry_delay_seconds
         self._removed: list[PipeWireLink] = []
         self._running = False
 
@@ -261,37 +288,117 @@ class AiOnlyRouteIsolation:
         if not self._running and not self._removed:
             return
 
-        restore_errors: list[str] = []
+        self._running = False
+        pending = list(self._removed)
+        last_errors: dict[PipeWireLink, str] = {}
 
-        try:
-            existing = await self._list_links()
-        except Exception as exc:
-            self._running = False
+        for attempt in range(self._restore_retry_attempts):
+            result = await self._runner.run(("pw-link", "-l"))
+            if result.returncode != 0:
+                stderr = result.stderr.decode("utf-8", errors="replace").strip()
+                self._removed = pending
+                raise RouteIsolationError(
+                    "could not inspect PipeWire graph during restore: "
+                    f"pw-link -l failed with exit {result.returncode}: {stderr}"
+                )
+
+            existing = parse_pw_link_listing(result.stdout)
+            ports = parse_pw_link_ports(result.stdout)
+            next_pending: list[PipeWireLink] = []
+
+            for link in pending:
+                if link in existing:
+                    last_errors.pop(link, None)
+                    continue
+
+                out_node = _node_name(link.output_port)
+                in_node = _node_name(link.input_port)
+
+                if out_node == self._downlink.node_name:
+                    bluetooth_port = link.output_port
+                    physical_port = link.input_port
+                elif in_node == self._uplink.node_name:
+                    bluetooth_port = link.input_port
+                    physical_port = link.output_port
+                else:
+                    next_pending.append(link)
+                    last_errors[link] = (
+                        "owned link no longer matches selected Bluetooth targets"
+                    )
+                    continue
+
+                if bluetooth_port in ports and physical_port in ports:
+                    try:
+                        await self._connect(link)
+                        last_errors.pop(link, None)
+                        continue
+                    except Exception as exc:
+                        next_pending.append(link)
+                        last_errors[link] = str(exc)
+                        continue
+
+                if bluetooth_port not in ports:
+                    next_pending.append(link)
+                    last_errors[link] = "selected Bluetooth port is not present"
+                    continue
+
+                next_pending.append(link)
+                last_errors[link] = (
+                    f"physical PipeWire port is not present: {physical_port}"
+                )
+
+            pending = next_pending
+            if not pending:
+                self._removed = []
+                return
+
+            if attempt + 1 < self._restore_retry_attempts:
+                await asyncio.sleep(self._restore_retry_delay_seconds)
+
+        # Final fresh graph: if the selected BlueZ endpoint stayed gone for the
+        # entire bounded retry window, the old call route is obsolete and there
+        # is nothing valid left to reconnect. Other failures remain errors.
+        result = await self._runner.run(("pw-link", "-l"))
+        if result.returncode != 0:
+            stderr = result.stderr.decode("utf-8", errors="replace").strip()
+            self._removed = pending
             raise RouteIsolationError(
-                f"could not inspect PipeWire graph during restore: {exc}"
-            ) from exc
+                "could not inspect PipeWire graph during final restore check: "
+                f"pw-link -l failed with exit {result.returncode}: {stderr}"
+            )
 
-        pending: list[PipeWireLink] = []
+        existing = parse_pw_link_listing(result.stdout)
+        ports = parse_pw_link_ports(result.stdout)
+        still_pending: list[PipeWireLink] = []
+        errors: list[str] = []
 
-        for link in reversed(self._removed):
-            # WirePlumber may have already recreated the exact link. In that
-            # case restoration is complete and creating a duplicate would be
-            # both unnecessary and error-prone.
+        for link in pending:
             if link in existing:
                 continue
 
-            try:
-                await self._connect(link)
-                existing.add(link)
-            except Exception as exc:
-                pending.append(link)
-                restore_errors.append(str(exc))
+            out_node = _node_name(link.output_port)
+            in_node = _node_name(link.input_port)
+            if out_node == self._downlink.node_name:
+                bluetooth_port = link.output_port
+            elif in_node == self._uplink.node_name:
+                bluetooth_port = link.input_port
+            else:
+                bluetooth_port = None
 
-        self._removed = list(reversed(pending))
-        self._running = False
+            if bluetooth_port is not None and bluetooth_port not in ports:
+                continue
 
-        if restore_errors:
+            still_pending.append(link)
+            errors.append(
+                f"{link.output_port!r} -> {link.input_port!r}: "
+                f"{last_errors.get(link, 'restore did not complete')}"
+            )
+
+        self._removed = still_pending
+
+        if errors:
             raise RouteIsolationError(
                 "one or more PipeWire links could not be restored: "
-                + "; ".join(restore_errors)
+                + "; ".join(errors)
             )
+

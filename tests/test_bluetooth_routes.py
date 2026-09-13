@@ -9,6 +9,7 @@ from shuo.bluetooth.routes import (
     RouteIsolationError,
     find_ai_only_forbidden_links,
     parse_pw_link_listing,
+    parse_pw_link_ports,
 )
 
 
@@ -92,12 +93,35 @@ def test_find_ai_only_forbidden_links_leaves_unrelated_audio_untouched():
 
 
 class GraphRunner:
-    def __init__(self, links, *, fail_disconnect_at=None, fail_restore=False):
+    def __init__(
+        self,
+        links,
+        *,
+        fail_disconnect_at=None,
+        fail_restore=False,
+        extra_ports=None,
+        listing_hook=None,
+    ):
         self.links = set(links)
         self.calls = []
         self.fail_disconnect_at = fail_disconnect_at
         self.fail_restore = fail_restore
         self.disconnect_count = 0
+        if extra_ports is None:
+            # Real `pw-link -l` keeps existing top-level ports visible even
+            # when they temporarily have no links. Preserve the endpoints
+            # from the initial graph so unlinking does not make the fake
+            # device itself disappear.
+            derived_ports = set()
+            for link in self.links:
+                derived_ports.add(link.output_port)
+                derived_ports.add(link.input_port)
+            self.extra_ports = derived_ports
+        else:
+            self.extra_ports = set(extra_ports)
+
+        self.listing_hook = listing_hook
+        self.listing_count = 0
 
     def _listing(self):
         by_output = {}
@@ -106,7 +130,7 @@ class GraphRunner:
             by_output.setdefault(link.output_port, []).append(link.input_port)
             by_input.setdefault(link.input_port, []).append(link.output_port)
 
-        roots = sorted(set(by_output) | set(by_input))
+        roots = sorted(set(by_output) | set(by_input) | self.extra_ports)
         lines = []
         for root in roots:
             lines.append(root)
@@ -121,6 +145,9 @@ class GraphRunner:
         self.calls.append(argv)
 
         if argv == ("pw-link", "-l"):
+            self.listing_count += 1
+            if self.listing_hook is not None:
+                self.listing_hook(self)
             return CompletedCommand(argv, 0, self._listing(), b"")
 
         if argv[:2] == ("pw-link", "-d"):
@@ -236,3 +263,113 @@ async def test_failed_restore_keeps_ownership_for_retry():
     await isolation.stop()
     assert isolation.snapshot.removed_links == ()
     assert runner.links == original
+
+
+def test_parse_pw_link_ports_includes_unlinked_top_level_ports():
+    payload = (
+        f"{DOWNLINK_NODE}:output_FL\n"
+        f"{UPLINK_NODE}:input_FL\n"
+        f"{SPEAKER_NODE}:playback_FL\n"
+    )
+    assert parse_pw_link_ports(payload) == {
+        f"{DOWNLINK_NODE}:output_FL",
+        f"{UPLINK_NODE}:input_FL",
+        f"{SPEAKER_NODE}:playback_FL",
+    }
+
+
+@pytest.mark.asyncio
+async def test_stop_retries_when_bluez_ports_temporarily_disappear_then_restores():
+    original = parse_pw_link_listing(PW_LINK_LISTING)
+    all_ports = parse_pw_link_ports(PW_LINK_LISTING)
+    bluez_ports = {
+        port
+        for port in all_ports
+        if port.startswith(DOWNLINK_NODE + ":")
+        or port.startswith(UPLINK_NODE + ":")
+    }
+
+    def recreate(runner):
+        # start() consumes listings 1 and 2.
+        # On the first stop snapshot BlueZ disappears, then returns.
+        if runner.listing_count == 3:
+            runner.extra_ports.difference_update(bluez_ports)
+        elif runner.listing_count >= 4:
+            runner.extra_ports.update(bluez_ports)
+
+    runner = GraphRunner(
+        original,
+        extra_ports=all_ports,
+        listing_hook=recreate,
+    )
+    isolation = AiOnlyRouteIsolation(
+        downlink=_target(downlink=True),
+        uplink=_target(downlink=False),
+        runner=runner,
+        restore_retry_attempts=3,
+        restore_retry_delay_seconds=0,
+    )
+
+    await isolation.start()
+    await isolation.stop()
+
+    assert isolation.snapshot.removed_links == ()
+    assert runner.links == original
+
+
+@pytest.mark.asyncio
+async def test_stop_succeeds_when_selected_bluez_ports_stay_gone():
+    original = parse_pw_link_listing(PW_LINK_LISTING)
+    all_ports = parse_pw_link_ports(PW_LINK_LISTING)
+    bluez_ports = {
+        port
+        for port in all_ports
+        if port.startswith(DOWNLINK_NODE + ":")
+        or port.startswith(UPLINK_NODE + ":")
+    }
+
+    runner = GraphRunner(original, extra_ports=all_ports)
+    isolation = AiOnlyRouteIsolation(
+        downlink=_target(downlink=True),
+        uplink=_target(downlink=False),
+        runner=runner,
+        restore_retry_attempts=2,
+        restore_retry_delay_seconds=0,
+    )
+
+    await isolation.start()
+    runner.extra_ports.difference_update(bluez_ports)
+
+    await isolation.stop()
+
+    assert isolation.running is False
+    assert isolation.snapshot.removed_links == ()
+
+
+@pytest.mark.asyncio
+async def test_stop_still_fails_if_bluez_exists_but_physical_endpoint_is_missing():
+    original = parse_pw_link_listing(PW_LINK_LISTING)
+    all_ports = parse_pw_link_ports(PW_LINK_LISTING)
+
+    runner = GraphRunner(original, extra_ports=all_ports)
+    isolation = AiOnlyRouteIsolation(
+        downlink=_target(downlink=True),
+        uplink=_target(downlink=False),
+        runner=runner,
+        restore_retry_attempts=2,
+        restore_retry_delay_seconds=0,
+    )
+
+    await isolation.start()
+
+    runner.extra_ports = {
+        port
+        for port in runner.extra_ports
+        if not port.startswith(MIC_NODE + ":")
+        and not port.startswith(SPEAKER_NODE + ":")
+    }
+
+    with pytest.raises(RouteIsolationError):
+        await isolation.stop()
+
+    assert isolation.snapshot.removed_links
