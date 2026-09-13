@@ -34,3 +34,12 @@ implementation. Phase 1 evidence is supplied, not re-executed in this task.
 Detailed rationale for BT-D05/06 is in [BLUETOOTH_ARCHITECTURE](BLUETOOTH_ARCHITECTURE.md).
 Phase boundaries/gates are in [ROADMAP](ROADMAP.md); known differences between
 legacy instruction wording and current code are in [KNOWN_ISSUES](KNOWN_ISSUES.md).
+
+## Phase 3 decision addendum — 2026-09-13
+
+| ID / status | Context/evidence | Decision | Consequences | Revisit only when |
+|---|---|---|---|---|
+| BT-D17 — Implemented Phase 3 explicit targeting | Base revision `97076cd1739e2456843ced239eeebeedcfefa70b`; real active-call discovery selected the reference downlink/uplink by properties and explicit node name | Own `pw-cat` capture/playback processes only with an explicitly validated Bluetooth target; never rely on PipeWire default target fallback | Linux-only adapter remains optional/injected; transient numeric IDs are not persisted | A reviewed PipeWire API replacement preserves equal explicit targeting and fail-closed behavior |
+| BT-D18 — Implemented AI-only route isolation | Live graph inspection showed physical `Mic1 -> Bluetooth uplink` and `Bluetooth downlink -> Speaker`; injected speech became clear after unlinking the physical mic route | At Bluetooth AI-session start, snapshot/remove only conflicting physical mic/uplink and downlink/speaker links; restore only session-removed links on stop | Laptop mic/speaker are not globally disabled; unrelated routes remain; monitor/headset mode is deferred | Product explicitly adds monitor/human-takeover routing with separate echo/mic isolation validation |
+| BT-D19 — Accepted session-lifetime semantics | A 20-second harness validated isolation/restore; the timer came from the harness, not the session implementation | Production isolation lifetime must equal Bluetooth AI-session lifetime, not a fixed timeout | Future integration starts isolation with the Bluetooth media session and restores on teardown/abort | Lifecycle architecture changes with equivalent cleanup guarantees |
+| BT-D20 — Implemented capture shutdown cleanup | First real lifecycle stop hit `ProcessError` while later `pgrep -a pw-cat` was empty; unread capture PIPE stdout could delay asyncio subprocess reaping | Drain capture stdout during shutdown only while retaining direct streaming `read()` during normal operation | No new production capture queue/budget is invented; clean 20-second hardware stop and no orphan process validated | A future process transport removes PIPE reaping behavior or changes capture ownership |

@@ -1,9 +1,11 @@
 # SHUO documentation index
 
-Snapshot: 2026-09-13, source revision `569559d6dc32738fc6b8e57313b126a816f959c2`.
-Initial worktree was clean. This knowledge setup inspected source, tests,
-dependency declarations and existing documentation; it ran no application,
-provider, device or test suite. No Bluetooth implementation was added.
+Snapshot updated 2026-09-13 through Phase 3 base revision
+`97076cd1739e2456843ced239eeebeedcfefa70b`, plus documented local Phase 3
+closeout changes for AI-only route isolation and capture shutdown cleanup.
+Reference-hardware PipeWire discovery, explicit capture/playback, route
+isolation/restoration and clean lifecycle teardown have now been executed.
+Default production SHUO/call lifecycle integration remains pending.
 
 Instruction audit: no pre-existing AGENTS.md or AGENTS.override.md was found in
 the repository, its ancestor directories or the user Codex instruction location.
@@ -27,7 +29,7 @@ lists candidate files only; no implementation is authorized or added.
 | What must be preserved or built? | [REQUIREMENTS.md](REQUIREMENTS.md) | Requirements, not proof of compliance |
 | What did hardware validation establish? What is the adapter design? | [BLUETOOTH_ARCHITECTURE.md](BLUETOOTH_ARCHITECTURE.md) | Supplied runtime evidence / PROPOSED design |
 | Which systems have compatibility evidence? | [COMPATIBILITY.md](COMPATIBILITY.md) | Reference evidence and validation policy |
-| What is next, and what permits advancing? | [ROADMAP.md](ROADMAP.md), [phases/](phases/) | Phase 1 complete; 2–8 planned/pending |
+| What is next, and what permits advancing? | [ROADMAP.md](ROADMAP.md), [phases/](phases/) | Phase 1 complete; Phase 2 implemented; Phase 3 implemented/reference-validated; later integration phases pending |
 | How should changes be tested? | [TESTING.md](TESTING.md) | Code inventory, historical baseline, future gates |
 | What is uncertain or problematic? | [KNOWN_ISSUES.md](KNOWN_ISSUES.md) | Recorded failures, source findings, unknowns |
 | Why these boundaries? | [DECISIONS.md](DECISIONS.md) | Decisions, evidence and revisit conditions |

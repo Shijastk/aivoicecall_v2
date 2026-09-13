@@ -189,4 +189,31 @@ authentication, drain, interruption or lifecycle guarantees are not established.
 | Browser → Flux | Base64 bytes forwarded unchanged; Flux expects µ-law/8000, browser production format UNKNOWN |
 | Shunya → browser | Request `response_format="pcm"`; rate/width/channels/endian not specified/validated here; first RIFF chunk strips fixed 44 bytes |
 | Azure → browser | Request `raw-16khz-16bit-mono-pcm`; base64 HTTP chunks; code has no explicit byte-order validation |
-| Bluetooth | No implemented application boundary; supplied reference S16LE/16,000/mono is in BLUETOOTH_ARCHITECTURE |
+| Bluetooth | Optional Linux-only Phase 3 boundary implemented: property-based PipeWire discovery, explicit `pw-cat` capture/playback targeting, S16LE/16,000/mono reference contract, AI-only physical-route isolation/restoration and bounded shutdown. Not wired to default `main.py` / SHUO conversation lifecycle yet. |
+
+## Bluetooth Phase 3 runtime boundary
+
+The optional Bluetooth implementation now has a real PipeWire process boundary.
+It is still isolated from default production startup.
+
+Current Phase 3 pieces include:
+
+- `shuo/bluetooth/process.py`: injected asyncio subprocess runner and bounded stop;
+- `shuo/bluetooth/pipewire_live.py`: `pw-dump` discovery plus explicit `pw-cat`
+  capture/playback;
+- AI-only route isolation/session resources added during Phase 3 closeout;
+- direct capture shutdown draining added after real hardware exposed an unread
+  stdout/process-reap timeout.
+
+On the reference hardware, the active call exposes mSBC HFP nodes as
+S16LE/16 kHz/mono.
+
+The AI-only route isolation is session-scoped, not a permanent hardware disable.
+At session start it removes only conflicting physical routes between the selected
+Bluetooth nodes and local mic/speaker. At session stop it restores only the links
+that session removed.
+
+The 20-second real-call run was only a manual validation harness. No production
+timer is intended. `main.py` currently remains unchanged: running the default app
+does not automatically create a Bluetooth AI-only session, and call start/end do
+not yet own this Phase 3 resource.

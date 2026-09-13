@@ -14,7 +14,7 @@ been added by Phase 2.
 |---|---|---|
 | 1 | [Hardware/runtime contract](phases/PHASE_01_RUNTIME_CONTRACT.md) | Complete: supplied runtime evidence |
 | 2 | [Isolated adapter and codec](phases/PHASE_02_ADAPTER_AND_CODEC.md) | Implemented/tested; closeout pending documentation sync and explicit queue-budget decision |
-| 3 | [PipeWire capture/playback integration](phases/PHASE_03_PIPEWIRE_INTEGRATION.md) | Planned / pending approval |
+| 3 | [PipeWire capture/playback integration](phases/PHASE_03_PIPEWIRE_INTEGRATION.md) | Implemented and reference-hardware validated; production SHUO/lifecycle integration pending |
 | 4 | [SHUO conversation pipeline integration](phases/PHASE_04_SHUO_PIPELINE_INTEGRATION.md) | Planned / pending approval |
 | 5 | [Controlled cellular end-to-end validation](phases/PHASE_05_CELLULAR_E2E.md) | Planned / pending approval |
 | 6 | [Call control and lifecycle ownership](phases/PHASE_06_CALL_CONTROL_AND_LIFECYCLE.md) | Planned / pending approval |
@@ -30,9 +30,11 @@ variability with hardware-free code and tests. It implements Bluetooth format
 contracts, stateful conversion, capability-based target selection, explicit
 bounded-queue APIs, telephony fakes and minimum lifecycle rollback/cleanup.
 
-Phase 3 remains the first phase allowed to implement real PipeWire discovery,
-capture/playback process ownership and target opening. It must validate targeting
-and cleanup before provider/conversation integration.
+Phase 3 has implemented real PipeWire discovery, explicit capture/playback process
+ownership, AI-only physical-route isolation/restoration and bounded cleanup on the
+reference hardware. The 20-second lifecycle run was a validation harness, not a
+production duration. Default application startup still does not attach Bluetooth to
+the SHUO conversation/call lifecycle; that remains a later integration boundary.
 
 Phase 4 must address the existing carrier-specific session, checkpoint, recording
 and history assumptions (`CarrierSession`, `run_conversation`) without copying the
@@ -115,3 +117,32 @@ commit/push, or later-phase implementation.
 Rollback normally means disabling optional Bluetooth, stopping owned resources
 and restoring previous routes/config; phase-specific procedures are linked above.
 Default carrier and browser operation must survive that rollback.
+
+## Phase 3 evidence summary
+
+Base implementation revision:
+
+```text
+97076cd1739e2456843ced239eeebeedcfefa70b
+```
+
+Local closeout changes after that base add AI-only route isolation/session
+resources and capture shutdown draining. Record a new revision after those local
+changes are reviewed and committed.
+
+Executed evidence:
+
+- Phase 3/route/cleanup focused selection: **21 passed, 1 warning**
+- Full Bluetooth-focused selection: **51 passed, 1 warning**
+- Real active-call AI-only lifecycle: **20 seconds, clean start/stop**
+- During session: physical laptop mic -> Bluetooth uplink absent
+- During session: Bluetooth downlink -> physical laptop speaker absent
+- After stop: prior routes restored
+- After stop: no `pw-cat` process remained
+- Prior unread-capture shutdown timeout reproduced and then resolved
+
+The remaining advancement gate is not "make the 20-second timer longer".
+Production behavior must bind the Bluetooth session to the real call/conversation
+lifecycle: start isolation when the Bluetooth AI session starts and keep it active
+until teardown. Phase 4 owns the SHUO media-pipeline seam; Phase 6 owns complete
+automated call-control/lifecycle behavior.

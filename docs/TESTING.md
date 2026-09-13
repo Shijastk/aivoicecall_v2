@@ -174,18 +174,24 @@ Hardware-free coverage includes:
 
 No device access, real process streams or active-call audio is claimed.
 
-### Phase 3 — planned / separate authorization
+### Phase 3 — implemented / reference-hardware validation executed
 
-Real PipeWire streams with synthetic/controlled signals must confirm:
+Executed Phase 3 evidence now confirms on the reference environment:
 
-- target discovery and direction
-- negotiated contract
-- explicit `pw-cat` targeting
-- capture/playback process failure/exit behavior
-- device disappearance
-- cleanup/no orphan process
-- no silent fallback to physical laptop mic/speaker
-- measured queue/latency budget
+- real target discovery and direction for the active HFP call
+- explicit `pw-cat` targeting of the selected Bluetooth nodes
+- AI-only physical mic/speaker route isolation during the session
+- restoration of the removed routes on stop
+- clean capture/playback shutdown with no orphan `pw-cat`
+- reproduction and fix of the unread-capture stdout shutdown timeout
+
+Still pending for Phase 3 closeout / later qualification:
+
+- stronger distinction between supported EnumFormat capability and actual negotiated state
+- device disappearance handling
+- measured/approved production queue and latency budget
+- repeated/long-run hardware cycles beyond the executed validation
+- broader device/codec compatibility
 
 ### Later phases
 
@@ -221,3 +227,56 @@ A phase-completion record needs scoped authorization, revision, commands,
 fixtures, environment/capability versions, gate results, failure
 identities/signatures, sanitized artifacts, known limitations, rollback result
 and explicit approval to advance.
+
+## Phase 3 executed evidence — 2026-09-13
+
+Focused route/cleanup suite:
+
+```text
+21 passed, 1 warning
+```
+
+Full Bluetooth-focused suite after cleanup fix:
+
+```text
+51 passed, 1 warning
+```
+
+Warning:
+
+```text
+DeprecationWarning: 'audioop' is deprecated and slated for removal in Python 3.13
+```
+
+Reference active-call lifecycle validation:
+
+```text
+Duration: 20 seconds
+Start: clean
+During session:
+  explicit pw-cat record process present
+  explicit pw-cat playback process present
+  physical Mic1 -> Bluetooth uplink links absent
+  Bluetooth downlink -> physical Speaker links absent
+Stop: SESSION STOPPED CLEANLY
+After stop:
+  prior routes restored
+  pgrep -a pw-cat returned no output
+```
+
+Important interpretation: the 20-second duration belongs to the test script's
+`asyncio.sleep(20)`. It is not a runtime limit in the session resource. A
+production integration should keep the session alive until call/session teardown.
+
+The first hardware cleanup run failed with:
+
+```text
+shuo.bluetooth.process.ProcessError:
+child process did not exit after terminate/kill
+```
+
+At the same time, `pgrep -a pw-cat` after teardown was empty. The failure was
+therefore in asyncio subprocess cleanup/reaping with unread capture stdout, not
+persistent orphan process ownership. The capture endpoint was changed to drain
+stdout during shutdown only. Focused tests and the real 20-second lifecycle
+validation passed after the change.
