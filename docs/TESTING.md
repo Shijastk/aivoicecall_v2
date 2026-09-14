@@ -371,3 +371,32 @@ tests/test_test_call.py::TestTheProcessSplitSurvives::test_the_call_server_has_n
 ```
 
 No new Bluetooth-related failure identity was observed.
+
+## Phase 4B shadow-speculation verification
+
+```bash
+python -m pytest -q tests/test_bluetooth_speculative.py tests/test_flux.py tests/test_bluetooth_conversation.py tests/test_bluetooth_production.py -p no:cacheprovider
+python -m pytest -q tests/test_bluetooth_*.py -p no:cacheprovider
+```
+
+Only after offline tests pass should an explicitly authorized controlled live shadow run use both `--eager-eot-threshold` and `--shadow-speculation`. Shadow text must never appear in TTS, monitor transcript or committed history.
+
+### Runtime result — 2026-09-14
+
+Offline verification before the live run:
+
+- focused Phase 4B selection: **32 passed, 3 warnings**
+- Bluetooth regression selection: **86 passed, 3 warnings**
+
+Controlled live Bluetooth shadow run:
+
+- 10 final turns
+- 0 `ready_before_final`
+- 10 `not_ready_by_final`
+- 4 resumed/retracted eager candidates
+- one resumed candidate produced a shadow first token at 500.8ms and was
+  correctly discarded after `TurnResumed`.
+
+No speculative text was intentionally sent to TTS or committed conversation
+history. This run validates the shadow/cancellation measurement path, not a
+Phase 4C response-reuse path and not a sub-500ms caller-heard latency claim.

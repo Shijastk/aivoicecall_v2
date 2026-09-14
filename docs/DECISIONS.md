@@ -49,3 +49,15 @@ legacy instruction wording and current code are in [KNOWN_ISSUES](KNOWN_ISSUES.m
 | ID / status | Context/evidence | Decision | Consequences | Revisit only when |
 |---|---|---|---|---|
 | BT-D21 — Accepted Phase 4A measurement strategy | Remote Phase 4 base integration exists; owner-supplied live timings show the serial final-EOT→LLM→TTS path is too slow for the sub-500 ms target; Deepgram Flux supports optional EagerEndOfTurn/TurnResumed | Add eager turn detection first as an explicit Bluetooth-only measurement mode, disabled by default. Measure candidate→final lead/resume behavior before speculative LLM/TTS work. Do not start AI early in 4A. | Carrier/browser/default Flux behavior remains unchanged when the flag is absent. Logs contain timing/boolean/character-count metadata, not transcript text. Later speculation must use isolated draft state because committed LLM cancellation can preserve partial history. | Sanitized runtime evidence shows insufficient lead, unacceptable false starts/load, or another measured turn strategy is superior; record a new decision rather than rewriting this one |
+
+## Phase 4B shadow-speculation addendum — 2026-09-14
+
+| ID / status | Context/evidence | Decision | Consequences | Revisit only when |
+|---|---|---|---|---|
+| BT-D22 — Accepted Phase 4B shadow-only strategy | Threshold 0.3 produced near-zero short-turn lead and 336–490 ms long-turn lead with repeated TurnResumed; Qwen median first token was 455 ms | Implement an opt-in first-token shadow probe only. Speculative text is discarded, never sent to TTS and never written to committed history. Final EOT records readiness and cancels unfinished shadow work; actual response reuse remains Phase 4C. | Produces overlap/cancellation/load evidence without changing normal answer semantics. Adds provider requests/cost only when explicitly enabled. | 4B evidence shows insufficient benefit, provider contention/cost, cancellation leaks/history mutation, or a superior measured strategy |
+
+## Phase 4B live-evidence decision — 2026-09-14
+
+| ID / status | Context/evidence | Decision | Consequences | Revisit only when |
+|---|---|---|---|---|
+| BT-D23 — Accepted: do not enable Phase 4C yet | Controlled Phase 4B live shadow run observed 10 final turns, 0 ready-before-final, 10 not-ready-by-final and 4 resumed eager candidates. One resumed candidate reached a first token at 500.8ms and was correctly discarded. | Keep Phase 4B shadow-only. Do not reuse speculative output in caller-visible responses yet. Prioritize the measured TTS warm-connection issue and investigate an earlier safe turn/transcript signal before another Phase 4C gate. | Correctness and committed history remain protected; no latency claim is inflated from insufficient evidence. | A later controlled shadow run shows repeatable useful pre-final readiness with acceptable cancellation, provider load and history isolation. |

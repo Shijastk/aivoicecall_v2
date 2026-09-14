@@ -174,6 +174,23 @@ That revision added an explicit manual Bluetooth-AI runner, Bluetooth conversati
 orchestration/production wiring and focused tests. Its commit message explicitly
 noted remaining issues, and the older docs were not advanced at the time.
 
-Current `phase4-realtime-latency` work adds the documented Phase 4A measurement
-slice only. Until focused tests and separately authorized runtime evidence are
-recorded, do not mark Phase 4 complete and do not infer sub-500 ms caller latency.
+The Phase 4A measurement slice and Phase 4B shadow mechanism are now present on
+the current main-line work and have controlled reference-path evidence recorded
+below. Phase 4 remains incomplete, and no sub-500 ms caller-heard latency claim
+is supported by the current evidence.
+
+## Phase 4 status update — 2026-09-14
+
+Phase 4B shadow speculation has now passed focused offline/Bluetooth regression
+testing and a controlled reference-path live measurement.
+
+Current Phase 4 position:
+
+- Phase 4A eager measurement: completed for the current reference path
+- Phase 4B shadow coordinator: implemented and runtime exercised
+- Phase 4B correctness/cancellation path: observed working
+- current eager-trigger latency benefit: insufficient
+- Phase 4C prepared-response reuse: **not authorized by current evidence**
+- next work: measured TTS warm-connection latency issue, then investigation of an
+  earlier safe speculative trigger
+- Phase 5 and later phases remain unchanged

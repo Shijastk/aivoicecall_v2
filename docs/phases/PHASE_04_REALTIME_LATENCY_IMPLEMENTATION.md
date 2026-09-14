@@ -1,6 +1,6 @@
 # Bluetooth Phase 4 realtime latency implementation plan
 
-**Status: IN PROGRESS — Phase 4A offline gate passed 2026-09-14; live eager-lead measurement pending separate authorization.**
+**Status: IN PROGRESS — Phase 4A completed on the reference path; Phase 4B shadow mechanism passed offline regression and controlled live validation on 2026-09-14, but the current eager trigger showed insufficient pre-final readiness to advance to Phase 4C.**
 
 This plan is subordinate to `AGENTS.md`, `CLAUDE.md`, `rules.md`, the Bluetooth
 roadmap and the existing Phase 4 contract. It does not authorize Phase 5 live-call
@@ -93,6 +93,41 @@ Gate before 4C:
 - Shadow metrics prove useful post-EOT latency reduction and acceptable extra LLM
   request rate.
 - Existing non-speculative path remains an immediate feature-flag rollback.
+
+#### Controlled Phase 4B live shadow result — 2026-09-14
+
+Executed on the validated Bluetooth reference path with:
+
+- `LLM_MODEL=qwen/qwen3.6-27b`
+- `eager_eot_threshold=0.3`
+- `shadow_speculation=true`
+- `pw-cat latency=120ms`
+
+Observed final-turn shadow outcomes:
+
+- final turns observed: **10**
+- `ready_before_final`: **0**
+- `not_ready_by_final`: **10**
+- retracted/resumed eager candidates observed: **4**
+- one retracted candidate reached first token at **500.8ms**, but the caller
+  resumed speaking, so discarding it was correct.
+
+Normal final-EOT Qwen first-token latency remained approximately in the
+**412–461ms** class for most observed turns.
+
+Important interpretation:
+
+- Phase 4B cancellation/history-isolation behavior worked as intended.
+- The current Deepgram EagerEndOfTurn trigger did **not** produce a reusable
+  shadow first token before final EOT on any of the 10 final turns.
+- Therefore this evidence does **not** justify enabling Phase 4C prepared-response
+  reuse yet.
+- The next latency work should address the already-measured TTS warm-connection
+  churn and investigate an earlier, separately validated transcript/turn signal
+  before revisiting Phase 4C.
+
+Status: **Phase 4B shadow mechanism runtime-validated; latency benefit from the
+current eager trigger is insufficient to advance to Phase 4C.**
 
 ### Phase 4C — commit-on-final response reuse
 

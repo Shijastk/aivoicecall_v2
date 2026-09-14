@@ -291,3 +291,18 @@ If context was lost, do this before touching anything:
 3. Read [rules.md](rules.md) before writing any carrier, codec, or player code.
 4. `git status` and `git log --oneline -5` — confirm what actually landed vs. what this file claims.
 5. `python -m pytest tests/ -v` — the state machine must be green before and after every change.
+
+## 2026-09-14 — Phase 4B shadow speculation live milestone
+
+Phase 4B shadow speculation was exercised on the validated Bluetooth reference
+path after offline gates passed (32 focused tests and 86 Bluetooth tests).
+
+Live result: 10 final turns produced 0 ready-before-final shadow results and
+10 not-ready-by-final results; 4 eager candidates were retracted by
+`TurnResumed`. One retracted candidate reached first token at 500.8ms and was
+correctly discarded.
+
+Decision: retain Phase 4B as shadow-only and do not advance to Phase 4C
+prepared-response reuse from this evidence. Next latency work should address
+the measured TTS 8-second warm-pool churn and investigate an earlier safe
+speculative trigger.

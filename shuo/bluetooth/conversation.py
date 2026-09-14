@@ -36,24 +36,28 @@ class BluetoothFlux(Protocol):
 
 
 class BluetoothAgent(Protocol):
+    @property
+    def history(self): ...
+
     async def start_turn(self, transcript: str) -> None: ...
     async def cancel_turn(self) -> None: ...
     async def cleanup(self) -> None: ...
 
 
-FluxFactory = Callable[
-    [
-        Callable[[str], Awaitable[None]],
-        Callable[[], Awaitable[None]],
-        Callable[[str], Awaitable[None]],
-    ],
-    BluetoothFlux,
-]
+class BluetoothSpeculator(Protocol):
+    def on_eager(self, transcript: str, *, observed_at: Optional[float] = None) -> None: ...
+    def on_resumed(self, *, observed_at: Optional[float] = None) -> None: ...
+    def on_final(self, transcript: str, *, observed_at: Optional[float] = None) -> None: ...
+    async def cleanup(self) -> None: ...
+
+
+FluxFactory = Callable[..., BluetoothFlux]
 
 AgentFactory = Callable[
     [BluetoothOutboundMedia, Callable[[Optional[str]], None]],
     Union[BluetoothAgent, Awaitable[BluetoothAgent]],
 ]
+SpeculationFactory = Callable[[BluetoothAgent], BluetoothSpeculator]
 
 
 class BluetoothConversationError(RuntimeError):
@@ -65,6 +69,7 @@ async def run_bluetooth_conversation(
     *,
     flux_factory: FluxFactory,
     agent_factory: AgentFactory,
+    speculation_factory: Optional[SpeculationFactory] = None,
     stream_id: str = "bluetooth-local",
     call_id: str = "bluetooth-local",
 ) -> None:
@@ -87,6 +92,7 @@ async def run_bluetooth_conversation(
     outbound = BluetoothOutboundMedia(session)
 
     agent: Optional[BluetoothAgent] = None
+    speculator: Optional[BluetoothSpeculator] = None
     flux: Optional[BluetoothFlux] = None
     reader_task: Optional[asyncio.Task[None]] = None
     session_started = False
@@ -96,6 +102,8 @@ async def run_bluetooth_conversation(
     async def on_flux_end_of_turn(transcript: str) -> None:
         nonlocal last_flux_eot_at
         last_flux_eot_at = time.perf_counter()
+        if speculator is not None:
+            speculator.on_final(transcript, observed_at=last_flux_eot_at)
         _latency_log.info(
             "BTLatency: Flux EndOfTurn received transcript_chars=%d",
             len(transcript),
@@ -110,6 +118,14 @@ async def run_bluetooth_conversation(
         # Slice 3 has no monitor/history integration yet. Interim text is not a
         # state-machine event in the carrier loop either.
         return None
+
+    async def on_flux_eager_end_of_turn(transcript: str) -> None:
+        if speculator is not None:
+            speculator.on_eager(transcript, observed_at=time.perf_counter())
+
+    async def on_flux_turn_resumed() -> None:
+        if speculator is not None:
+            speculator.on_resumed(observed_at=time.perf_counter())
 
     def on_agent_done(_checkpoint: Optional[str]) -> None:
         # Local dispatch completion only. Do not synthesize PlaybackMarkEvent.
@@ -138,11 +154,20 @@ async def run_bluetooth_conversation(
         await session.start()
         session_started = True
 
-        flux = flux_factory(
-            on_flux_end_of_turn,
-            on_flux_start_of_turn,
-            on_flux_interim,
-        )
+        if speculation_factory is None:
+            flux = flux_factory(
+                on_flux_end_of_turn,
+                on_flux_start_of_turn,
+                on_flux_interim,
+            )
+        else:
+            flux = flux_factory(
+                on_flux_end_of_turn,
+                on_flux_start_of_turn,
+                on_flux_interim,
+                on_flux_eager_end_of_turn,
+                on_flux_turn_resumed,
+            )
         await flux.start()
 
         created_agent = agent_factory(outbound, on_agent_done)
@@ -151,6 +176,8 @@ async def run_bluetooth_conversation(
             if inspect.isawaitable(created_agent)
             else created_agent
         )
+        if speculation_factory is not None:
+            speculator = speculation_factory(agent)
 
         await event_queue.put(
             StreamStartEvent(stream_sid=stream_id, call_id=call_id)
@@ -199,6 +226,12 @@ async def run_bluetooth_conversation(
         except Exception:
             # Teardown must continue even if capture ended on a partial sample.
             pass
+
+        if speculator is not None:
+            try:
+                await speculator.cleanup()
+            except Exception:
+                pass
 
         if agent is not None:
             try:

@@ -59,12 +59,20 @@ def parse_args() -> argparse.Namespace:
         "--eager-eot-threshold",
         type=_eager_threshold,
         default=None,
+        help="Enable Deepgram EagerEndOfTurn at an explicit 0.3-0.7 threshold.",
+    )
+    parser.add_argument(
+        "--shadow-speculation",
+        action="store_true",
         help=(
-            "Phase-4A measurement only. Enable Deepgram EagerEndOfTurn at an "
-            "explicit 0.3-0.7 threshold; AI still waits for final EndOfTurn."
+            "Phase-4B test mode: start an early first-token probe. "
+            "Generated text is discarded and never reaches TTS/history."
         ),
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.shadow_speculation and args.eager_eot_threshold is None:
+        parser.error("--shadow-speculation requires --eager-eot-threshold")
+    return args
 
 
 async def _main(args: argparse.Namespace) -> None:
@@ -84,6 +92,7 @@ async def _main(args: argparse.Namespace) -> None:
         stream_id="bluetooth-manual",
         call_id=args.call_id,
         eager_eot_threshold=args.eager_eot_threshold,
+        shadow_speculation=args.shadow_speculation,
     )
 
 

@@ -100,3 +100,25 @@ isolated boundary, with Python 3.13+ replacement still unresolved. Do not read l
 | EnumFormat capability vs actual negotiation needs review | Current discovery accepts explicit compatible EnumFormat or direct audio props; capability advertisement is not always proof of current negotiated state | Compatibility hardening / broader device qualification |
 | Monitor/headset listening mode deferred | AI-only mode intentionally removes local speaker route; no human monitor branch is implemented | Future optional feature after core E2E |
 | Python 3.13+ remains unsupported for current codec path | `audioop` warning remains in passing suites | Separate codec replacement review |
+
+## Phase 4 realtime latency findings — 2026-09-14
+
+- Eager lead is turn-shape dependent: several short turns had almost no lead, while longer turns reached 336–490 ms at threshold 0.3.
+- TurnResumed is common enough to make cancellation/history isolation load-bearing.
+- The TTS pool 8-second TTL is a measured latency source: later turns showed approximately 293–321 ms fresh TTS setup after stale-connection eviction. Keep that fix separate from Phase-4B shadow correctness work.
+
+### Current eager trigger is too late for Phase 4C promotion
+
+The controlled Phase 4B shadow run produced **0 ready-before-final results out
+of 10 final turns**. Although earlier Phase 4A measurement showed that some
+eager candidates can precede final EOT by hundreds of milliseconds, the actual
+shadow Qwen probe did not deliver a reusable first token before final EOT on
+the observed final turns.
+
+This means Deepgram `EagerEndOfTurn` at threshold 0.3 is currently useful as a
+measurement/cancellation signal but is **not proven sufficient as the sole
+speculative trigger** for the latency target.
+
+Do not treat this as a provider failure or as proof that speculation cannot
+work. The next investigation should compare a safely earlier transcript/turn
+signal while preserving cancellation, history isolation and bounded concurrency.

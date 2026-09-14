@@ -62,6 +62,8 @@ class FluxService:
         on_end_of_turn: Callable[[str], Awaitable[None]],
         on_start_of_turn: Callable[[], Awaitable[None]],
         on_interim: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_eager_end_of_turn: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_turn_resumed: Optional[Callable[[], Awaitable[None]]] = None,
         eager_eot_threshold: Optional[float] = None,
     ):
         if eager_eot_threshold is not None and not (
@@ -76,6 +78,8 @@ class FluxService:
         self._on_end_of_turn = on_end_of_turn
         self._on_start_of_turn = on_start_of_turn
         self._on_interim = on_interim
+        self._on_eager_end_of_turn = on_eager_end_of_turn
+        self._on_turn_resumed = on_turn_resumed
         self._eager_eot_threshold = eager_eot_threshold
 
         self._api_key = os.getenv("DEEPGRAM_API_KEY", "")
@@ -293,6 +297,8 @@ class FluxService:
                         f"turn={self._eager_turn_index} "
                         f"transcript_chars={len(transcript)}"
                     )
+                    if self._on_eager_end_of_turn is not None:
+                        await self._on_eager_end_of_turn(transcript)
 
                 elif (
                     event == "TurnResumed"
@@ -309,6 +315,8 @@ class FluxService:
                         )
                     else:
                         log.info("Eager EOT measurement: resumed without candidate")
+                    if self._on_turn_resumed is not None:
+                        await self._on_turn_resumed()
                     self._clear_eager_measurement()
 
                 elif event == "Update" and self._on_interim:

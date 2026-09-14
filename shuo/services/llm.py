@@ -146,3 +146,64 @@ class LLMService:
         finally:
             self._running = False
             self._task = None
+
+class ShadowLLMProbe:
+    """Provider-layer Phase-4B first-token probe.
+
+    It copies committed history, adds the eager user transcript, discards all
+    generated text, never calls TTS and never mutates LLMService history.
+    """
+
+    def __init__(
+        self,
+        *,
+        system_prompt: str,
+        history_provider: Callable[[], List[Dict[str, str]]],
+        client=None,
+    ):
+        self._system_prompt = system_prompt
+        self._history_provider = history_provider
+        self._client = client or AsyncOpenAI(
+            api_key=os.getenv("GROQ_API_KEY", ""),
+            base_url="https://api.groq.com/openai/v1",
+        )
+
+    async def first_token_at(self, user_message: str) -> float:
+        import time
+
+        history_snapshot = [dict(message) for message in self._history_provider()]
+        messages = [
+            {"role": "system", "content": self._system_prompt},
+            *history_snapshot,
+            {"role": "user", "content": user_message},
+        ]
+
+        model = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
+        extra_body = {}
+        if model.startswith("openai/gpt-oss"):
+            extra_body = {"reasoning_effort": "low", "include_reasoning": False}
+        elif model == "qwen/qwen3.6-27b":
+            extra_body = {"reasoning_effort": "none"}
+
+        stream = await self._client.chat.completions.create(
+            model=model,
+            messages=messages,
+            stream=True,
+            max_tokens=500,
+            temperature=0.7,
+            extra_body=extra_body,
+        )
+
+        try:
+            async for chunk in stream:
+                delta = chunk.choices[0].delta if chunk.choices else None
+                if delta and delta.content:
+                    return time.perf_counter()
+        finally:
+            close = getattr(stream, "close", None)
+            if close is not None:
+                result = close()
+                if asyncio.iscoroutine(result):
+                    await result
+
+        raise RuntimeError("shadow LLM produced no content token")

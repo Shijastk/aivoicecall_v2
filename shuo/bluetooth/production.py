@@ -6,11 +6,13 @@ from typing import Callable, Optional, Type
 from ..agent import Agent
 from ..runtime_config import CallSettings, load_call_settings
 from ..services.flux import FluxService
+from ..services.llm import ShadowLLMProbe
 from ..services.tts_pool import TTSPool
 from ..tracer import Tracer
 from .conversation import run_bluetooth_conversation
 from .phase3_session import Phase3AiOnlySession
 from .shuo_media import BluetoothOutboundMedia
+from .speculative import AsyncCapacityGate, SpeculativeTurnCoordinator
 
 
 @dataclass(frozen=True)
@@ -22,6 +24,7 @@ class BluetoothProductionDeps:
     """
 
     flux_cls: Type = FluxService
+    shadow_probe_cls: Type = ShadowLLMProbe
     tts_pool_cls: Type = TTSPool
     agent_cls: Type = Agent
     tracer_factory: Callable[[], Tracer] = Tracer
@@ -37,6 +40,7 @@ async def run_production_bluetooth_conversation(
     call_id: str = "bluetooth-local",
     settings: Optional[CallSettings] = None,
     eager_eot_threshold: Optional[float] = None,
+    shadow_speculation: bool = False,
     deps: BluetoothProductionDeps = BluetoothProductionDeps(),
 ) -> None:
     """Wire the real SHUO services to an already-built Bluetooth session.
@@ -63,8 +67,12 @@ async def run_production_bluetooth_conversation(
     have a provider recording/call id. Local timing trace remains enabled.
     """
 
+    if shadow_speculation and eager_eot_threshold is None:
+        raise ValueError("shadow_speculation requires an explicit eager_eot_threshold")
+
     resolved = settings or deps.settings_loader()
     tracer = deps.tracer_factory()
+    shadow_gate = AsyncCapacityGate(1) if shadow_speculation else None
 
     pool = deps.tts_pool_cls(
         pool_size=1,
@@ -73,12 +81,16 @@ async def run_production_bluetooth_conversation(
     )
     pool_started = False
 
-    def flux_factory(on_eot, on_sot, on_interim):
+    def flux_factory(on_eot, on_sot, on_interim, on_eager=None, on_resumed=None):
         kwargs = {
             "on_end_of_turn": on_eot,
             "on_start_of_turn": on_sot,
             "on_interim": on_interim,
         }
+        if on_eager is not None:
+            kwargs["on_eager_end_of_turn"] = on_eager
+        if on_resumed is not None:
+            kwargs["on_turn_resumed"] = on_resumed
         if eager_eot_threshold is not None:
             # Keep existing injected fakes/providers source-compatible when the
             # feature is off; only the explicit measurement path receives the
@@ -104,14 +116,25 @@ async def run_production_bluetooth_conversation(
             settings=resolved,
         )
 
-    try:
-        await deps.conversation_runner(
-            session,
-            flux_factory=flux_factory,
-            agent_factory=agent_factory,
-            stream_id=stream_id,
-            call_id=call_id,
+    def speculation_factory(agent):
+        if shadow_gate is None:
+            raise RuntimeError("shadow speculation gate was not initialized")
+        probe = deps.shadow_probe_cls(
+            system_prompt=resolved.system_prompt,
+            history_provider=lambda: agent.history,
         )
+        return SpeculativeTurnCoordinator(probe=probe, capacity_gate=shadow_gate)
+
+    try:
+        runner_kwargs = {
+            "flux_factory": flux_factory,
+            "agent_factory": agent_factory,
+            "stream_id": stream_id,
+            "call_id": call_id,
+        }
+        if shadow_speculation:
+            runner_kwargs["speculation_factory"] = speculation_factory
+        await deps.conversation_runner(session, **runner_kwargs)
     finally:
         if pool_started:
             await pool.stop()
