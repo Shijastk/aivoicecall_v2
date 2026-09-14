@@ -17,6 +17,20 @@ from shuo.bluetooth.process import AsyncioProcessRunner
 from shuo.bluetooth.production import run_production_bluetooth_conversation
 
 
+def _eager_threshold(value: str) -> float:
+    try:
+        threshold = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a number") from exc
+
+    # Phase 4A deliberately leaves Flux's final EOT threshold at its provider
+    # default (0.7), so eager must not exceed it. Wider tuning belongs to a
+    # separately measured plan update.
+    if not 0.3 <= threshold <= 0.7:
+        raise argparse.ArgumentTypeError("must be between 0.3 and 0.7")
+    return threshold
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run SHUO over an already-active Bluetooth HFP cellular call."
@@ -41,6 +55,15 @@ def parse_args() -> argparse.Namespace:
         default="bluetooth-manual",
         help="Local trace id only; this is not a carrier call id.",
     )
+    parser.add_argument(
+        "--eager-eot-threshold",
+        type=_eager_threshold,
+        default=None,
+        help=(
+            "Phase-4A measurement only. Enable Deepgram EagerEndOfTurn at an "
+            "explicit 0.3-0.7 threshold; AI still waits for final EndOfTurn."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -60,6 +83,7 @@ async def _main(args: argparse.Namespace) -> None:
         persona_id=args.persona,
         stream_id="bluetooth-manual",
         call_id=args.call_id,
+        eager_eot_threshold=args.eager_eot_threshold,
     )
 
 
