@@ -280,7 +280,10 @@ class FluxService:
                 elif event == "StartOfTurn":
                     await self._on_start_of_turn()
 
-                elif event == "EagerEndOfTurn":
+                elif (
+                    event == "EagerEndOfTurn"
+                    and self._eager_eot_threshold is not None
+                ):
                     transcript = (_field(message, "transcript", "") or "").strip()
                     self._eager_started_at = time.perf_counter()
                     self._eager_turn_index = _field(message, "turn_index")
@@ -291,7 +294,10 @@ class FluxService:
                         f"transcript_chars={len(transcript)}"
                     )
 
-                elif event == "TurnResumed":
+                elif (
+                    event == "TurnResumed"
+                    and self._eager_eot_threshold is not None
+                ):
                     if self._eager_started_at is not None:
                         elapsed_ms = (
                             time.perf_counter() - self._eager_started_at
