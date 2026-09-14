@@ -128,6 +128,52 @@ Planned work, each separately measured:
   lifecycle/cancellation safety.
 - Tune Bluetooth prebuffer only after upstream improvements and audio/XRUN tests.
 
+## Phase 4A verification workflow
+
+The working tree may contain local Qwen/latency experiments that are not on remote
+`main`. Do not reset, overwrite or silently stash them. Verify this branch in a
+separate worktree instead:
+
+```bash
+git fetch origin phase4-realtime-latency
+git worktree add --detach ../aivoicecall_v2_phase4 origin/phase4-realtime-latency
+cd ../aivoicecall_v2_phase4
+```
+
+Use the existing project Python environment if available; do not install a new
+dependency merely to run this slice. Focused tests first:
+
+```bash
+../aivoicecall_v2/.venv/bin/python -m pytest -q \
+  tests/test_flux.py \
+  tests/test_bluetooth_production.py \
+  tests/test_bluetooth_conversation.py \
+  -p no:cacheprovider
+```
+
+Then the Bluetooth-focused selection:
+
+```bash
+../aivoicecall_v2/.venv/bin/python -m pytest -q \
+  tests/test_bluetooth_*.py \
+  -p no:cacheprovider
+```
+
+Only after those pass should an authorized full root regression be run. Compare
+failures by identity/signature against the four recorded historical failures; do
+not treat an equal failure count as proof of no regression.
+
+A live measurement is **not** part of offline verification and must not be run
+implicitly. When a controlled active call/provider/device exercise is explicitly
+authorized, the Bluetooth runner can opt in with for example:
+
+```text
+--eager-eot-threshold 0.4
+```
+
+Without that flag, eager mode is disabled and Flux keeps the existing final-EOT
+provider request behavior.
+
 ## Phase 5 — controlled cellular E2E validation
 
 No Phase 5 implementation is authorized by this plan. When separately approved,
