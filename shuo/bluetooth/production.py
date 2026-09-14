@@ -36,6 +36,7 @@ async def run_production_bluetooth_conversation(
     stream_id: str = "bluetooth-local",
     call_id: str = "bluetooth-local",
     settings: Optional[CallSettings] = None,
+    eager_eot_threshold: Optional[float] = None,
     deps: BluetoothProductionDeps = BluetoothProductionDeps(),
 ) -> None:
     """Wire the real SHUO services to an already-built Bluetooth session.
@@ -50,6 +51,10 @@ async def run_production_bluetooth_conversation(
       4. async Agent factory starts the per-call TTSPool
       5. existing Agent streams LLM -> TTS -> AudioPlayer -> Bluetooth adapter
       6. teardown always stops the pool and saves the local trace
+
+    ``eager_eot_threshold`` is Phase-4A measurement-only configuration. It is
+    disabled by default and is passed only to Flux; it does not start the agent
+    before final EndOfTurn or change committed conversation behavior.
 
     Monitor/call-history/recording policy for this manual Bluetooth entrypoint:
     those carrier-facing observers are intentionally not populated here. Agent
@@ -69,11 +74,17 @@ async def run_production_bluetooth_conversation(
     pool_started = False
 
     def flux_factory(on_eot, on_sot, on_interim):
-        return deps.flux_cls(
-            on_end_of_turn=on_eot,
-            on_start_of_turn=on_sot,
-            on_interim=on_interim,
-        )
+        kwargs = {
+            "on_end_of_turn": on_eot,
+            "on_start_of_turn": on_sot,
+            "on_interim": on_interim,
+        }
+        if eager_eot_threshold is not None:
+            # Keep existing injected fakes/providers source-compatible when the
+            # feature is off; only the explicit measurement path receives the
+            # new argument.
+            kwargs["eager_eot_threshold"] = eager_eot_threshold
+        return deps.flux_cls(**kwargs)
 
     async def agent_factory(
         outbound: BluetoothOutboundMedia,
