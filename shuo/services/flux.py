@@ -9,6 +9,7 @@ Replaces both local VAD (Silero) and separate STT (Deepgram v1).
 
 import os
 import asyncio
+import time
 from collections.abc import Mapping
 from typing import Any, Optional, Callable, Awaitable
 
@@ -49,6 +50,11 @@ class FluxService:
 
     Audio format: mulaw 8kHz (direct from Twilio, no conversion needed).
     Turn events: StartOfTurn (barge-in), EndOfTurn (with transcript).
+
+    ``eager_eot_threshold`` is opt-in measurement support. When unset the
+    provider request and callback behavior are unchanged. When set, Flux emits
+    EagerEndOfTurn/TurnResumed events; this service records sanitized timing
+    only. It does NOT start the agent early in this phase.
     """
 
     def __init__(
@@ -56,10 +62,21 @@ class FluxService:
         on_end_of_turn: Callable[[str], Awaitable[None]],
         on_start_of_turn: Callable[[], Awaitable[None]],
         on_interim: Optional[Callable[[str], Awaitable[None]]] = None,
+        eager_eot_threshold: Optional[float] = None,
     ):
+        if eager_eot_threshold is not None and not (
+            0.3 <= eager_eot_threshold <= 0.7
+        ):
+            raise ValueError(
+                "eager_eot_threshold must be between 0.3 and 0.7 for the "
+                "measurement slice so Flux's default final EOT threshold "
+                "is not changed"
+            )
+
         self._on_end_of_turn = on_end_of_turn
         self._on_start_of_turn = on_start_of_turn
         self._on_interim = on_interim
+        self._eager_eot_threshold = eager_eot_threshold
 
         self._api_key = os.getenv("DEEPGRAM_API_KEY", "")
         self._client: Optional[AsyncDeepgramClient] = None
@@ -75,6 +92,11 @@ class FluxService:
         self._frames_sent = 0
         self._bytes_sent = 0
         self._messages_seen = 0
+
+        # Phase 4A measurement state only. No transcript content is logged.
+        self._eager_started_at: Optional[float] = None
+        self._eager_turn_index: Optional[int] = None
+        self._eager_transcript: Optional[str] = None
 
     @property
     def is_active(self) -> bool:
@@ -99,11 +121,20 @@ class FluxService:
                 environment=deepgram_eu,
             )
 
-            self._cm = self._client.listen.v2.connect(
-                model="flux-general-en",
-                encoding="mulaw",
-                sample_rate=8000,
-            )
+            connect_kwargs = {
+                "model": "flux-general-en",
+                "encoding": "mulaw",
+                "sample_rate": 8000,
+            }
+            if self._eager_eot_threshold is not None:
+                # Deepgram documents threshold values as strings in the SDK
+                # examples. Do not alter eot_threshold here: Phase 4A measures
+                # eager lead without silently changing final-EOT behavior.
+                connect_kwargs["eager_eot_threshold"] = str(
+                    self._eager_eot_threshold
+                )
+
+            self._cm = self._client.listen.v2.connect(**connect_kwargs)
             self._connection = await self._cm.__aenter__()
 
             # Event names are the *values* of deepgram.core.events.EventType
@@ -125,6 +156,11 @@ class FluxService:
 
             self._running = True
             log.connected()
+            if self._eager_eot_threshold is not None:
+                log.info(
+                    "Eager EOT measurement enabled "
+                    f"threshold={self._eager_eot_threshold:.2f}"
+                )
 
         except Exception as e:
             log.error("Connection failed", e)
@@ -167,6 +203,7 @@ class FluxService:
     async def _cleanup(self) -> None:
         """Clean up resources."""
         self._running = False
+        self._clear_eager_measurement()
 
         if self._listener_task:
             self._listener_task.cancel()
@@ -185,6 +222,11 @@ class FluxService:
 
         self._connection = None
         self._client = None
+
+    def _clear_eager_measurement(self) -> None:
+        self._eager_started_at = None
+        self._eager_turn_index = None
+        self._eager_transcript = None
 
     async def _on_message(self, message, *args, **kwargs) -> None:
         """Handle Flux messages -- parse TurnInfo events."""
@@ -211,11 +253,63 @@ class FluxService:
                 event = _field(message, "event")
 
                 if event == "EndOfTurn":
-                    transcript = _field(message, "transcript", "") or ""
-                    await self._on_end_of_turn(transcript.strip())
+                    transcript = (_field(message, "transcript", "") or "").strip()
+                    if self._eager_started_at is not None:
+                        now = time.perf_counter()
+                        turn_index = _field(message, "turn_index")
+                        same_turn = (
+                            self._eager_turn_index is None
+                            or turn_index is None
+                            or turn_index == self._eager_turn_index
+                        )
+                        transcript_match = transcript == (
+                            self._eager_transcript or ""
+                        )
+                        lead_ms = (now - self._eager_started_at) * 1000
+                        log.info(
+                            "Eager EOT measurement: final "
+                            f"after {lead_ms:.1f}ms "
+                            f"turn_match={same_turn} "
+                            f"transcript_match={transcript_match} "
+                            f"transcript_chars={len(transcript)}"
+                        )
+                        self._clear_eager_measurement()
+
+                    await self._on_end_of_turn(transcript)
 
                 elif event == "StartOfTurn":
                     await self._on_start_of_turn()
+
+                elif (
+                    event == "EagerEndOfTurn"
+                    and self._eager_eot_threshold is not None
+                ):
+                    transcript = (_field(message, "transcript", "") or "").strip()
+                    self._eager_started_at = time.perf_counter()
+                    self._eager_turn_index = _field(message, "turn_index")
+                    self._eager_transcript = transcript
+                    log.info(
+                        "Eager EOT measurement: candidate "
+                        f"turn={self._eager_turn_index} "
+                        f"transcript_chars={len(transcript)}"
+                    )
+
+                elif (
+                    event == "TurnResumed"
+                    and self._eager_eot_threshold is not None
+                ):
+                    if self._eager_started_at is not None:
+                        elapsed_ms = (
+                            time.perf_counter() - self._eager_started_at
+                        ) * 1000
+                        log.info(
+                            "Eager EOT measurement: resumed "
+                            f"after {elapsed_ms:.1f}ms "
+                            f"turn={self._eager_turn_index}"
+                        )
+                    else:
+                        log.info("Eager EOT measurement: resumed without candidate")
+                    self._clear_eager_measurement()
 
                 elif event == "Update" and self._on_interim:
                     # Flux carries interim text on the same TurnInfo

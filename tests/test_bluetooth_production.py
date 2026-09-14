@@ -46,6 +46,18 @@ class FakeFlux:
         FakeFlux.instances.append(self)
 
 
+class EagerFakeFlux(FakeFlux):
+    def __init__(
+        self,
+        on_end_of_turn,
+        on_start_of_turn,
+        on_interim,
+        eager_eot_threshold,
+    ):
+        super().__init__(on_end_of_turn, on_start_of_turn, on_interim)
+        self.eager_eot_threshold = eager_eot_threshold
+
+
 class FakeAgent:
     instances = []
 
@@ -86,6 +98,7 @@ def settings():
 async def test_production_wiring_starts_pool_only_when_agent_is_built_and_stops_it():
     FakePool.instances.clear()
     FakeAgent.instances.clear()
+    FakeFlux.instances.clear()
     tracer = FakeTracer()
     captured = {}
 
@@ -134,6 +147,46 @@ async def test_production_wiring_starts_pool_only_when_agent_is_built_and_stops_
     assert agent.persona_id == "candidate"
     assert agent.settings.system_prompt == "test prompt"
     assert tracer.saved == ["bt-test"]
+
+
+@pytest.mark.asyncio
+async def test_eager_threshold_is_forwarded_only_on_explicit_measurement_path():
+    FakePool.instances.clear()
+    FakeAgent.instances.clear()
+    FakeFlux.instances.clear()
+    captured = {}
+
+    async def fake_runner(
+        session,
+        *,
+        flux_factory,
+        agent_factory,
+        stream_id,
+        call_id,
+    ):
+        captured["flux"] = flux_factory(
+            lambda text: asyncio.sleep(0),
+            lambda: asyncio.sleep(0),
+            lambda text: asyncio.sleep(0),
+        )
+
+    deps = BluetoothProductionDeps(
+        flux_cls=EagerFakeFlux,
+        tts_pool_cls=FakePool,
+        agent_cls=FakeAgent,
+        tracer_factory=FakeTracer,
+        settings_loader=settings,
+        conversation_runner=fake_runner,
+    )
+
+    await run_production_bluetooth_conversation(
+        DummySession(),
+        eager_eot_threshold=0.4,
+        deps=deps,
+    )
+
+    assert captured["flux"].eager_eot_threshold == 0.4
+    assert FakePool.instances[0].started == 0
 
 
 @pytest.mark.asyncio

@@ -5,8 +5,10 @@ numbers in context.md, plan.md and phase8-plan.md. Baseline implementation is
 [CURRENT_ARCHITECTURE](CURRENT_ARCHITECTURE.md).
 
 Phase 2 hardware-free Bluetooth boundary code and tests have now been implemented.
-No live PipeWire, D-Bus, active-call, provider, or SHUO pipeline integration has
-been added by Phase 2.
+Phase 3 real PipeWire capture/playback and AI-only route isolation were reference-
+validated. Remote revision `ae9d981eff861deb364bb8a34691d6008877860b` then
+added the first explicit Bluetooth→SHUO Phase 4 integration seam. Phase 4 is not
+accepted yet; realtime latency/correctness hardening and gate evidence remain.
 
 ## Phase status
 
@@ -14,31 +16,37 @@ been added by Phase 2.
 |---|---|---|
 | 1 | [Hardware/runtime contract](phases/PHASE_01_RUNTIME_CONTRACT.md) | Complete: supplied runtime evidence |
 | 2 | [Isolated adapter and codec](phases/PHASE_02_ADAPTER_AND_CODEC.md) | Complete for Phase 2 scope; production numeric queue/latency budget intentionally deferred to integrated measurement |
-| 3 | [PipeWire capture/playback integration](phases/PHASE_03_PIPEWIRE_INTEGRATION.md) | Complete on reference hardware; Phase 4 SHUO media integration and Phase 6 lifecycle ownership remain pending |
-| 4 | [SHUO conversation pipeline integration](phases/PHASE_04_SHUO_PIPELINE_INTEGRATION.md) | Planned / pending approval |
-| 5 | [Controlled cellular end-to-end validation](phases/PHASE_05_CELLULAR_E2E.md) | Planned / pending approval |
-| 6 | [Call control and lifecycle ownership](phases/PHASE_06_CALL_CONTROL_AND_LIFECYCLE.md) | Planned / pending approval |
-| 7 | [Resilience and coexistence](phases/PHASE_07_RESILIENCE_AND_COEXISTENCE.md) | Planned / pending approval |
-| 8 | [Release and operations](phases/PHASE_08_RELEASE_AND_OPERATIONS.md) | Planned / pending approval |
+| 3 | [PipeWire capture/playback integration](phases/PHASE_03_PIPEWIRE_INTEGRATION.md) | Complete on reference hardware; Phase 6 lifecycle ownership remains pending |
+| 4 | [SHUO conversation pipeline integration](phases/PHASE_04_SHUO_PIPELINE_INTEGRATION.md) | **In progress:** base integration exists; Phase 4A opt-in eager-turn measurement is being implemented; acceptance pending |
+| 5 | [Controlled cellular end-to-end validation](phases/PHASE_05_CELLULAR_E2E.md) | Planned / requires separate approval |
+| 6 | [Call control and lifecycle ownership](phases/PHASE_06_CALL_CONTROL_AND_LIFECYCLE.md) | Planned / requires separate approval |
+| 7 | [Resilience and coexistence](phases/PHASE_07_RESILIENCE_AND_COEXISTENCE.md) | Planned / requires separate approval |
+| 8 | [Release and operations](phases/PHASE_08_RELEASE_AND_OPERATIONS.md) | Planned / requires separate approval |
 
 ## Technical validation of sequencing
 
 Retain all eight boundaries.
 
-Phase 2 now separates deterministic adapter/codec work from Linux process/device
+Phase 2 separates deterministic adapter/codec work from Linux process/device
 variability with hardware-free code and tests. It implements Bluetooth format
 contracts, stateful conversion, capability-based target selection, explicit
 bounded-queue APIs, telephony fakes and minimum lifecycle rollback/cleanup.
 
-Phase 3 has implemented real PipeWire discovery, explicit capture/playback process
+Phase 3 implemented real PipeWire discovery, explicit capture/playback process
 ownership, AI-only physical-route isolation/restoration and bounded cleanup on the
 reference hardware. The 20-second lifecycle run was a validation harness, not a
-production duration. Default application startup still does not attach Bluetooth to
-the SHUO conversation/call lifecycle; that remains a later integration boundary.
+production duration.
 
-Phase 4 must address the existing carrier-specific session, checkpoint, recording
-and history assumptions (`CarrierSession`, `run_conversation`) without copying the
-browser PCM path. Phase 5 measures the actual cellular path.
+Phase 4 now has a remote base integration seam: the explicit manual runner builds
+the Phase-3 session and wires Bluetooth media to the SHUO state/Agent/Flux/TTS
+pipeline without changing default `main.py`. Phase 4 still owns correctness and
+latency hardening around that seam. The realtime implementation plan is
+[PHASE_04_REALTIME_LATENCY_IMPLEMENTATION](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md).
+
+Phase 4A is measurement only: optional Flux eager-turn telemetry is disabled by
+default and must not start LLM/TTS early. Later speculative generation remains
+gated on measured eager lead/resume behavior and tests proving no stale history or
+speech. Phase 5 remains the owner of actual caller mouth-to-ear acceptance data.
 
 Phase 1 supplied evidence includes exposed `org.pipewire.Telephony.Call1` and
 `org.ofono.VoiceCall` interfaces and successfully exercised manual D-Bus Answer
@@ -47,7 +55,9 @@ lifecycle reconciliation, reconnect and general-device compatibility remain
 unimplemented/unverified. Phase 6 is still required; manual control success does
 not complete it.
 
-Phase 7 validates faults/coexistence before Phase 8 packages a supported release.
+Phase 7 validates faults, concurrency, overload and coexistence before Phase 8
+packages a supported release. Load-safety mechanisms can be designed earlier,
+but 1/5/10/25/50-session qualification belongs to Phase 7.
 
 Minimum lifecycle ownership and partial-start rollback began in Phase 2. Phase 5
 still requires a tested manual phone hangup/abort path. Phase 6 remains the full
@@ -57,7 +67,7 @@ If Phase 3 HFP streams only exist during calls, separate call authorization is
 required for a narrowly controlled stream test; device-only scope does not imply
 call permission.
 
-The future live PipeWire adapter alone may be Linux-specific, isolated and optional
+The live PipeWire adapter alone may be Linux-specific, isolated and optional
 behind an injected OS boundary. Core/carrier Windows/Linux portability and Windows
 development/startup remain unchanged; default production entrypoints must neither
 import nor start the adapter.
@@ -84,7 +94,7 @@ dependency has been approved.
 
 The queue API is bounded and requires an explicit capacity/overflow policy, but
 Phase 2 intentionally does not hard-code a production numeric queue budget.
-Phase 3 must measure and approve that runtime budget.
+Phase 3/integrated measurement owns runtime calibration.
 
 ## Per-phase contracts and acceptance
 
@@ -93,7 +103,8 @@ Phase 3 must measure and approve that runtime budget.
    bounded queue semantics, lifecycle rollback and hardware-free tests.
 3. Phase 3 accepts explicit negotiated stream targeting, real PipeWire I/O and
    cleanup evidence.
-4. Phase 4 accepts injected pipeline integration and preserved regression behavior.
+4. Phase 4 accepts injected pipeline integration, low-latency turn correctness and
+   preserved regression behavior. Code existence alone is insufficient.
 5. Phase 5 accepts authorized digital cellular duplex, latency/echo and abort evidence.
 6. Phase 6 accepts verified control capability and complete lifecycle fault coverage.
 7. Phase 7 accepts resilience, concurrency, privacy/security and coexistence evidence.
@@ -111,12 +122,12 @@ decisions together when phase evidence/status changes.
 
 Every move to a later phase requires explicit task authorization after reviewing
 the preceding gate. Phase planning/completion is not approval for dependency
-changes, live device/provider access, phone control, real calls, deployment,
-commit/push, or later-phase implementation.
+changes, live device/provider access, phone control, real calls, deployment or
+later-phase implementation.
 
-Rollback normally means disabling optional Bluetooth, stopping owned resources
-and restoring previous routes/config; phase-specific procedures are linked above.
-Default carrier and browser operation must survive that rollback.
+Rollback normally means disabling optional Bluetooth/eager/speculative features,
+stopping owned resources and restoring previous routes/config; carrier and browser
+operation must survive that rollback.
 
 ## Phase 3 evidence summary
 
@@ -128,8 +139,7 @@ Base implementation revision:
 
 Closeout changes after that base add AI-only route isolation/session resources,
 capture shutdown draining, bounded route-restore retry, and safe handling when
-selected BlueZ call ports disappear during hangup. Record the final closeout
-revision after this code/docs change set is committed.
+selected BlueZ call ports disappear during hangup.
 
 Executed evidence:
 
@@ -150,8 +160,20 @@ Executed evidence:
 - Latest full root suite: **826 passed, 4 failed, 4 warnings**
 - The four failures match the documented pre-existing baseline identities
 
-Phase 3 is complete for its defined reference-hardware gate. The next integration
-boundary is Phase 4: connect Bluetooth media to the existing SHUO conversation
-pipeline without changing carrier/browser defaults. Phase 6 still owns complete
-automated call-control and lifecycle behavior, while reconnect/soak/coexistence
-qualification remains in the resilience phases.
+Phase 3 is complete for its defined reference-hardware gate.
+
+## Phase 4 current evidence/status
+
+Remote base integration revision:
+
+```text
+ae9d981eff861deb364bb8a34691d6008877860b
+```
+
+That revision added an explicit manual Bluetooth-AI runner, Bluetooth conversation
+orchestration/production wiring and focused tests. Its commit message explicitly
+noted remaining issues, and the older docs were not advanced at the time.
+
+Current `phase4-realtime-latency` work adds the documented Phase 4A measurement
+slice only. Until focused tests and separately authorized runtime evidence are
+recorded, do not mark Phase 4 complete and do not infer sub-500 ms caller latency.

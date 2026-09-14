@@ -49,11 +49,12 @@ class Recorder:
         self.starts: int = 0
         self.interims: list = []
 
-    def service(self) -> FluxService:
+    def service(self, *, eager_eot_threshold=None) -> FluxService:
         return FluxService(
             on_end_of_turn=self._end,
             on_start_of_turn=self._start,
             on_interim=self._interim,
+            eager_eot_threshold=eager_eot_threshold,
         )
 
     async def _end(self, transcript: str) -> None:
@@ -97,10 +98,55 @@ class TestTurnInfoAsDict:
         assert rec.interims == ["half a sen"]
 
     @pytest.mark.asyncio
-    async def test_eager_end_of_turn_does_not_end_the_turn(self, rec):
-        """EagerEndOfTurn is a maybe; TurnResumed can still retract it."""
-        await rec.service()._on_message(_turn_info("EagerEndOfTurn", "hello"))
+    async def test_eager_end_of_turn_is_ignored_when_feature_is_off(self, rec):
+        """Feature-off must preserve the historical ignore behavior exactly."""
+        service = rec.service()
+        await service._on_message(_turn_info("EagerEndOfTurn", "hello"))
+        await service._on_message(_turn_info("TurnResumed", "hello again"))
         assert rec.ends == []
+        assert service._eager_started_at is None
+        assert service._eager_transcript is None
+
+    @pytest.mark.asyncio
+    async def test_enabled_eager_end_of_turn_does_not_end_the_turn(self, rec):
+        """EagerEndOfTurn is a maybe; TurnResumed can still retract it."""
+        service = rec.service(eager_eot_threshold=0.4)
+        await service._on_message(_turn_info("EagerEndOfTurn", "hello"))
+        assert rec.ends == []
+        assert service._eager_started_at is not None
+
+    @pytest.mark.asyncio
+    async def test_eager_then_final_commits_only_the_final_turn(self, rec):
+        service = rec.service(eager_eot_threshold=0.4)
+        await service._on_message(_turn_info("EagerEndOfTurn", "hello"))
+        await service._on_message(_turn_info("EndOfTurn", "hello"))
+
+        assert rec.ends == ["hello"]
+        assert service._eager_started_at is None
+        assert service._eager_transcript is None
+
+    @pytest.mark.asyncio
+    async def test_turn_resumed_clears_eager_candidate_without_committing(self, rec):
+        service = rec.service(eager_eot_threshold=0.4)
+        await service._on_message(_turn_info("EagerEndOfTurn", "hello"))
+        await service._on_message(_turn_info("TurnResumed", "hello again"))
+
+        assert rec.ends == []
+        assert service._eager_started_at is None
+        assert service._eager_transcript is None
+
+
+class TestEagerConfiguration:
+    def test_measurement_threshold_accepts_documented_safe_range(self, rec):
+        assert rec.service(eager_eot_threshold=0.3)._eager_eot_threshold == 0.3
+        assert rec.service(eager_eot_threshold=0.7)._eager_eot_threshold == 0.7
+
+    @pytest.mark.parametrize("value", [0.29, 0.71])
+    def test_measurement_threshold_rejects_values_that_change_final_eot_assumption(
+        self, rec, value
+    ):
+        with pytest.raises(ValueError, match="between 0.3 and 0.7"):
+            rec.service(eager_eot_threshold=value)
 
 
 class TestTurnInfoAsModel:
