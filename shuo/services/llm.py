@@ -96,12 +96,28 @@ class LLMService:
                 {"role": "system", "content": self._system_prompt}
             ] + self._history
             
+            model = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
+
+            extra_body = {}
+
+            if model.startswith("openai/gpt-oss"):
+                extra_body = {
+                    "reasoning_effort": "low",
+                    "include_reasoning": False,
+                }
+
+            elif model == "qwen/qwen3.6-27b":
+                extra_body = {
+                    "reasoning_effort": "none",
+                }
+
             stream = await self._client.chat.completions.create(
-                model=os.getenv("LLM_MODEL", "llama-3.3-70b-versatile"),
+                model=model,
                 messages=messages,
                 stream=True,
                 max_tokens=500,
                 temperature=0.7,
+                extra_body=extra_body,
             )
             
             async for chunk in stream:

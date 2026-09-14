@@ -521,118 +521,139 @@ class PwCatCaptureEndpoint(_PwCatBase):
 
 
 class PwCatPlaybackEndpoint(_PwCatBase):
-    """
-    Phone uplink playback only.
+    """Phone uplink playback without a second realtime clock."""
 
-    A bounded local queue exists so clear() can discard audio that has not yet
-    been handed to pw-cat. Bytes already written to the OS/process pipe cannot be
-    truthfully claimed as retractable.
-    """
+    _FRAME_SECONDS = 0.020
+    _FRAME_BYTES = 640
+    _SILENCE_FRAME = b"\x00" * _FRAME_BYTES
+    _FALLBACK_PREROLL_CHUNKS = 3
+    _MIN_IDLE_RESET_SECONDS = 0.120
 
-    def __init__(
-        self,
-        target: PipeWireTarget,
-        runner: ProcessRunner,
-        config: PwCatConfig,
-        *,
-        system_name: Optional[str] = None,
-    ):
-        super().__init__(
-            target,
-            runner,
-            config,
-            system_name=system_name,
-        )
+    def __init__(self, target, runner, config, *, system_name: Optional[str] = None):
+        super().__init__(target, runner, config, system_name=system_name)
         self._queue: BoundedAudioQueue | None = None
         self._writer_task: asyncio.Task[None] | None = None
+        self._pending = bytearray()
+        self._pending_chunks = 0
+        self._primed = False
+        self._playback_lock = asyncio.Lock()
+
+    def _configured_latency_seconds(self) -> float | None:
+        value = self._config.latency.strip().lower()
+        try:
+            if value.endswith("ms"):
+                seconds = float(value[:-2]) / 1000.0
+            elif value.endswith("s"):
+                seconds = float(value[:-1])
+            else:
+                return None
+        except ValueError:
+            return None
+        return seconds if seconds > 0 else None
+
+    def _preroll_chunks(self) -> int:
+        seconds = self._configured_latency_seconds()
+        if seconds is None:
+            return self._FALLBACK_PREROLL_CHUNKS
+        chunks = int((seconds + self._FRAME_SECONDS - 1e-12) / self._FRAME_SECONDS)
+        return max(1, chunks)
+
+    def _idle_reset_seconds(self) -> float:
+        seconds = self._configured_latency_seconds()
+        if seconds is None:
+            return self._MIN_IDLE_RESET_SECONDS
+        return max(self._MIN_IDLE_RESET_SECONDS, seconds * 2.0)
 
     async def start(self) -> None:
         if self.running:
             return
-
+        self._pending.clear(); self._pending_chunks = 0; self._primed = False
         self._queue = BoundedAudioQueue(
             max_frames=self._config.playback_queue_chunks,
             overflow_policy=self._config.playback_overflow_policy,
         )
-
         try:
-            await self._start_process(
-                direction=StreamDirection.UPLINK,
-                stdin=True,
-                stdout=False,
-            )
+            await self._start_process(direction=StreamDirection.UPLINK, stdin=True, stdout=False)
             self._writer_task = asyncio.create_task(self._writer_loop())
         except BaseException:
             if self._queue is not None:
-                self._queue.close()
-                self._queue = None
-            await self._stop_process()
-            raise
+                self._queue.close(); self._queue = None
+            self._pending.clear(); self._pending_chunks = 0; self._primed = False
+            await self._stop_process(); raise
 
     async def write(self, audio: bytes) -> None:
         if not audio:
             return
-
         queue = self._queue
-
         if not self.running or queue is None:
             raise PipeWireStreamError("playback is not started")
-
-        accepted = queue.put_nowait(audio)
-
-        if not accepted:
+        if not queue.put_nowait(audio):
             raise PipeWireStreamError(
                 "playback queue full; configured overflow policy rejected new audio"
             )
 
     async def clear(self) -> None:
         queue = self._queue
-        if queue is not None:
-            queue.clear()
+        async with self._playback_lock:
+            if queue is not None:
+                queue.clear()
+            self._pending.clear(); self._pending_chunks = 0; self._primed = False
+
+    async def _write_to_pw_cat(self, writer, data: bytes) -> None:
+        if not data:
+            return
+        writer.write(data)
+        try:
+            await writer.drain()
+        except (BrokenPipeError, ConnectionResetError) as exc:
+            raise ProcessExitedError("pw-cat playback pipe closed") from exc
+        proc = self._proc
+        if proc is not None and proc.returncode is not None:
+            raise ProcessExitedError(f"pw-cat playback exited with code {proc.returncode}")
 
     async def _writer_loop(self) -> None:
-        proc = self._proc
-        queue = self._queue
-
+        proc = self._proc; queue = self._queue
         if proc is None or proc.stdin is None or queue is None:
             raise PipeWireStreamError("playback process is not writable")
-
         writer = proc.stdin
-
+        preroll_chunks = self._preroll_chunks()
+        idle_reset_seconds = self._idle_reset_seconds()
         try:
             while True:
-                data = await queue.get()
-                writer.write(data)
-                await writer.drain()
-
-                if proc.returncode is not None:
-                    raise ProcessExitedError(
-                        f"pw-cat playback exited with code {proc.returncode}"
-                    )
-
+                if not self._primed:
+                    data = await queue.get()
+                    async with self._playback_lock:
+                        self._pending.extend(data); self._pending_chunks += 1
+                        if self._pending_chunks < preroll_chunks:
+                            continue
+                        burst = self._SILENCE_FRAME + bytes(self._pending)
+                        self._pending.clear(); self._pending_chunks = 0; self._primed = True
+                    await self._write_to_pw_cat(writer, burst)
+                    continue
+                try:
+                    data = await asyncio.wait_for(queue.get(), timeout=idle_reset_seconds)
+                except TimeoutError:
+                    async with self._playback_lock:
+                        self._primed = False; self._pending.clear(); self._pending_chunks = 0
+                    continue
+                await self._write_to_pw_cat(writer, data)
         except QueueClosedError:
             return
 
     async def stop(self) -> None:
-        queue = self._queue
-        self._queue = None
-
+        queue = self._queue; self._queue = None
         if queue is not None:
             queue.close()
-
-        task = self._writer_task
-        self._writer_task = None
-
+        task = self._writer_task; self._writer_task = None
         if task is not None and not task.done():
             task.cancel()
             try:
                 await task
             except asyncio.CancelledError:
                 pass
-
+        async with self._playback_lock:
+            self._pending.clear(); self._pending_chunks = 0; self._primed = False
         proc = self._proc
-
-        # Close stdin first so pw-cat can exit naturally before terminate().
         if proc is not None and proc.stdin is not None:
             try:
                 proc.stdin.close()
@@ -641,7 +662,6 @@ class PwCatPlaybackEndpoint(_PwCatBase):
                     await wait_closed()
             except (BrokenPipeError, ConnectionResetError):
                 pass
-
         await self._stop_process()
 
 

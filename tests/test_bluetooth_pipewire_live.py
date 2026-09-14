@@ -368,3 +368,40 @@ async def test_repeated_stop_is_idempotent():
     await endpoint.stop()
 
     assert proc.terminate_calls <= 1
+
+
+@pytest.mark.asyncio
+async def test_playback_does_not_run_a_second_idle_silence_clock():
+    proc = FakeProcess(with_stdin=True); runner = FakeSpawnRunner(proc)
+    endpoint = PwCatPlaybackEndpoint(_target(StreamDirection.UPLINK), runner, PwCatConfig(latency="120ms", playback_queue_chunks=8, playback_overflow_policy=OverflowPolicy.REJECT_NEW), system_name="Linux")
+    await endpoint.start(); await asyncio.sleep(0.070)
+    assert proc.stdin.writes == []
+    await endpoint.stop()
+
+
+@pytest.mark.asyncio
+async def test_playback_primes_120ms_as_one_burst_without_local_pacing():
+    proc = FakeProcess(with_stdin=True); runner = FakeSpawnRunner(proc)
+    endpoint = PwCatPlaybackEndpoint(_target(StreamDirection.UPLINK), runner, PwCatConfig(latency="120ms", playback_queue_chunks=8, playback_overflow_policy=OverflowPolicy.REJECT_NEW), system_name="Linux")
+    await endpoint.start()
+    chunks = [b"A" * 638] + [bytes([66 + i]) * 640 for i in range(5)]
+    for chunk in chunks: await endpoint.write(chunk)
+    for _ in range(4): await asyncio.sleep(0)
+    assert len(proc.stdin.writes) == 1
+    assert proc.stdin.writes[0] == b"\x00" * 640 + b"".join(chunks)
+    await endpoint.stop()
+
+
+@pytest.mark.asyncio
+async def test_playback_after_prime_forwards_next_chunk_immediately():
+    proc = FakeProcess(with_stdin=True); runner = FakeSpawnRunner(proc)
+    endpoint = PwCatPlaybackEndpoint(_target(StreamDirection.UPLINK), runner, PwCatConfig(latency="40ms", playback_queue_chunks=8, playback_overflow_policy=OverflowPolicy.REJECT_NEW), system_name="Linux")
+    await endpoint.start()
+    first=b"A"*638; second=b"B"*640
+    await endpoint.write(first); await endpoint.write(second)
+    for _ in range(4): await asyncio.sleep(0)
+    assert proc.stdin.writes == [b"\x00"*640 + first + second]
+    third=b"C"*640; await endpoint.write(third)
+    for _ in range(4): await asyncio.sleep(0)
+    assert proc.stdin.writes[-1] == third and len(proc.stdin.writes) == 2
+    await endpoint.stop()

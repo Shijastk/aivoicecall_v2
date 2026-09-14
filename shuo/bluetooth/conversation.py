@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import time
 from typing import Awaitable, Callable, Optional, Protocol, Union
 
 from ..state import process_event
+from ..log import get_logger
 from ..types import (
     AgentTurnDoneEvent,
     AppState,
@@ -23,6 +25,8 @@ from .shuo_media import BluetoothOutboundMedia
 
 
 EVENT_QUEUE_CAPACITY = 256
+
+_latency_log = get_logger("shuo.bluetooth.latency")
 
 
 class BluetoothFlux(Protocol):
@@ -87,10 +91,19 @@ async def run_bluetooth_conversation(
     reader_task: Optional[asyncio.Task[None]] = None
     session_started = False
 
+    last_flux_eot_at: Optional[float] = None
+
     async def on_flux_end_of_turn(transcript: str) -> None:
+        nonlocal last_flux_eot_at
+        last_flux_eot_at = time.perf_counter()
+        _latency_log.info(
+            "BTLatency: Flux EndOfTurn received transcript_chars=%d",
+            len(transcript),
+        )
         await event_queue.put(FluxEndOfTurnEvent(transcript=transcript))
 
     async def on_flux_start_of_turn() -> None:
+        _latency_log.info("BTLatency: Flux StartOfTurn received")
         await event_queue.put(FluxStartOfTurnEvent())
 
     async def on_flux_interim(_transcript: str) -> None:
@@ -153,6 +166,18 @@ async def run_bluetooth_conversation(
                     await flux.send(action.audio_bytes)
 
                 elif isinstance(action, StartAgentTurnAction):
+                    if last_flux_eot_at is None:
+                        _latency_log.info(
+                            "BTLatency: Agent start requested without recorded Flux EndOfTurn"
+                        )
+                    else:
+                        eot_to_agent_ms = (
+                            time.perf_counter() - last_flux_eot_at
+                        ) * 1000.0
+                        _latency_log.info(
+                            "BTLatency: Flux EndOfTurn -> Agent start %.1fms",
+                            eot_to_agent_ms,
+                        )
                     await agent.start_turn(action.transcript)
 
                 elif isinstance(action, ResetAgentTurnAction):
