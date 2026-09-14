@@ -98,7 +98,17 @@ class TestTurnInfoAsDict:
         assert rec.interims == ["half a sen"]
 
     @pytest.mark.asyncio
-    async def test_eager_end_of_turn_does_not_end_the_turn(self, rec):
+    async def test_eager_end_of_turn_is_ignored_when_feature_is_off(self, rec):
+        """Feature-off must preserve the historical ignore behavior exactly."""
+        service = rec.service()
+        await service._on_message(_turn_info("EagerEndOfTurn", "hello"))
+        await service._on_message(_turn_info("TurnResumed", "hello again"))
+        assert rec.ends == []
+        assert service._eager_started_at is None
+        assert service._eager_transcript is None
+
+    @pytest.mark.asyncio
+    async def test_enabled_eager_end_of_turn_does_not_end_the_turn(self, rec):
         """EagerEndOfTurn is a maybe; TurnResumed can still retract it."""
         service = rec.service(eager_eot_threshold=0.4)
         await service._on_message(_turn_info("EagerEndOfTurn", "hello"))
