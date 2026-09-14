@@ -1,6 +1,6 @@
 # Bluetooth Phase 4 realtime latency implementation plan
 
-**Status: IN PROGRESS — Phase 4A measurement slice authorized 2026-09-14.**
+**Status: IN PROGRESS — Phase 4A offline gate passed 2026-09-14; live eager-lead measurement pending separate authorization.**
 
 This plan is subordinate to `AGENTS.md`, `CLAUDE.md`, `rules.md`, the Bluetooth
 roadmap and the existing Phase 4 contract. It does not authorize Phase 5 live-call
@@ -162,6 +162,37 @@ Then the Bluetooth-focused selection:
 Only after those pass should an authorized full root regression be run. Compare
 failures by identity/signature against the four recorded historical failures; do
 not treat an equal failure count as proof of no regression.
+
+### Phase 4A executed offline evidence — 2026-09-14
+
+Task-owner executed the verification from the detached worktree at branch commit
+`630e2f65ff0b2be5aa798f3f026e7697d8848c7d` using the existing project Python 3.12
+virtual environment. No live provider/device/call action was part of these runs.
+
+Focused selection:
+
+```text
+26 passed, 3 warnings in 0.96s
+```
+
+Bluetooth-focused selection:
+
+```text
+77 passed, 3 warnings in 1.33s
+```
+
+Warnings are the already-known deprecations only:
+
+```text
+websockets.client.WebSocketClientProtocol is deprecated
+websockets.legacy is deprecated
+audioop is deprecated and slated for removal in Python 3.13
+```
+
+No new test failure identity was observed in these Phase 4A offline selections.
+This passes the offline portion of the 4A gate only. It does **not** prove eager
+lead, resume rate, provider behavior, caller mouth-to-ear latency or Phase 4
+acceptance. Those remain pending controlled runtime evidence.
 
 A live measurement is **not** part of offline verification and must not be run
 implicitly. When a controlled active call/provider/device exercise is explicitly
