@@ -557,3 +557,142 @@ latency is claimed. Full scope and limits are owned by the
 [Phase 4 validation record](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#final-controlled-tts-warm-pool-validation--2026-09-14).
 This documentation-only update ran `git diff --check`; tests and live calls were
 not rerun. Historical offline results and prior live failures remain preserved.
+
+## Earlier shadow transcript regression — 2026-09-15
+
+Executed in the existing Python 3.12 virtual environment, with dotenv loading
+explicitly disabled. No dependencies installed, private call data inspected,
+live calls/devices/provider probes run, or unrelated failures fixed.
+
+```bash
+PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m pytest -q \
+  tests/test_bluetooth_speculative.py tests/test_flux.py \
+  tests/test_bluetooth_production.py tests/test_bluetooth_conversation.py \
+  -p no:cacheprovider
+PYTHON_DOTENV_DISABLED=1 ./scripts/dev/04_test_bluetooth.sh
+PYTHON_DOTENV_DISABLED=1 ./scripts/dev/05_test_full.sh
+git diff --check
+```
+
+Results:
+
+- Focused: **56 passed, 3 warnings in 1.84s**.
+- Bluetooth: **108 passed, 3 warnings in 2.37s**.
+- Full root suite: **918 passed, 4 failed, 4 warnings in 25.11s**.
+- `git diff --check`: passed.
+
+Exact baseline failure comparison (same identities and signatures as the
+2026-09-14 startup-readiness review run; no new failure):
+
+| Test identity | Observed signature |
+|---|---|
+| `scripts/test_v2_keys.py::test_shunya_key` | `async def functions are not natively supported` (unmarked async; body not executed) |
+| `scripts/test_v2_keys.py::test_azure_key` | Same unsupported unmarked async signature |
+| `tests/test_config_api.py::TestIsolation::test_the_call_server_has_no_config_routes` | `AttributeError: '_IncludedRouter' object has no attribute 'path'` at line 968 |
+| `tests/test_test_call.py::TestTheProcessSplitSurvives::test_the_call_server_has_no_test_call_routes` | Same `_IncludedRouter.path` AttributeError at line 1480 |
+
+Warnings remain the existing audioop, websockets client/legacy and (full suite)
+Starlette/AnyIO BlockingPortal deprecations.
+
+New injected coverage includes repeated-Update admission, minimum duration/size/
+word limits, extension/replacement/empty deletion, resume and attempt budgeting,
+matching eager deduplication, first-token lead metrics without text logging,
+final match/mismatch, late completion after cancellation, slow stream closure
+without overlapping requests or repeated cancellation, capacity exhaustion and
+bounded retry/eager fallback, timeout/error fallback, post-final suppression,
+cleanup, and real ShadowLLMProbe stream closure/history isolation. Real Flux
+message dispatch is exercised with dict and model shapes. Conversation wiring
+proves Updates cannot start/cancel the normal Agent or play audio and final EOT
+still starts the ordinary Agent under both shadow readiness and capacity failure.
+Production tests cover explicit early/eager-only flags and dependency injection.
+
+These are offline correctness and wiring results, sufficient to propose a
+controlled shadow live comparison. They establish no live readiness distribution,
+provider cancellation latency/load, completed-answer availability or Phase 4C
+readiness. The [Phase 4 record](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#earlier-shadow-transcript-experiment--2026-09-15)
+owns the admission rule and the next evidence gate.
+
+## Phase 4B.1 admission diagnostic regression — 2026-09-15
+
+Executed in the existing Python 3.12 environment with dotenv disabled; no new
+dependencies or live device/provider/call actions. The reviewed live log was
+processed only through allowlisted event/count/timing metadata extraction.
+
+```bash
+PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m pytest -q \
+  tests/test_bluetooth_speculative.py tests/test_flux.py \
+  tests/test_bluetooth_production.py tests/test_bluetooth_conversation.py \
+  -p no:cacheprovider
+PYTHON_DOTENV_DISABLED=1 ./scripts/dev/04_test_bluetooth.sh
+PYTHON_DOTENV_DISABLED=1 ./scripts/dev/05_test_full.sh
+git diff --check
+```
+
+Final results: focused **68 passed, 3 warnings in 1.82s**; Bluetooth **115 passed,
+3 warnings in 2.39s**; full root **930 passed, 4 failed, 4 warnings in 25.08s**;
+`git diff --check` passed. An earlier diagnostic run before the empty-Update
+refinement recorded focused 67, Bluetooth 114 and full 929 passes with the same
+four failures; the final rerun covers the refined diagnostic counters too.
+
+The four full-suite failures match the prior baseline by identity and signature:
+
+| Test identity | Signature |
+|---|---|
+| `scripts/test_v2_keys.py::test_shunya_key` | `async def functions are not natively supported` |
+| `scripts/test_v2_keys.py::test_azure_key` | Same unsupported unmarked async signature |
+| `tests/test_config_api.py::TestIsolation::test_the_call_server_has_no_config_routes` | `AttributeError: '_IncludedRouter' object has no attribute 'path'`, line 968 |
+| `tests/test_test_call.py::TestTheProcessSplitSurvives::test_the_call_server_has_no_test_call_routes` | Same `_IncludedRouter.path` AttributeError, line 1480 |
+
+No unrelated failures were fixed. Warnings remain audioop, websockets client/
+legacy and full-suite Starlette/AnyIO deprecations. Diagnostic coverage separates
+changing Updates, short/empty transcripts, insufficient repeat span, eager-first
+blocking and successful interim admission; it checks pending cancellation,
+cooldown, budget and turn resets, content-free logs, receipt without callback,
+empty filtering, callback returns and feature-off behavior. Real Flux-to-Bluetooth
+wiring continues to prove that final Agent execution is preserved with successful
+shadow work and capacity failure. Existing cancellation/history tests pass.
+These are offline results; the next controlled run must measure the actual
+admission blocker before any tuning or Phase 4C consideration.
+
+## Phase 4B.1 100ms admission regression — 2026-09-15
+
+Executed in the existing Python 3.12 environment with dotenv disabled. Before
+behavior changes, the focused diagnostic baseline passed: **68 passed, 3 warnings
+in 1.83s**. After the revision, ran:
+
+```bash
+PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m pytest -q \
+  tests/test_bluetooth_speculative.py tests/test_flux.py \
+  tests/test_bluetooth_production.py tests/test_bluetooth_conversation.py \
+  -p no:cacheprovider
+PYTHON_DOTENV_DISABLED=1 ./scripts/dev/04_test_bluetooth.sh
+PYTHON_DOTENV_DISABLED=1 ./scripts/dev/05_test_full.sh
+git diff --check
+```
+
+- Focused: **78 passed, 3 warnings in 1.83s**.
+- Bluetooth: **125 passed, 3 warnings in 2.43s**.
+- Full root: **940 passed, 4 failed, 4 warnings in 25.28s**.
+- `git diff --check`: passed.
+
+The full-suite failures match the prior diagnostic baseline by identity/signature:
+
+| Test identity | Signature |
+|---|---|
+| `scripts/test_v2_keys.py::test_shunya_key` | `async def functions are not natively supported` (body not executed) |
+| `scripts/test_v2_keys.py::test_azure_key` | Same unsupported unmarked async signature |
+| `tests/test_config_api.py::TestIsolation::test_the_call_server_has_no_config_routes` | `AttributeError: '_IncludedRouter' object has no attribute 'path'`, line 968 |
+| `tests/test_test_call.py::TestTheProcessSplitSurvives::test_the_call_server_has_no_test_call_routes` | Same `_IncludedRouter.path` AttributeError, line 1480 |
+
+No unrelated fixes. Warnings remain audioop, websockets client/legacy and full-suite
+Starlette/AnyIO deprecations. Ten new parameterized cases cover the 99/100ms
+boundary, 111.629ms admission, measured turn-5 ordering and subsequent invalidation,
+matching-eager single-request preservation, measured turn-6 cooldown and cross-turn
+continuity, repeated tiny mutations under budget, and positive 259ms token lead
+rejected by mismatched final/eager or resume. Existing slow-close/stale-completion,
+capacity/error/timeout, history isolation and real Flux-to-Bluetooth final Agent
+wiring tests remain passing. Test text is synthetic; only timing metadata came
+from the authorized diagnostic log. No live calls/devices/providers or new
+dependencies. The [Phase 4 record](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#phase-4b1-admission-revision--2026-09-15)
+owns the timing evidence, rule tradeoffs and next controlled test; useful live
+readiness is not established and Phase 4C remains deferred.

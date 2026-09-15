@@ -55,6 +55,11 @@ class FluxService:
     provider request and callback behavior are unchanged. When set, Flux emits
     EagerEndOfTurn/TurnResumed events; this service records sanitized timing
     only. It does NOT start the agent early in this phase.
+
+    ``include_empty_interims`` is opt-in deletion notification for consumers
+    tracking tentative transcripts. Default monitor behavior is unchanged.
+    ``diagnose_updates`` records content-free receipt/dispatch counters only;
+    it is enabled by the isolated Bluetooth early-shadow experiment.
     """
 
     def __init__(
@@ -65,6 +70,8 @@ class FluxService:
         on_eager_end_of_turn: Optional[Callable[[str], Awaitable[None]]] = None,
         on_turn_resumed: Optional[Callable[[], Awaitable[None]]] = None,
         eager_eot_threshold: Optional[float] = None,
+        include_empty_interims: bool = False,
+        diagnose_updates: bool = False,
     ):
         if eager_eot_threshold is not None and not (
             0.3 <= eager_eot_threshold <= 0.7
@@ -78,6 +85,9 @@ class FluxService:
         self._on_end_of_turn = on_end_of_turn
         self._on_start_of_turn = on_start_of_turn
         self._on_interim = on_interim
+        self._include_empty_interims = include_empty_interims
+        self._diagnose_updates = diagnose_updates
+        self._update_count = 0
         self._on_eager_end_of_turn = on_eager_end_of_turn
         self._on_turn_resumed = on_turn_resumed
         self._eager_eot_threshold = eager_eot_threshold
@@ -255,6 +265,15 @@ class FluxService:
 
             if msg_type == "TurnInfo":
                 event = _field(message, "event")
+                if self._diagnose_updates and event in (
+                    "StartOfTurn", "Update", "EagerEndOfTurn", "TurnResumed", "EndOfTurn",
+                ):
+                    if event == "Update":
+                        self._update_count += 1
+                    log.info(
+                        f"BTShadowFlux: event={event} update_count={self._update_count} "
+                        f"callback_present={self._on_interim is not None}"
+                    )
 
                 if event == "EndOfTurn":
                     transcript = (_field(message, "transcript", "") or "").strip()
@@ -323,8 +342,18 @@ class FluxService:
                     # Flux carries interim text on the same TurnInfo
                     # message; there is no separate v1-style `Results`.
                     transcript = _field(message, "transcript", "") or ""
-                    if transcript:
+                    if transcript or self._include_empty_interims:
                         await self._on_interim(transcript.strip())
+                        if self._diagnose_updates:
+                            log.info(
+                                "BTShadowFlux: event=Update_callback_returned "
+                                f"update_count={self._update_count}"
+                            )
+                    elif self._diagnose_updates:
+                        log.info(
+                            "BTShadowFlux: event=Update_empty_filtered "
+                            f"update_count={self._update_count}"
+                        )
 
         except Exception as e:
             log.error("Message handling failed", e)

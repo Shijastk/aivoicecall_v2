@@ -332,3 +332,43 @@ async def test_agent_creation_waits_for_real_pool_readiness(monkeypatch, outcome
         await asyncio.gather(task, return_exceptions=True)
     assert all(tts.cancelled for tts in instances)
     assert tracer.saved == ["startup-test"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("early", [False, True])
+async def test_shadow_early_production_flag_is_explicit_and_preserves_eager_mode(early):
+    captured = {}
+
+    class Probe:
+        def __init__(self, **kwargs):
+            captured["probe"] = kwargs
+
+    class Flux:
+        def __init__(self, **kwargs):
+            captured["flux"] = kwargs
+
+    async def runner(session, *, flux_factory, agent_factory, speculation_factory, **kwargs):
+        flux_factory(lambda text: None, lambda: None, lambda text: None, lambda text: None, lambda: None)
+        agent = await agent_factory(object(), lambda checkpoint: None)
+        coordinator = speculation_factory(agent)
+        assert coordinator._early_transcripts is early
+        await coordinator.cleanup()
+
+    await run_production_bluetooth_conversation(
+        DummySession(), settings=settings(), shadow_speculation=True,
+        shadow_early_transcripts=early, eager_eot_threshold=0.3,
+        deps=BluetoothProductionDeps(
+            flux_cls=Flux, shadow_probe_cls=Probe, tts_pool_cls=FakePool,
+            agent_cls=FakeAgent, tracer_factory=FakeTracer, conversation_runner=runner,
+        ),
+    )
+    assert captured["flux"].get("include_empty_interims", False) is early
+    assert captured["flux"].get("diagnose_updates", False) is early
+    assert captured["flux"]["eager_eot_threshold"] == 0.3
+    assert captured["probe"]["system_prompt"] == "test prompt"
+
+
+@pytest.mark.asyncio
+async def test_early_requires_shadow_before_creating_any_resources():
+    with pytest.raises(ValueError, match="requires shadow_speculation"):
+        await run_production_bluetooth_conversation(DummySession(), shadow_early_transcripts=True)

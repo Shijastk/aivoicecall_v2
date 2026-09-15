@@ -218,3 +218,21 @@ behavior is proven, not lower synthesis latency. See the
 [final evidence](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#final-controlled-tts-warm-pool-validation--2026-09-14).
 This closes the narrow TTS live-validation item, not Phase 4/4D; no Phase 4C or
 later-phase advancement is implied.
+
+## Earlier shadow follow-up — 2026-09-15
+
+The separately authorized repeated-Flux-Update shadow experiment is implemented
+and offline tested behind an additional opt-in. It retains normal final-EOT
+Agent generation and discards all speculative output. A controlled shadow live
+comparison is the next evidence step, not an automatic action. Phase 4C and
+Phase 4 acceptance remain deferred. See the
+[admission rule and limits](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#earlier-shadow-transcript-experiment--2026-09-15).
+
+### Phase 4B.1 admission revision — 2026-09-15
+
+The current authorized slice reduces the confirming-Update minimum from 200ms
+to 100ms with unchanged shadow-only bounds. Offline results are in
+[TESTING](TESTING.md#phase-4b1-100ms-admission-regression--2026-09-15);
+the [next controlled comparison](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#exact-next-controlled-shadow-test-not-executed)
+is proposed, not executed. Useful live readiness remains unknown; Phase 4C and
+later phases remain deferred.

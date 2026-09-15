@@ -460,3 +460,29 @@ Expected after clean teardown: no project-owned `pw-cat` process remains.
 12. Commit/push only when explicitly authorized.
 13. Advance to the next phase only when the preceding gate is actually met.
 ```
+
+## Earlier shadow mode — 2026-09-15
+
+For a separately authorized controlled shadow run, add
+`--shadow-early-transcripts` to the existing `--shadow-speculation
+--eager-eot-threshold 0.3` runner options. This enables repeated-Update admission;
+it does not enable 4C. Remove the early flag to compare eager-only behavior;
+remove both shadow flags to disable shadow provider work. Keep TTS/model/voice
+settings fixed. No live command was executed during offline implementation.
+See the [exact admission rule, telemetry and live comparison gate](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#earlier-shadow-transcript-experiment--2026-09-15).
+
+### Phase 4B.1 admission diagnosis
+
+The `08_run_bt_shadow.sh` helper remains eager-only: it does not pass
+`--shadow-early-transcripts`. For the next separately authorized diagnostic run,
+use the [explicit early-mode command and content-free capture](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#phase-4b1-admission-diagnosis--2026-09-15).
+Check `BTShadowAdmission: configured early_enabled=True` before interpreting
+Update admission results. No threshold change or Phase 4C is authorized.
+
+### Phase 4B.1 100ms repeat comparison
+
+Use the [exact controlled shadow command and 20-turn protocol](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#exact-next-controlled-shadow-test-not-executed)
+after explicit live authorization. Verify startup reports both
+`early_enabled=True` and `min_stable_span_ms=100`. Existing helper 08 is eager-only;
+the prior diagnostics command does not by itself identify the installed threshold.
+Keep the shared 1s cooldown and two-attempt budget when interpreting rejections.

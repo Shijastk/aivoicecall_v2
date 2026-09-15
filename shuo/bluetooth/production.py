@@ -41,6 +41,7 @@ async def run_production_bluetooth_conversation(
     settings: Optional[CallSettings] = None,
     eager_eot_threshold: Optional[float] = None,
     shadow_speculation: bool = False,
+    shadow_early_transcripts: bool = False,
     deps: BluetoothProductionDeps = BluetoothProductionDeps(),
 ) -> None:
     """Wire the real SHUO services to an already-built Bluetooth session.
@@ -67,6 +68,8 @@ async def run_production_bluetooth_conversation(
     have a provider recording/call id. Local timing trace remains enabled.
     """
 
+    if shadow_early_transcripts and not shadow_speculation:
+        raise ValueError("shadow_early_transcripts requires shadow_speculation")
     if shadow_speculation and eager_eot_threshold is None:
         raise ValueError("shadow_speculation requires an explicit eager_eot_threshold")
 
@@ -87,6 +90,9 @@ async def run_production_bluetooth_conversation(
             "on_start_of_turn": on_sot,
             "on_interim": on_interim,
         }
+        if shadow_early_transcripts:
+            kwargs["include_empty_interims"] = True
+            kwargs["diagnose_updates"] = True
         if on_eager is not None:
             kwargs["on_eager_end_of_turn"] = on_eager
         if on_resumed is not None:
@@ -126,7 +132,10 @@ async def run_production_bluetooth_conversation(
             system_prompt=resolved.system_prompt,
             history_provider=lambda: agent.history,
         )
-        return SpeculativeTurnCoordinator(probe=probe, capacity_gate=shadow_gate)
+        return SpeculativeTurnCoordinator(
+            probe=probe, capacity_gate=shadow_gate,
+            early_transcripts=shadow_early_transcripts,
+        )
 
     try:
         runner_kwargs = {

@@ -12,6 +12,7 @@ from ..types import (
     AppState,
     Event,
     FeedFluxAction,
+    MediaEvent,
     FluxEndOfTurnEvent,
     FluxStartOfTurnEvent,
     ResetAgentTurnAction,
@@ -45,6 +46,8 @@ class BluetoothAgent(Protocol):
 
 
 class BluetoothSpeculator(Protocol):
+    def on_start(self) -> None: ...
+    def on_interim(self, transcript: str, *, observed_at: Optional[float] = None) -> None: ...
     def on_eager(self, transcript: str, *, observed_at: Optional[float] = None) -> None: ...
     def on_resumed(self, *, observed_at: Optional[float] = None) -> None: ...
     def on_final(self, transcript: str, *, observed_at: Optional[float] = None) -> None: ...
@@ -98,6 +101,8 @@ async def run_bluetooth_conversation(
     session_started = False
 
     last_flux_eot_at: Optional[float] = None
+    normal_turn = 0
+    update_count = 0
 
     async def on_flux_end_of_turn(transcript: str) -> None:
         nonlocal last_flux_eot_at
@@ -111,23 +116,40 @@ async def run_bluetooth_conversation(
         await event_queue.put(FluxEndOfTurnEvent(transcript=transcript))
 
     async def on_flux_start_of_turn() -> None:
+        if speculator is not None:
+            speculator.on_start()
         _latency_log.info("BTLatency: Flux StartOfTurn received")
         await event_queue.put(FluxStartOfTurnEvent())
 
-    async def on_flux_interim(_transcript: str) -> None:
-        # Slice 3 has no monitor/history integration yet. Interim text is not a
-        # state-machine event in the carrier loop either.
-        return None
+    async def on_flux_interim(transcript: str) -> None:
+        nonlocal update_count
+        update_count += 1
+        _latency_log.info(
+            "BTLifecycle: event=Update count=%d phase=%s normal_turn=%d transcript_chars=%d",
+            update_count, state.phase.name, normal_turn, len(transcript),
+        )
+        if speculation_factory is not None and speculator is None:
+            _latency_log.info("BTShadowAdmission: event=update reason=speculator_not_ready")
+        if speculator is not None:
+            speculator.on_interim(transcript, observed_at=time.perf_counter())
 
     async def on_flux_eager_end_of_turn(transcript: str) -> None:
         if speculator is not None:
             speculator.on_eager(transcript, observed_at=time.perf_counter())
 
     async def on_flux_turn_resumed() -> None:
+        _latency_log.info(
+            "BTLifecycle: event=TurnResumed phase=%s normal_turn=%d normal_action=none",
+            state.phase.name, normal_turn,
+        )
         if speculator is not None:
             speculator.on_resumed(observed_at=time.perf_counter())
 
     def on_agent_done(_checkpoint: Optional[str]) -> None:
+        _latency_log.info(
+            "BTLifecycle: event=AgentDone_received normal_turn=%d checkpoint_present=%s",
+            normal_turn, _checkpoint is not None,
+        )
         # Local dispatch completion only. Do not synthesize PlaybackMarkEvent.
         try:
             event_queue.put_nowait(AgentTurnDoneEvent())
@@ -186,13 +208,23 @@ async def run_bluetooth_conversation(
 
         while True:
             event = await event_queue.get()
+            old_phase = state.phase
             state, actions = process_event(state, event)
+            if not isinstance(event, MediaEvent):
+                _latency_log.info(
+                    "BTLifecycle: event=%s phase_before=%s phase_after=%s normal_turn=%d actions=%s queue_depth=%d",
+                    type(event).__name__, old_phase.name, state.phase.name, normal_turn,
+                    ",".join(type(action).__name__ for action in actions) or "none",
+                    event_queue.qsize(),
+                )
 
             for action in actions:
                 if isinstance(action, FeedFluxAction):
                     await flux.send(action.audio_bytes)
 
                 elif isinstance(action, StartAgentTurnAction):
+                    normal_turn += 1
+                    _latency_log.info("BTLifecycle: event=AgentStart_begin normal_turn=%d", normal_turn)
                     if last_flux_eot_at is None:
                         _latency_log.info(
                             "BTLatency: Agent start requested without recorded Flux EndOfTurn"
@@ -206,9 +238,16 @@ async def run_bluetooth_conversation(
                             eot_to_agent_ms,
                         )
                     await agent.start_turn(action.transcript)
+                    _latency_log.info("BTLifecycle: event=AgentStart_returned normal_turn=%d", normal_turn)
 
                 elif isinstance(action, ResetAgentTurnAction):
+                    cancel_at = time.perf_counter()
+                    _latency_log.info("BTLifecycle: event=AgentCancel_begin normal_turn=%d", normal_turn)
                     await agent.cancel_turn()
+                    _latency_log.info(
+                        "BTLifecycle: event=AgentCancel_returned normal_turn=%d elapsed_ms=%.1f",
+                        normal_turn, (time.perf_counter() - cancel_at) * 1000,
+                    )
 
             if isinstance(event, StreamStopEvent):
                 break

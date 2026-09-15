@@ -105,3 +105,40 @@ was unrelated. This validates connection/setup behavior only, not lower
 ElevenLabs synthesis latency. Detailed evidence remains in the
 [Phase 4 record](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#final-controlled-tts-warm-pool-validation--2026-09-14);
 no phase advancement follows from this narrow result.
+
+## Earlier shadow transcript decision — 2026-09-15
+
+BT-D24 — Task-owner authorized an earlier shadow-only Flux Update experiment
+following the 0/10 eager readiness result and separately validated TTS warm pool.
+Use repeated identical whole transcripts spanning 200ms (3+ words, <=2000 chars),
+not an assumed provider stability bit. Bound early mode to two attempts per turn,
+1s between attempts, existing capacity wait and no overlapping requests/closure.
+Cancel on mutation/resume and always use normal final-EOT Agent generation.
+Keep a separate early opt-in for comparison/rollback. This is an empirical
+admission rule requiring controlled live measurement, not Phase 4C approval.
+The old global-capacity plan is not implemented: production creates a per-call
+gate. Preserve that scope and document it rather than claiming global protection.
+See the [Phase 4 experiment](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#earlier-shadow-transcript-experiment--2026-09-15).
+
+## BT-D25 — Phase 4B.1 repeat threshold revision — 2026-09-15
+
+Supersede only BT-D24's 200ms minimum with 100ms, retaining a confirming identical
+Update and all attempt/cooldown/invalidation bounds. The diagnostic run includes
+a 111.629ms repeat about 156ms before the next eager after resume; 150ms would
+still miss it. Other initial repeats follow eager, so this cannot solve every
+turn. The same text changed about 118ms later: earlier wasted requests are an
+explicit risk. Keep the shared cooldown and existing matching-eager priority;
+do not add timer admission or separate cooldown buckets. The current task
+authorizes implementation/tests, not a live run or Phase 4C. See the
+[option comparison and next controlled test](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#phase-4b1-admission-revision--2026-09-15).
+
+## Bluetooth barge-in investigation decision — 2026-09-15
+
+Preserve lifecycle behavior and speculation thresholds pending a captured normal
+interruption failure. The newest matching log shows nine complete normal responses
+and zero normal cancellations; its four resumes occur before final EOT. Add
+content-free lifecycle diagnostics and offline real Agent/player restart tests,
+including slowly closing shadow work. Do not infer Agent restart failure from
+shadow `turn_closed` telemetry or long dispatch totals. The
+[investigation record](BLUETOOTH_BARGE_IN_INVESTIGATION.md) owns evidence, competing
+hypotheses and the next controlled test. No Phase 4C/6 advancement.

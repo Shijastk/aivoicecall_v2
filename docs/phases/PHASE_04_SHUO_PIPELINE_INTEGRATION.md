@@ -176,3 +176,20 @@ Phase 4 acceptance remains pending; Phase 4C and later phases are unchanged.
 Phase 5 still requires explicit authorization naming controlled calls/providers/
 devices, approved measurements and manual emergency exit. Phase 4 work does not
 authorize automatic call control, concurrency qualification or release work.
+
+## Earlier shadow follow-up — 2026-09-15
+
+The task owner approved a bounded earlier Update-trigger experiment within 4B,
+with no response reuse. The
+[realtime latency record](PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#earlier-shadow-transcript-experiment--2026-09-15)
+owns the exact admission/invalidation rule, opt-in, telemetry and concerns.
+This advances offline shadow implementation only; 4C and phase acceptance remain
+pending live evidence and separate authorization.
+
+### Phase 4B.1 threshold follow-up — 2026-09-15
+
+The latest diagnostics justify a 100ms confirming-repeat minimum, with shared
+cooldown/attempt bounds retained. See the
+[admission revision](PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#phase-4b1-admission-revision--2026-09-15)
+for measured opportunities, false-speculation risk and the exact next shadow
+comparison. This is still 4B.1; no Phase 4C or live exercise was performed.

@@ -193,3 +193,51 @@ class TestOtherMessages:
         await rec.service()._on_message({"type": "TurnInfo"})
         await rec.service()._on_message(None)
         assert rec.ends == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("model_shape", [False, True])
+async def test_opt_in_empty_update_reaches_shadow_invalidation_without_final(rec, model_shape):
+    service = FluxService(
+        on_end_of_turn=rec._end, on_start_of_turn=rec._start,
+        on_interim=rec._interim, include_empty_interims=True,
+    )
+    for text in ("early full transcript", "early full transcript", ""):
+        message = _turn_info("Update", text)
+        await service._on_message(_Model(**message) if model_shape else message)
+    assert rec.interims == ["early full transcript", "early full transcript", ""]
+    assert rec.ends == []
+    assert rec.starts == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("diagnostics,callback,empty,include_empty", [
+    (False, True, False, False),
+    (True, False, False, False),
+    (True, True, False, False),
+    (True, True, True, False),
+    (True, True, True, True),
+])
+async def test_content_free_update_receipt_and_callback_diagnostics(
+    rec, caplog, diagnostics, callback, empty, include_empty,
+):
+    caplog.set_level("INFO")
+    service = FluxService(
+        rec._end, rec._start, rec._interim if callback else None,
+        diagnose_updates=diagnostics, include_empty_interims=include_empty,
+    )
+    text = "" if empty else "synthetic private phrase"
+    await service._on_message(_turn_info("Update", text))
+    await service._on_message(_Model(**_turn_info("Update", text)))
+    await service._on_message(_turn_info("EndOfTurn", text))
+    forwarded = callback and (not empty or include_empty)
+    assert rec.interims == ([text, text] if forwarded else [])
+    assert rec.ends == [text]
+    assert "synthetic" not in caplog.text
+    if diagnostics:
+        assert f"event=Update update_count=2 callback_present={callback}" in caplog.text
+        assert ("event=Update_callback_returned" in caplog.text) is forwarded
+        assert ("event=Update_empty_filtered" in caplog.text) is (callback and empty and not include_empty)
+        assert "event=EndOfTurn update_count=2" in caplog.text
+    else:
+        assert "BTShadowFlux" not in caplog.text

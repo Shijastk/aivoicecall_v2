@@ -259,3 +259,46 @@ no orphan `pw-cat` process in the validated run.
 automatically create a Bluetooth AI-only session. Phase 4 must attach the media
 boundary to the SHUO conversation pipeline, and Phase 6 still owns complete
 automated call-control/lifecycle reconciliation.
+
+### Earlier Bluetooth shadow Updates — 2026-09-15
+
+Verified in source: `run_bluetooth_conversation.on_flux_interim` now reaches
+`SpeculativeTurnCoordinator.on_interim`. Production enables the repeated-Update
+rule only with `shadow_early_transcripts=True` plus existing shadow/eager opt-ins.
+`FluxService.include_empty_interims` is false by default; early Bluetooth mode
+sets it true to invalidate deleted interim text. Start/resume/final callbacks
+bound shadow generations. Pure `process_event`, normal Agent final-EOT streaming
+and carrier/browser paths are unchanged. The coordinator owns cancellation,
+2-second probe timeout, at-most-one task/request, bounded recent observations,
+and a two-attempt early-mode budget. The production capacity gate remains per
+call, not global. No draft/audio is retained or promoted. See the
+[exact rule and telemetry](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#earlier-shadow-transcript-experiment--2026-09-15).
+
+### Phase 4B.1 admission diagnostics — 2026-09-15
+
+Early shadow mode now enables optional content-free Flux Update receipt/return
+counters and coordinator admission reasons, repetition spans, word eligibility
+and eager ordering. `FluxService.diagnose_updates` defaults to false; production
+sets it only for the Bluetooth early opt-in. The coordinator records its enabled
+setting even in eager-only mode. Admission thresholds, shadow requests, normal
+final Agent execution and cancellation semantics are unchanged. See the
+[diagnostic contract and reviewed evidence](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#phase-4b1-admission-diagnosis--2026-09-15).
+
+### Phase 4B.1 repeat admission revision — 2026-09-15
+
+`SpeculativeTurnCoordinator.on_interim` now accepts an identical confirming
+Update after >=100ms (previously 200ms). The 3-word/2000-character limits, shared
+1s cooldown, two-attempt budget, matching-eager deduplication and all invalidation
+semantics remain. No new timer/task, provider path, audio or Agent behavior.
+The [measured timing comparison and current rule](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#phase-4b1-admission-revision--2026-09-15)
+explain the narrower opportunity: many first repeats still arrive after eager.
+
+### Bluetooth barge-in lifecycle diagnostics — 2026-09-15
+
+The [investigation](BLUETOOTH_BARGE_IN_INVESTIGATION.md) traces the latest matching
+live log: all nine final EOTs reach normal Agent/TTS/local playback, with no logged
+normal interruption. The audible failure's cause remains unknown. Content-free
+Bluetooth event/state/action, Agent start/cancel and outbound write/clear logs
+now complement shared Agent cancellation-stage and turn-numbered audio/completion
+logs. No state-machine, cancellation-order or shadow-admission behavior changed.
+Local write/dispatch remains distinct from phone playback.

@@ -188,15 +188,21 @@ class Agent:
         self._publish_response(interrupted=True)
 
         # Cancel in order: LLM -> TTS -> Player
+        log.info(f"Lifecycle: turn={self._turn} cancel_stage=llm_begin")
         await self._llm.cancel()
+        log.info(f"Lifecycle: turn={self._turn} cancel_stage=llm_returned")
 
         if self._tts:
+            log.info(f"Lifecycle: turn={self._turn} cancel_stage=tts_begin")
             await self._tts.cancel()
+            log.info(f"Lifecycle: turn={self._turn} cancel_stage=tts_returned")
             self._tts = None
 
         if self._player:
             if self._player.is_playing:
+                log.info(f"Lifecycle: turn={self._turn} cancel_stage=player_begin dispatched_bytes={self._player.bytes_sent}")
                 await self._player.stop_and_clear()
+                log.info(f"Lifecycle: turn={self._turn} cancel_stage=player_returned")
             self._player = None
 
         # rules.md V18: the barge-in that got us here voids this turn's
@@ -249,7 +255,7 @@ class Agent:
             self._tracer.begin(self._turn, "player")
             ttft = _ms_since(self._t0)
             since_token = int((self._t_first_audio - self._t_first_token) * 1000) if self._got_first_token else 0
-            log.info(f"⏱  TTS first audio  +{ttft}ms  (TTS latency {since_token}ms)")
+            log.info(f"⏱  TTS first audio  +{ttft}ms  (TTS latency {since_token}ms) turn={self._turn}")
             self._recorder.timing("tts_first_audio", ttft, turn=self._turn)
 
         await self._player.send_chunk(audio_base64)
@@ -308,7 +314,7 @@ class Agent:
         self._tracer.end(self._turn, "player")
 
         total = _ms_since(self._t0)
-        log.info(f"⏱  Playback dispatched  +{total}ms total")
+        log.info(f"⏱  Playback dispatched  +{total}ms total turn={self._turn}")
         self._recorder.timing("playback_dispatched", total, turn=self._turn)
 
         self._end_turn(checkpoint=self._checkpoint)

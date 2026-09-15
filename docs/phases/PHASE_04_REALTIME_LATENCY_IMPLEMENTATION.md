@@ -424,3 +424,320 @@ If implementation evidence requires changing this plan, update this file and the
 owning Phase 4/ROADMAP/DECISIONS documentation in the same change. Preserve the
 old rationale/evidence; record reversals as new decisions instead of rewriting
 history. A plan change is not authorization to cross a later phase boundary.
+
+## Earlier shadow transcript experiment — 2026-09-15
+
+**IMPLEMENTED / OFFLINE VERIFIED; live benefit UNKNOWN.** The task owner
+explicitly authorized this next 4B step. This supersedes the eager-only trigger
+choice for the new opt-in experiment, not the historical evidence or the 4C gate.
+The earlier planned 4B phrase “validate/promote” is not an implemented promotion
+path: this slice and the existing implementation only observe and discard.
+
+### Signal and wiring
+
+[Deepgram's Flux state contract](https://developers.deepgram.com/docs/flux/state)
+(inspected 2026-09-15) documents `Update` approximately every 250 ms of transcribed
+audio, including unchanged transcripts. Unlike final/eager turn events, an
+Update has no documented immutable-transcript guarantee. Nova-style `is_final`
+and word confidence are not a stable-turn contract here. Repeated whole Update
+text is therefore a local admission heuristic, never proof the caller stopped.
+StartOfTurn can carry earlier text, but a single onset snapshot supplies no
+repeat-stability evidence; it resets shadow turn state rather than starting LLM.
+
+`FluxService._on_message` already forwarded nonempty Updates to `on_interim`.
+`run_bluetooth_conversation` previously ignored them. It now passes them to
+`SpeculativeTurnCoordinator.on_interim`; that method is inert unless early mode
+is enabled. Optional `include_empty_interims=True` forwards empty replacement
+Updates too, only in this Bluetooth experiment. Default Flux/carrier/browser
+callbacks and provider connection parameters remain unchanged.
+
+### Exact admission and invalidation rule
+
+Current rule incorporates the [100ms revision](#phase-4b1-admission-revision--2026-09-15);
+the original experiment used 200ms, retained in the historical evidence below.
+
+- Enable `--shadow-speculation --shadow-early-transcripts` together with an
+  explicit `--eager-eot-threshold` in the existing 0.3–0.7 range. Early mode alone
+  is rejected before resource setup. Omitting the early flag retains eager-only
+  measurement; omitting both shadow flags disables speculative requests.
+- A stripped full transcript must contain at least **3 whitespace-separated
+  words**, at most **2000 characters**, and recur unchanged on at least **two
+  Update callbacks spanning 100 ms** of local monotonic receive time. Case,
+  punctuation and internal whitespace remain significant. No timer fires when
+  updates stop; a new callback must confirm stability.
+- At most **2 admission attempts per turn**, including capacity failures, errors
+  and eager fallback; at least **1 second between admissions**, including across
+  turns. These are experimental bounds, not tuned live thresholds.
+- Any extension, replacement, deletion, or empty Update invalidates the active
+  generation immediately. A different eager transcript also invalidates it.
+  Matching eager text leaves an earlier request intact. Eager fallback does not
+  require the 3-word/repeat rule but shares the size, attempt and cooldown bounds.
+- `TurnResumed` cancels/discards and clears stability evidence without resetting
+  the turn's attempt budget. Fresh Updates must establish stability again.
+  `StartOfTurn` discards prior candidates and resets the per-turn budget.
+  Final EOT closes admission until the next StartOfTurn, including empty finals.
+- Never admit while a prior task is still acquiring capacity, requesting tokens,
+  or closing its stream, even after its generation was invalidated. No pending
+  replacement queue or delayed automatic retry is created; subsequent qualifying
+  events may retry within budget. The existing gate waits at most **25 ms** and
+  falls back on exhaustion. Provider probing has a **2-second cooperative
+  timeout** after admission. Cleanup cancels and awaits owned tasks, without
+  re-cancelling a stream already closing.
+- Exact final transcript equality only informs telemetry. Final EOT always enters
+  the normal pure-state-machine/Agent path, with no speculative TTS, text reuse,
+  Agent cancellation or committed-history mutation from shadow callbacks.
+
+### Telemetry and interpretation
+
+`BTShadow` records generation, trigger (`interim`/`eager`), character count and:
+
+- `trigger_to_first_token_ms` (includes capacity wait; also logged when ready);
+- `trigger_to_final_ms` and `speculative_lead_ms = final - first_token`;
+- `ready_before_final` / `not_ready_by_final` for matching active candidates;
+- `transcript_mismatch`, `replaced`, `resumed`, `new_turn`, `cancelled` (cleanup),
+  `capacity_skip` and `probe_error:<exception class>`;
+- `discarded_by_final` for the most recent invalidated/skipped candidate and
+  `no_candidate_by_final` when no attempt exists;
+- `transcript_match` and the boolean eligibility/readiness outcome at final.
+
+The legacy `eager_to_final_ms` field remains populated only for eager triggers.
+A missing first token/lead is unknown, not zero. Discarded candidates may have a
+positive historical first-token lead and matching final text but remain
+ineligible. Do not count their lead as useful readiness. For repeated admissions,
+final metrics describe the latest candidate; earlier cancellation records remain
+in logs. In-memory observations retain only the latest 256 records; all records
+are logged without transcript, generated text, hashes, prompts or exception body.
+
+The existing provider probe returns only after stream closure. Readiness therefore
+requires both first-token receipt and completed probe cleanup by final; a token
+received while close is pending does not count. A first token is not a completed
+answer, and no answer is retained. Provider cancellation is cooperative: closure
+may briefly overlap the ordinary final request, which must not wait for it.
+Cancellation-hostile providers cannot be forcibly terminated by asyncio; no new
+shadow work starts while their task remains alive.
+
+### Architecture limits and next gate
+
+Source inspection found the production capacity gate is **per invocation/call**
+(`run_production_bluetooth_conversation`), despite older plan language promising
+bounded global concurrency. That historical implementation claim is not supported
+by source. This change preserves that boundary; a shared multi-call gate and load
+validation remain future work. The optional manual runner is the current scope.
+Ordered Flux socket callbacks and StartOfTurn/EndOfTurn boundaries are assumed;
+this is not an out-of-order provider-event replay protocol. Generation identity
+protects against late asynchronous probe completion.
+
+Focused race tests, Bluetooth and full regression results are recorded in
+[TESTING](../TESTING.md#earlier-shadow-transcript-regression--2026-09-15).
+Offline evidence supports requesting a controlled **shadow-only** live experiment
+on the already validated reference setup; no calls/devices/providers were run by
+the coding agent. Keep the warm TTS policy/model/voice/audio settings fixed and
+compare eager-only and early mode. Report all final denominators, trigger/lead
+and TTFT distributions, match/mismatch, cancellations, skips/errors, requests per
+turn and normal Agent TTFT/contention. Include short turns, extensions, corrections,
+mid-sentence pauses and resumes. Tune the admission heuristic only against those
+measurements. No sub-500ms claim, Phase 4C readiness, answer reuse, or later-phase
+acceptance follows from these offline tests.
+
+## Phase 4B.1 admission diagnosis — 2026-09-15
+
+**REVIEWED LIVE METADATA; exact rejection cause UNKNOWN.** The task owner
+reports the corrected model `qwen/qwen3.8-27b` returned HTTP 200. Read-only,
+allowlisted metadata extraction from `/tmp/bt-phase4b1-shadow.log` found 9
+StartOfTurn events, 12 eager events, 9 admitted generations (all `trigger=eager`),
+6 `not_ready_by_final`, 3 resumed/discarded finals and zero interim triggers.
+No live call/provider/device action was performed during this review.
+
+The log contains neither Update receipt/repetition timing nor word counts,
+admission rejection reasons or the early-mode setting. Flux heartbeat totals
+(178 messages after 250 input frames; 333 after 500) include all message kinds
+and cannot establish Update cadence or identical-text stability. Character
+counts cannot establish the whitespace-separated word count. A valid Groq model
+only affects the probe after admission; it does not select the trigger.
+
+Source evidence:
+
+- `FluxService._on_message` awaits the Update callback; Bluetooth
+  `on_flux_interim` forwards to `SpeculativeTurnCoordinator.on_interim` when the
+  coordinator exists. Injected real-dispatch tests demonstrate this wiring,
+  including ordinary final Agent execution, but do not prove this run's delivery.
+- Admission requires a confirming identical stripped whole Update after >=200ms,
+  with >=3 words and <=2000 characters. A pause without another Update never
+  fires a timer. Every whole-text change restarts stability.
+- Eager may admit first and block a later qualifying Update as `active_candidate`;
+  replacement/resume can also leave cancellation, cooldown or budget gates.
+  Cancelling an already admitted interim would not erase its original trigger log.
+- `scripts/dev/08_run_bt_shadow.sh` currently omits `--shadow-early-transcripts`.
+  Running that helper unchanged disables early admission. The inspected run log
+  does not establish the launch command, so this is conditional, not the proven
+  runtime cause. The helper and speculative settings remain unchanged.
+
+### Diagnostic contract (no admission/threshold change)
+
+The shadow coordinator logs `BTShadowAdmission: configured early_enabled=...`.
+Early mode also enables the optional `FluxService.diagnose_updates` locally:
+
+- `BTShadowFlux` logs each recognized turn event and a service-lifetime Update
+  count, callback presence, successful Update callback return or empty filtering.
+  Receipt without return requires checking callback failure/teardown; receipt
+  without coordinator admission rows indicates a delivery/configuration gap.
+- `BTShadowAdmission` logs each early-mode Update with a local turn ordinal,
+  per-turn Update count, consecutive same-transcript repetitions **after the
+  first observation**, stable-span ms, word count/eligibility, rejection/admission
+  reason and attempt count. Empty Updates are counted too. Stability is measured
+  between received Updates, never extrapolated from a pause.
+- Reasons distinguish changed text, too few words, insufficient stable span,
+  oversized text, active candidate, pending prior task, cooldown, attempt budget,
+  closed turn/coordinator and admission. Reasons follow existing branch priority;
+  word eligibility is independent, so a changed two-word Update reports both.
+- `eager_arrived_first=True` means eager was observed before the first successful
+  interim admission in this turn, not necessarily that eager was admitted or that
+  no eligible Update existed. Eager rows show their own admission result.
+- Final, resume, start-boundary and cleanup rows retain the last Update snapshot;
+  word count and stable span on these rows describe that Update, **not** the
+  eager/final transcript or elapsed time since the last Update. Resume clears
+  stability; StartOfTurn resets turn counters. Final rows include turns with zero
+  Updates. Updates arriving before coordinator construction log
+  `reason=speculator_not_ready` at the Bluetooth callback boundary.
+
+Only counters/booleans/timings/closed reason strings are added: no text, hashes,
+prompts, generated output or provider bodies. State is constant-size; no timer,
+queue, retry, request, audio, history or cancellation behavior is added. Default
+Flux callers have diagnostics disabled. Per-Update logging overhead remains
+unmeasured; use the same instrumentation for controlled comparisons.
+
+### Next controlled test (proposal only; not executed)
+
+After separate live authorization, use the existing validated phone/audio/voice,
+15-second TTS policy, threshold 0.3 and corrected model. Explicitly pass **both**
+shadow flags; the eager-only helper is unsuitable for this early-mode test.
+With the existing provider environment and explicit `BT_ADDRESS` already set:
+
+```bash
+PYTHON_DOTENV_DISABLED=1 LLM_MODEL=qwen/qwen3.8-27b SHUO_LOG_LEVEL=INFO PYTHONPATH=. \
+  .venv/bin/python -c 'from shuo.log import setup_logging; setup_logging(); import runpy; runpy.run_path("scripts/run_bluetooth_ai.py", run_name="__main__")' \
+  --bluetooth-address "${BT_ADDRESS:?Set BT_ADDRESS to the selected phone}" \
+  --latency 120ms --eager-eot-threshold 0.3 \
+  --shadow-speculation --shadow-early-transcripts \
+  --call-id bt-phase4b1-admission \
+  2>&1 | rg --line-buffered 'BTShadow|Eager EOT measurement|BTLatency' \
+  | tee /tmp/bt-phase4b1-admission.log
+```
+
+First verify `configured early_enabled=True`. Exercise one/two-word controls,
+3+-word complete utterances, longer clauses with 300–600ms pauses, extensions,
+corrections and resumes; repeat each several times. Pauses are a test stimulus,
+not a guarantee of repeated Updates. Match receipt/return counts to coordinator
+rows and classify each turn by the first blocking rule and eager ordering.
+Record zero-Update turns as well as all admissions/cancellations/final outcomes.
+If repeats never arrive, measure that before proposing a different heuristic;
+if words or eager ordering block admission, retain the thresholds until the
+observations justify a separately reviewed change. Preserve manual call control,
+shadow-only output and normal final Agent responses. Phase 4C remains deferred.
+
+## Phase 4B.1 admission revision — 2026-09-15
+
+**REVIEWED LIVE METADATA / IMPLEMENTED; revised live benefit UNKNOWN.** The
+current task authorizes this narrow behavior revision and offline tests. No live
+calls, devices or provider probes were started. Read-only allowlisted metadata
+extraction from `/tmp/bt-phase4b1-diagnostics.log` (local log clock) found early mode enabled, 409 Update receipts, 409 callback returns,
+409 coordinator Update rows, 6 start/final turns, 12 eager events, 6 resumes,
+and 8 admitted generations, all eager. Text/credentials were not extracted.
+
+### Measured opportunities and limits
+
+Times below are log receive times; identical spans are coordinator monotonic
+measurements. The millisecond log clock makes event differences approximate.
+
+| Turn / sequence | Measurements | Implication |
+|---|---|---|
+| 3 | 3-word text changes at 07.302 and 07.545; eager 07.682; first identical repeat at 07.847, span 301.975ms | No repeat threshold can beat this eager; word eligibility alone is insufficient |
+| 5 initial (12:39) | 4 words at 55.038, changed to 5 at 55.076; eager 55.164; repeat 55.201, span 125.447ms; next repeat 55.441, span 365.335ms | Eager is 126ms after first word-eligible Update, 88ms after latest text; even a 100ms repeat rule arrives 37ms too late |
+| 5 after resume 56.205 | 6 words at 56.480; identical repeat 56.592, span 111.629ms; changed text 56.710; eager/final 56.748 | A 100ms rule can admit about 156ms before eager, but this example would be invalidated about 118ms later |
+| 6 after eager 12:40:20.556 and resume 20.807 | 3 words 21.069; repeat 21.300, span 230.892ms; eager 21.335 | Repeat is before eager but only 744ms after the prior admission; shared cooldown intentionally rejects it |
+| 6 later | New text 21.559; eager 21.676; repeat 21.711, span 151.807ms | Repeat is 35ms after eager; a smaller span alone cannot beat this eager |
+| 6 token/discard | Token ready 22.354; resume 22.449; final 22.613; trigger-to-token 678.244ms, trigger-to-final 937.144ms | 258.899ms historical lead at final remains ineligible after resume and final mismatch; token precedes resume by only about 95ms |
+
+This resolves the newer run's delivery/admission uncertainty; it does not fill
+missing telemetry in the older `bt-phase4b1-shadow.log`. Nor does this six-turn
+sample establish an optimal threshold or a false-speculation rate.
+
+### Options and selected rule
+
+| Option | Evidence-based tradeoff / decision |
+|---|---|
+| Lower 200ms to 150ms | Still rejects the 111.629ms pre-eager opportunity; 151.807ms repeat is already after eager |
+| One identical repeat plus 100ms minimum | Selected: admits the measured 111.629ms repeat while rejecting bursts below 100ms; simple local change, no new task/timer |
+| Zero minimum / first eligible Update | Weaker evidence; 4→5 words changed in 38ms in turn 5. No measured benefit justifies removing repeat confirmation |
+| Give early priority over eager | Matching eager already retains an admitted early generation in `on_eager`; test it. Delaying eager to wait for a future repeat adds scheduling and may miss eager-only opportunities. Relabeling an eager admission is not an earlier start |
+| Separate early/eager cooldowns | Would allow the turn-6 request at +744ms but permits extra close-spaced work. Keep the shared 1s bound to isolate this experiment's risk |
+| Timer after one Update | Could start before some initial eager events, but assumes stability without another provider observation and adds cancellation races. Defer |
+
+`SpeculativeTurnCoordinator.on_interim` now requires **two or more consecutive
+identical stripped whole Updates spanning at least 100ms**, **3+ words** and
+**<=2000 characters**. No timer or elapsed-time admission in `on_eager`.
+An admitted matching early candidate wins over eager without a restart or extra
+attempt. Different eager text invalidates it immediately; admission of any
+replacement still requires the existing gates.
+
+All prior bounds remain: **two attempts per turn shared by early/eager**, including
+capacity/error attempts; **1s between all admissions including across turns**;
+no admission while any prior task is still closing; 25ms capacity wait, 2s probe
+timeout, bounded observations. Mutation/empty Update/resume invalidate; resume
+clears repeat evidence without replenishing budget. Final closes the turn and
+requires exact text match for readiness telemetry, while the normal Agent always
+generates independently. No speculative TTS, output reuse or history mutation.
+Startup diagnostics now include `min_stable_span_ms=100` to identify the rule.
+
+Expected risk increase: more short-lived prefix requests and earlier consumption
+of the two-attempt budget, potentially suppressing a better later eager request.
+The measured post-resume opportunity itself changes shortly afterward: this is
+evidence of likely wasted work, not a demonstrated useful latency win. Request
+rate/overlap bounds are unchanged; normal Agent provider contention can still
+increase within those bounds and must be measured. No Phase 4C inference follows.
+
+### Exact next controlled shadow test (not executed)
+
+After separate live authorization, keep the validated phone/audio selection,
+voice, normal model settings and 15s TTS policy fixed. Manually establish/control
+the call and retain the validated manual abort procedure. With the existing
+provider environment and explicit selected `BT_ADDRESS` already set:
+
+```bash
+PYTHON_DOTENV_DISABLED=1 LLM_MODEL=qwen/qwen3.8-27b SHUO_LOG_LEVEL=INFO PYTHONPATH=. \
+  .venv/bin/python -c 'from shuo.log import setup_logging; setup_logging(); import runpy; runpy.run_path("scripts/run_bluetooth_ai.py", run_name="__main__")' \
+  --bluetooth-address "${BT_ADDRESS:?Set BT_ADDRESS to the selected phone}" \
+  --latency 120ms --eager-eot-threshold 0.3 \
+  --shadow-speculation --shadow-early-transcripts \
+  --call-id bt-phase4b1-repeat100 \
+  2>&1 | rg --line-buffered 'BTShadow|Eager EOT measurement|BTLatency' \
+  | tee /tmp/bt-phase4b1-repeat100.log
+```
+
+Verify `early_enabled=True min_stable_span_ms=100`. Exercise 20 synthetic turns:
+four each of 1–2-word controls, complete 4–6-word questions, longer questions with
+300–600ms pauses, extensions/corrections after a brief pause, and resume/repeat
+sequences. Record actual provider events; spoken pauses do not guarantee repeats
+or TurnResumed. Repeat the same sequence in an eager-only comparison by omitting
+`--shadow-early-transcripts` and using call ID/log suffix `eager-control`.
+
+For all finals (including zero-Update/no-candidate turns), report interim/eager
+admissions and first admission ordering, repeat spans and rejection reasons,
+requests per turn, match/mismatch/resume/cancel/skip/error outcomes, valid
+ready-before-final fraction, trigger-to-token/final/lead distributions, and
+normal Agent TTFT from BTLatency. Separate positive discarded lead from useful
+matching readiness. Require <=2 attempts/turn, >=1s admission separation and no
+shadow request overlap. Compare normal Agent TTFT/contention and cancellation
+rates with eager-only, and explicitly report if no repeat beats eager. Stop and
+manually abort for stale speech, request overlap/budget violation or provider
+failure; retain metadata. Roll back by removing the early flag; remove both
+shadow flags to disable all shadow work. No automatic live run or Phase 4C.
+
+## Separate barge-in lifecycle investigation — 2026-09-15
+
+The [investigation record](../BLUETOOTH_BARGE_IN_INVESTIGATION.md) reviews the
+latest 100ms-shadow log without changing its thresholds. No normal interruption
+is logged; all nine final responses dispatch. Added lifecycle diagnostics and
+hardware-free real Agent/player interruption/restart tests. The reported audible
+failure remains unlocalized and warrants a separately authorized controlled test.
+This is not Phase 4C, and no phase status or call-control capability advances.

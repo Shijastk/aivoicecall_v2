@@ -69,7 +69,13 @@ def parse_args() -> argparse.Namespace:
             "Generated text is discarded and never reaches TTS/history."
         ),
     )
+    parser.add_argument(
+        "--shadow-early-transcripts", action="store_true",
+        help="Opt in to bounded repeated-Update shadow probes before eager EOT.",
+    )
     args = parser.parse_args()
+    if args.shadow_early_transcripts and not args.shadow_speculation:
+        parser.error("--shadow-early-transcripts requires --shadow-speculation")
     if args.shadow_speculation and args.eager_eot_threshold is None:
         parser.error("--shadow-speculation requires --eager-eot-threshold")
     return args
@@ -93,6 +99,7 @@ async def _main(args: argparse.Namespace) -> None:
         call_id=args.call_id,
         eager_eot_threshold=args.eager_eot_threshold,
         shadow_speculation=args.shadow_speculation,
+        shadow_early_transcripts=args.shadow_early_transcripts,
     )
 
 

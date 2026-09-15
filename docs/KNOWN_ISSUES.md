@@ -122,3 +122,52 @@ speculative trigger** for the latency target.
 Do not treat this as a provider failure or as proof that speculation cannot
 work. The next investigation should compare a safely earlier transcript/turn
 signal while preserving cancellation, history isolation and bounded concurrency.
+
+## Earlier shadow experiment limits — 2026-09-15
+
+- Repeated Flux Update text is an admission heuristic, not guaranteed stability
+  or turn completion. The 200ms/3-word/two-attempt rule may spend its budget on
+  prefixes or reject useful short turns. Useful live lead remains unknown.
+- Older Phase 4 plans describe global speculation capacity, but production
+  constructs `AsyncCapacityGate(1)` per call. This experiment preserves the
+  existing per-call bound; multi-call global admission is not implemented.
+- The provider's first-token probe closes before reporting readiness and retains
+  no answer. Positive shadow lead is not full-answer readiness or Phase 4C proof.
+  Cancellation/timeout remain cooperative with the provider; late completions
+  cannot restore eligibility, and new shadow requests cannot overlap closure.
+- See [Phase 4](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#earlier-shadow-transcript-experiment--2026-09-15)
+  and [test results](TESTING.md#earlier-shadow-transcript-regression--2026-09-15).
+
+## Phase 4B.1 live admission evidence gap — 2026-09-15
+
+The reviewed `/tmp/bt-phase4b1-shadow.log` has 9 eager-triggered generations and
+no interim triggers, but lacks Update cadence, word eligibility, rejection and
+early-enabled telemetry. The exact cause cannot be reconstructed. The unchanged
+`08_run_bt_shadow.sh` helper omits the early flag; whether it launched this run is
+unknown. New content-free diagnostics measure these alternatives without changing
+the heuristic. See the [Phase 4B.1 review](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#phase-4b1-admission-diagnosis--2026-09-15).
+The REQUIREMENTS document's old task-specific exclusion of code/tests predates
+and conflicts with this task's explicit diagnostic/test authorization; permanent
+preservation requirements still apply, and the historical wording is retained.
+
+## Phase 4B.1 measured admission window — 2026-09-15
+
+The newer `bt-phase4b1-diagnostics.log` establishes early mode and complete
+Update callback delivery (409 receipts/returns/coordinator rows). Repeat spans
+125.447ms and 151.807ms were already after eager; lowering the span cannot make
+those early. A 111.629ms post-resume repeat precedes the next eager, motivating
+the new 100ms minimum, but changes ~118ms later. Useful live lead and added
+waste/contention remain unknown. The turn-6 +744ms cooldown rejection remains
+intentional. Historical missing telemetry and 200ms results above are preserved;
+see the [current rule and evidence](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#phase-4b1-admission-revision--2026-09-15).
+
+## Bluetooth audible barge-in failure not yet localized — 2026-09-15
+
+The newest matching live log has no normal Agent cancellation and no turn boundary
+inside a response; all nine final EOTs reach Agent, TTS and dispatch. Its repeated
+`turn_closed` telemetry belongs to shadow admission, not the normal state machine.
+Resume-only signaling does not interrupt the normal Agent, awaited TTS cleanup can
+delay player clearing, and downstream/in-flight playback is not retractable by
+local queue clear. These are source observations, not a measured root cause of
+the reported audible cut. Diagnostics and real Agent/player regression coverage
+were added; see the [evidence and next-test gate](BLUETOOTH_BARGE_IN_INVESTIGATION.md).

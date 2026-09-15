@@ -241,3 +241,89 @@ async def test_flux_start_failure_still_stops_started_bluetooth_session():
 
     assert session.stopped == 1
     assert holder["flux"].stopped == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("capacity_available", [True, False])
+async def test_real_flux_updates_are_shadow_only_and_final_always_uses_agent(monkeypatch, capacity_available, caplog):
+    from types import SimpleNamespace
+    from shuo.services.flux import FluxService
+    from shuo.bluetooth.speculative import AsyncCapacityGate, SpeculativeTurnCoordinator
+
+    now = [10.0]
+    caplog.set_level("INFO")
+    monkeypatch.setattr("shuo.bluetooth.conversation.time", SimpleNamespace(perf_counter=lambda: now[0]))
+    ready = asyncio.Event()
+    holder = {}
+    session = FakeSession([], block_when_empty=True)
+    gate = AsyncCapacityGate(1, max_wait_seconds=0.001)
+    if not capacity_available:
+        assert await gate.acquire()
+
+    class OfflineFlux(FluxService):
+        async def start(self):
+            pass
+
+        async def stop(self):
+            pass
+
+    class Probe:
+        async def first_token_at(self, transcript):
+            return 10.5
+
+    def flux_factory(eot, sot, interim, eager, resumed):
+        holder["flux"] = OfflineFlux(
+            eot, sot, interim, eager, resumed,
+            eager_eot_threshold=0.3, include_empty_interims=True,
+            diagnose_updates=True,
+        )
+        return holder["flux"]
+
+    def agent_factory(outbound, done):
+        holder["agent"] = FakeAgent(outbound, done)
+        return holder["agent"]
+
+    def speculation_factory(agent):
+        holder["shadow"] = SpeculativeTurnCoordinator(
+            probe=Probe(), capacity_gate=gate, early_transcripts=True,
+        )
+        ready.set()
+        return holder["shadow"]
+
+    task = asyncio.create_task(run_bluetooth_conversation(
+        session, flux_factory=flux_factory, agent_factory=agent_factory,
+        speculation_factory=speculation_factory,
+    ))
+    try:
+        await ready.wait()
+        async def emit(event, text=""):
+            await holder["flux"]._on_message({"type": "TurnInfo", "event": event, "transcript": text})
+
+        await emit("StartOfTurn")
+        await emit("Update", "tell me about yourself")
+        now[0] = 10.25
+        await emit("Update", "tell me about yourself")
+        await asyncio.gather(*tuple(holder["shadow"]._tasks))
+        assert "BTShadowFlux: event=Update update_count=2 callback_present=True" in caplog.text
+        assert "event=update update_count=2" in caplog.text
+        assert "BTShadowFlux: event=Update_callback_returned update_count=2" in caplog.text
+        assert holder["agent"].started == []
+        assert holder["agent"].cancelled == 0
+        assert session.writes == []
+        now[0] = 11.0
+        await emit("EndOfTurn", "tell me about yourself")
+        await asyncio.sleep(0)
+        assert holder["agent"].started == ["tell me about yourself"]
+        assert holder["agent"].cancelled == 0
+        expected = "ready_before_final" if capacity_available else "discarded_by_final"
+        assert holder["shadow"].observations[-1].outcome == expected
+        await emit("TurnResumed")
+        assert holder["agent"].cancelled == 0
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        if not capacity_available:
+            gate.release()
+    assert not holder["shadow"]._tasks
+    assert holder["agent"].cleaned == 1

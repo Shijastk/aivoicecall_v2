@@ -339,3 +339,53 @@ unrelated to pool design. Retain the 15-second policy and readiness barrier.
 Only connection/setup behavior is proven, not lower ElevenLabs synthesis latency.
 See docs/phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md for scope/limits.
 Phase 4/4D acceptance and Phase 4C/later-phase authorization remain unchanged.
+
+## 2026-09-15 — Earlier shadow transcript experiment
+
+Implemented the task-owner-authorized Phase 4B follow-up: opt-in repeated Flux
+Updates can trigger the isolated first-token probe before eager/final EOT.
+Decision: require identical full text across 200ms, 3+ words and <=2000 chars;
+limit early mode to two attempts per turn and 1s between attempts, including eager
+fallback. Mutation/resume cancels; no replacement overlaps unfinished closure.
+Final EOT always runs normal Agent generation. No speculative TTS/output reuse,
+private-content telemetry, dependencies, real calls, commit or push.
+Offline evidence and limits are in docs/TESTING.md and the Phase 4 realtime record.
+Live usefulness remains unknown; Phase 4C remains deferred. Source audit also
+found production admission is per call, despite historical global-gate plans.
+
+### 2026-09-15 — Phase 4B.1 admission review
+
+Reviewed content-free metadata from the owner's `/tmp/bt-phase4b1-shadow.log`:
+9 eager generations, zero interim triggers. Existing telemetry cannot identify
+repeat/word/order rejection or establish that early mode was enabled. The helper
+omits the early flag, a conditional explanation pending launch provenance.
+Added diagnostic-only receipt/delivery/admission records; thresholds and shadow
+semantics remain unchanged. No live calls or Phase 4C. Detailed evidence and next
+controlled test: `docs/phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md`.
+
+Decision log addendum: measure the actual Update admission failure before tuning
+thresholds or changing speculative behavior; do not infer it from Groq HTTP 200
+or eager-only generation records.
+
+### 2026-09-15 — Phase 4B.1 measured repeat revision
+
+Decision log addendum: after reviewing allowlisted timing/admission metadata in
+`/tmp/bt-phase4b1-diagnostics.log`, lower only the identical confirming-Update
+minimum from 200ms to 100ms. A 111.629ms post-resume repeat preceded the next eager
+by ~156ms but changed ~118ms later; the useful-lead/waste tradeoff needs a new
+controlled shadow comparison. Preserve shared 1s cooldown, two attempts/turn,
+matching-eager deduplication, invalidation and normal final Agent behavior.
+No speculative TTS, Phase 4C, dependencies, live calls/devices/providers or
+commit/push. Source/tests plus the Phase 4 realtime record own current evidence;
+docs/TESTING.md records regression results. Prior worktree changes preserved.
+
+### Bluetooth barge-in investigation — 2026-09-15
+
+Reviewed the newest matching live diagnostic log: 9 finals → 9 normal starts →
+9 TTS/audio dispatch completions, zero normal Agent cancellations; all four
+resumes precede final EOT. Audible cut/missing-answer root cause remains unknown.
+Added content-free lifecycle diagnostics and real Agent/player synthetic restart
+coverage with stale shadow work. Decision: preserve thresholds and cancellation
+semantics pending a captured failure; Phase 4C/6 do not advance. See
+[full evidence](docs/BLUETOOTH_BARGE_IN_INVESTIGATION.md) and
+[test results](docs/TESTING.md#bluetooth-barge-in-lifecycle-investigation--2026-09-15).
