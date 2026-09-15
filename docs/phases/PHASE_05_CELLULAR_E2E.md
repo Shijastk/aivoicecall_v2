@@ -1,10 +1,12 @@
 # Bluetooth Phase 5 — Controlled cellular end-to-end validation
 
-**Status: GATE 1 LIVE RUN APPROVED / PHASE NOT ACCEPTED.**
+**Status: GATE 1 NON-LIVE PREPARATION COMPLETE / LIVE MANUAL EVIDENCE PENDING / PHASE NOT ACCEPTED.**
 
 Shared contracts: [Roadmap](../ROADMAP.md), [requirements](../REQUIREMENTS.md),
 [Bluetooth architecture](../BLUETOOTH_ARCHITECTURE.md),
 [current architecture](../CURRENT_ARCHITECTURE.md), [testing](../TESTING.md).
+The controlled manual procedure is pinned in
+[PHASE_05_GATE1_RUNBOOK](PHASE_05_GATE1_RUNBOOK.md).
 Future phase scope and gates remain subject to explicit review; file names below are
 candidate locations unless explicitly identified as existing code.
 
@@ -60,11 +62,15 @@ Executed by the task owner:
 - all four full-suite failures match the documented historical baseline identities/signatures
 - no new Bluetooth or Phase-5-preflight regression identity was observed
 
+The later Gate 1 preparation commits are documentation-only; they do not change production/test behavior. Current source inspection found no evidence that a new runtime change is justified before the controlled live run. Existing discovery, directional media isolation, route isolation/restoration, diagnostics, lifecycle logging and manual runner already provide the required Gate 1 seams. Adding speculative behavior before a measured live failure would violate the repository's measure-before-change rule.
+
 This evidence authorizes proceeding to the approved Gate 1 live run only. It is not Phase 5 acceptance.
 
 ## Files and boundaries
 
 Opt-in Bluetooth integration harness and synthetic/approved measurement tooling; existing tracer/monitor observation points must be reviewed for sufficient timing provenance before making latency claims.
+
+The current local tracer is transcript-bearing and uses process-local relative timing. It may remain a private debugging artifact under the approved retention scope, but it is not a valid caller mouth-to-ear clock/correlation source. Gate 1 therefore uses content-free diagnostics for public/sanitized evidence and leaves caller mouth-to-ear acceptance pending a separately valid methodology.
 
 ## Tests and measurable acceptance gate
 
@@ -83,6 +89,8 @@ Use confirmed manual phone hangup, stop optional pipeline and both streams, rest
 ## Artifacts and documentation to update
 
 Authorized sanitized E2E report, latency/echo methodology and results, compatibility audio/E2E status, defects and phase gate evidence. Do not commit raw audio or private transcript content.
+
+The manual procedure, abort criteria, post-run cleanup checks and evidence-handling rules are owned by [PHASE_05_GATE1_RUNBOOK](PHASE_05_GATE1_RUNBOOK.md). After the live run, update the owning phase, `ROADMAP`, `TESTING`, `COMPATIBILITY`, `KNOWN_ISSUES`, `DECISIONS` and `context.md` with observed evidence; do not pre-write PASS results.
 
 ## Approval and stop boundary
 
