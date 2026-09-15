@@ -67,6 +67,7 @@ async def build_phase3_ai_only_session(
     bluetooth_address: str | None,
     config: PwCatConfig,
     system_name: str | None = None,
+    diagnostics=None,
 ) -> Phase3AiOnlySession:
     """Discover fresh targets and construct, but do not start, the session."""
 
@@ -75,10 +76,15 @@ async def build_phase3_ai_only_session(
         bluetooth_address=bluetooth_address,
     )
 
+    if diagnostics is not None:
+        diagnostics.selected("downlink", targets.downlink)
+        diagnostics.selected("uplink", targets.uplink)
+
     routes = AiOnlyRouteIsolation(
         downlink=targets.downlink,
         uplink=targets.uplink,
         runner=runner,
+        diagnostics=diagnostics,
     )
     capture = PwCatCaptureEndpoint(
         targets.downlink,

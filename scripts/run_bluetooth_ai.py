@@ -68,6 +68,10 @@ def parse_args() -> argparse.Namespace:
         description="Run SHUO over an already-active Bluetooth HFP cellular call."
     )
     parser.add_argument(
+        "--diagnose-caller-audio", action="store_true",
+        help="Content-free Bluetooth PCM/codec/Flux/route diagnostics; no audio recording.",
+    )
+    parser.add_argument(
         "--bluetooth-address",
         required=True,
         help="Explicit phone Bluetooth address, e.g. AA:BB:CC:DD:EE:FF",
@@ -168,6 +172,10 @@ def parse_args() -> argparse.Namespace:
 
 
 async def _main(args: argparse.Namespace) -> None:
+    diagnostics = None
+    if args.diagnose_caller_audio:
+        from shuo.bluetooth.diagnostics import BluetoothDiagnostics
+        diagnostics = BluetoothDiagnostics()
     runner = AsyncioProcessRunner()
     discovery = PwDumpDiscovery(runner)
 
@@ -176,11 +184,13 @@ async def _main(args: argparse.Namespace) -> None:
         runner=runner,
         bluetooth_address=args.bluetooth_address,
         config=PwCatConfig(latency=args.latency),
+        diagnostics=diagnostics,
     )
 
     await run_production_bluetooth_conversation(
         session,
         persona_id=args.persona,
+        diagnostics=diagnostics,
         stream_id="bluetooth-manual",
         call_id=args.call_id,
         eager_eot_threshold=args.eager_eot_threshold,
