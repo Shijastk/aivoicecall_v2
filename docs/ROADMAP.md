@@ -236,3 +236,11 @@ to 100ms with unchanged shadow-only bounds. Offline results are in
 the [next controlled comparison](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#exact-next-controlled-shadow-test-not-executed)
 is proposed, not executed. Useful live readiness remains unknown; Phase 4C and
 later phases remain deferred.
+
+### Phase 4C repository status — 2026-09-15
+
+Phase 4C prepared-response reuse is implemented behind an explicit default-off
+Bluetooth flag and has passed repository-level automated verification. This is an
+implementation milestone, not Phase 4 acceptance: real provider/device/cellular
+validation is still required before enabling the feature by default or claiming a
+latency/caller-heard improvement. Phase 5 remains unchanged.

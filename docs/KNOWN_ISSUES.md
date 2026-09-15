@@ -171,3 +171,12 @@ delay player clearing, and downstream/in-flight playback is not retractable by
 local queue clear. These are source observations, not a measured root cause of
 the reported audible cut. Diagnostics and real Agent/player regression coverage
 were added; see the [evidence and next-test gate](BLUETOOTH_BARGE_IN_INVESTIGATION.md).
+
+## Phase 4C external acceptance pending — 2026-09-15
+
+Phase 4C's default-off prepared-stream reuse has passed repository-level automated
+verification, but its live benefit is intentionally unproven. The current task
+defers provider/device/real-call exercise until the codebase is clean, and recent
+owner evidence also reached ElevenLabs account quota exhaustion. Treat real-call
+latency, audio continuity and provider behavior as pending external acceptance,
+not as an automated-test failure.

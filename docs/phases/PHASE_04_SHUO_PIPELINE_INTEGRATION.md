@@ -193,3 +193,16 @@ cooldown/attempt bounds retained. See the
 [admission revision](PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#phase-4b1-admission-revision--2026-09-15)
 for measured opportunities, false-speculation risk and the exact next shadow
 comparison. This is still 4B.1; no Phase 4C or live exercise was performed.
+
+## Phase 4C repository-verified implementation — 2026-09-15
+
+Following explicit task-owner authorization, the commit-on-final reuse seam is now
+implemented on the Phase 4C feature branch. It is default-off, Bluetooth-only and
+fails open to the existing final-EOT Agent generation path. A reusable draft is
+limited to an exact-match, first-token-ready provider stream; it never pre-speaks,
+never owns TTS before finality and never buffers the complete answer.
+
+GitHub Actions run `34966008520` passed focused Phase 4, complete Bluetooth and full
+baseline-aware regressions plus compile/diff validation. No live provider/device
+or real call was used. Real-call validation remains the final gate before any
+caller-latency benefit or Phase 4 acceptance claim.

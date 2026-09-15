@@ -389,3 +389,18 @@ coverage with stale shadow work. Decision: preserve thresholds and cancellation
 semantics pending a captured failure; Phase 4C/6 do not advance. See
 [full evidence](docs/BLUETOOTH_BARGE_IN_INVESTIGATION.md) and
 [test results](docs/TESTING.md#bluetooth-barge-in-lifecycle-investigation--2026-09-15).
+
+## 2026-09-15 — Phase 4C repository-verified implementation
+
+Task-owner authorization advanced Phase 4C implementation while explicitly
+deferring real-call/provider/device testing until repository automation passed.
+A default-off prepared-response seam now retains at most a first-token-ready LLM
+stream, promotes it once only after exact final transcript/history/prompt match,
+and otherwise falls back to ordinary final-EOT generation. TTS remains
+non-speculative and carrier/browser/default startup is unchanged.
+
+GitHub Actions run `34966008520` passed compile, focused Phase 4, complete Bluetooth,
+full baseline-aware regression and diff validation; verified source commit:
+`bc9996f727bf4ff7870d6f112e73200d82a49b87`. This supersedes the earlier *implementation authorization* stop but
+not the historical BT-D23 evidence or Phase 4 live-acceptance gate. No latency or
+caller-heard improvement is claimed until final real-call validation is possible.

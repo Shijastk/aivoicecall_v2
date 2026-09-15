@@ -741,3 +741,37 @@ is logged; all nine final responses dispatch. Added lifecycle diagnostics and
 hardware-free real Agent/player interruption/restart tests. The reported audible
 failure remains unlocalized and warrants a separately authorized controlled test.
 This is not Phase 4C, and no phase status or call-control capability advances.
+
+## Phase 4C automated implementation evidence — 2026-09-15
+
+The task owner explicitly authorized Phase 4C implementation while deferring all
+new real-call/provider/device validation until repository-level automation is
+clean. The implementation is opt-in and does **not** reverse the earlier evidence
+that the measured Phase 4B triggers had insufficient live ready-before-final
+frequency. It therefore makes no latency-improvement or caller-heard claim.
+
+Implemented contract:
+
+- a speculative provider stream may be retained only after its first content token
+  is ready; the remainder stays unread, so no complete response is buffered;
+- final `EndOfTurn` may promote that stream exactly once only when the final
+  transcript, system prompt and committed history snapshot still match;
+- mismatch, `TurnResumed`, timeout, capacity pressure, teardown or invalid history
+  discard/cancel the speculative stream and preserve the ordinary final-EOT path;
+- promoted tokens still flow through the existing `Agent` token -> TTS -> Player
+  callbacks; TTS remains non-speculative;
+- the feature is disabled by default and requires the explicit Bluetooth shadow
+  path plus `--prepared-response-reuse`; omitting the flag is the rollback;
+- carrier/browser/default startup and the pure state machine are unchanged.
+
+Automated verification was executed by GitHub Actions run `34966008520` on Python
+3.12 with no provider secrets, Bluetooth device or cellular call. The run passed:
+source application, `py_compile`, the focused Phase 4 regression, the complete
+Bluetooth regression, the full root regression compared to the documented four
+baseline failures by exact identity/signature, and final `git diff --check`.
+The verified implementation was committed as `bc9996f727bf4ff7870d6f112e73200d82a49b87`.
+
+Remaining gate: a controlled real call/provider/device exercise is still required
+to establish actual latency benefit, audio correctness and caller-heard behavior.
+Phase 4C code is repository-verified; Phase 4 overall acceptance is not yet
+claimed.

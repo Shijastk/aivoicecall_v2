@@ -696,3 +696,30 @@ from the authorized diagnostic log. No live calls/devices/providers or new
 dependencies. The [Phase 4 record](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#phase-4b1-admission-revision--2026-09-15)
 owns the timing evidence, rule tradeoffs and next controlled test; useful live
 readiness is not established and Phase 4C remains deferred.
+
+## Phase 4C prepared-response automated verification — 2026-09-15
+
+GitHub Actions run `34966008520` verified commit `bc9996f727bf4ff7870d6f112e73200d82a49b87` without provider secrets,
+Bluetooth hardware or a cellular call.
+
+Automated gates that passed:
+
+- deterministic source application and `git diff --check`;
+- `py_compile` for every changed Python module/test;
+- focused Phase 4 regression including prepared-stream reuse, history matching,
+  partial cancellation, exact-match promotion, pre-final-not-ready fallback,
+  invalidation and conversation routing;
+- repository Bluetooth regression via `scripts/dev/04_test_bluetooth.sh`;
+- full root pytest regression with the four already-documented baseline failures
+  required to match by exact test identity and known failure signature;
+- final diff validation before the verified source commit.
+
+The first automated attempt failed before source application because a hand-built
+unified diff was malformed. That bootstrap mechanism was replaced with exact
+source-marker application. The first focused code run then exposed four issues:
+a `ServiceLogger` call-shape error and three test synchronization/clock problems.
+Those were fixed and the complete automated gate was rerun to success; no
+validation was disabled or weakened.
+
+Not measured: real Groq/Deepgram/ElevenLabs latency, PipeWire/Bluetooth behavior,
+cellular transport or caller-heard audio. Those remain external final validation.

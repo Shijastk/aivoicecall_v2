@@ -302,3 +302,16 @@ Bluetooth event/state/action, Agent start/cancel and outbound write/clear logs
 now complement shared Agent cancellation-stage and turn-numbered audio/completion
 logs. No state-machine, cancellation-order or shadow-admission behavior changed.
 Local write/dispatch remains distinct from phone playback.
+
+## Phase 4C optional prepared-stream seam — 2026-09-15
+
+The Bluetooth production path now has a default-off Phase 4C seam. Shadow work
+may pause one provider stream after its first content token. On final EOT, only an
+exact transcript/history/prompt match can transfer that same stream to the normal
+`Agent`; the Agent continues token-level streaming into the existing TTS/Player
+pipeline. Invalid, stale, resumed, timed-out or unavailable speculation is
+cancelled and the ordinary final-EOT LLM request remains the fallback.
+
+This does not change `process_event`, the core µ-law contract, normal server
+startup, carrier/browser behavior or TTS finality. Repository automation is green;
+real-call latency/audio acceptance is still pending.

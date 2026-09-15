@@ -142,3 +142,9 @@ including slowly closing shadow work. Do not infer Agent restart failure from
 shadow `turn_closed` telemetry or long dispatch totals. The
 [investigation record](BLUETOOTH_BARGE_IN_INVESTIGATION.md) owns evidence, competing
 hypotheses and the next controlled test. No Phase 4C/6 advancement.
+
+## Phase 4C implementation authorization — 2026-09-15
+
+| ID / status | Context/evidence | Decision | Consequences | Revisit only when |
+|---|---|---|---|---|
+| BT-D26 — Accepted: implement Phase 4C as default-off exact-match prepared-stream reuse | Earlier BT-D23 evidence remains valid: the then-current trigger had insufficient live ready-before-final frequency. The task owner later explicitly authorized implementation while postponing new real-call/provider validation. Automated run `34966008520` passed focused, Bluetooth and full baseline-aware repository gates. | Permit Phase 4C only as an explicit Bluetooth opt-in. Reuse only a first-token-ready provider stream whose final transcript, prompt and committed history still match; otherwise use the ordinary final-EOT path. Keep TTS non-speculative and leave carrier/browser/default startup unchanged. | Code correctness can be exercised without spending provider quota or requiring a phone. No caller-latency benefit is claimed from offline automation. Rollback is omission of the Phase 4C flag. | Controlled real-call evidence demonstrates benefit/regression, or a correctness/cost/provider issue requires changing the promotion contract. |
