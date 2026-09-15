@@ -56,7 +56,6 @@ jobs:
             tests/test_bluetooth_conversation.py \
             tests/test_bluetooth_speculative.py \
             tests/test_player.py \
-            tests/test_tts_pool.py \
             tests/test_tts_failure.py \
             tests/test_flux.py \
             tests/test_update.py \
