@@ -94,9 +94,19 @@ def parse_args() -> argparse.Namespace:
         "--shadow-early-transcripts", action="store_true",
         help="Opt in to bounded repeated-Update shadow probes before eager EOT.",
     )
+    parser.add_argument(
+        "--prepared-response-reuse",
+        action="store_true",
+        help=(
+            "Phase-4C opt-in: reuse a matching first-token-ready speculative "
+            "LLM stream after final EndOfTurn; normal generation is fallback."
+        ),
+    )
     args = parser.parse_args()
     if args.shadow_early_transcripts and not args.shadow_speculation:
         parser.error("--shadow-early-transcripts requires --shadow-speculation")
+    if args.prepared_response_reuse and not args.shadow_speculation:
+        parser.error("--prepared-response-reuse requires --shadow-speculation")
     if args.shadow_speculation and args.eager_eot_threshold is None:
         parser.error("--shadow-speculation requires --eager-eot-threshold")
     return args
@@ -122,6 +132,7 @@ async def _main(args: argparse.Namespace) -> None:
         eot_threshold=args.eot_threshold,
         shadow_speculation=args.shadow_speculation,
         shadow_early_transcripts=args.shadow_early_transcripts,
+        prepared_response_reuse=args.prepared_response_reuse,
     )
 
 

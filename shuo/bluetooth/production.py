@@ -43,6 +43,7 @@ async def run_production_bluetooth_conversation(
     eot_threshold: Optional[float] = None,
     shadow_speculation: bool = False,
     shadow_early_transcripts: bool = False,
+    prepared_response_reuse: bool = False,
     deps: BluetoothProductionDeps = BluetoothProductionDeps(),
 ) -> None:
     """Wire the real SHUO services to an already-built Bluetooth session.
@@ -71,6 +72,8 @@ async def run_production_bluetooth_conversation(
 
     if shadow_early_transcripts and not shadow_speculation:
         raise ValueError("shadow_early_transcripts requires shadow_speculation")
+    if prepared_response_reuse and not shadow_speculation:
+        raise ValueError("prepared_response_reuse requires shadow_speculation")
     if shadow_speculation and eager_eot_threshold is None:
         raise ValueError("shadow_speculation requires an explicit eager_eot_threshold")
 
@@ -138,6 +141,7 @@ async def run_production_bluetooth_conversation(
         return SpeculativeTurnCoordinator(
             probe=probe, capacity_gate=shadow_gate,
             early_transcripts=shadow_early_transcripts,
+            prepared_reuse=prepared_response_reuse,
         )
 
     try:

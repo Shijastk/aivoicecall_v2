@@ -40,7 +40,7 @@ class BluetoothAgent(Protocol):
     @property
     def history(self): ...
 
-    async def start_turn(self, transcript: str) -> None: ...
+    async def start_turn(self, transcript: str, prepared_response=None) -> None: ...
     async def cancel_turn(self) -> None: ...
     async def cleanup(self) -> None: ...
 
@@ -51,6 +51,7 @@ class BluetoothSpeculator(Protocol):
     def on_eager(self, transcript: str, *, observed_at: Optional[float] = None) -> None: ...
     def on_resumed(self, *, observed_at: Optional[float] = None) -> None: ...
     def on_final(self, transcript: str, *, observed_at: Optional[float] = None) -> None: ...
+    def take_committed(self, transcript: str): ...
     async def cleanup(self) -> None: ...
 
 
@@ -237,7 +238,30 @@ async def run_bluetooth_conversation(
                             "BTLatency: Flux EndOfTurn -> Agent start %.1fms",
                             eot_to_agent_ms,
                         )
-                    await agent.start_turn(action.transcript)
+                    prepared_response = None
+                    if speculator is not None:
+                        prepared_response = speculator.take_committed(
+                            action.transcript
+                        )
+                    if prepared_response is None:
+                        await agent.start_turn(action.transcript)
+                    else:
+                        _latency_log.info(
+                            "BTPrepared: event=AgentStart reuse=true normal_turn=%d",
+                            normal_turn,
+                        )
+                        try:
+                            await agent.start_turn(
+                                action.transcript,
+                                prepared_response=prepared_response,
+                            )
+                        except BaseException:
+                            cancel = getattr(prepared_response, "cancel", None)
+                            if cancel is not None:
+                                result = cancel()
+                                if inspect.isawaitable(result):
+                                    await result
+                            raise
                     _latency_log.info("BTLifecycle: event=AgentStart_returned normal_turn=%d", normal_turn)
 
                 elif isinstance(action, ResetAgentTurnAction):

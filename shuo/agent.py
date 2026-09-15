@@ -18,7 +18,7 @@ from .call_monitor import CallRecorder
 from .carrier.base import CarrierSession
 from .recording import CallTape
 from .runtime_config import CallSettings
-from .services.llm import LLMService
+from .services.llm import LLMService, PreparedLLMResponse
 from .services.tts import TTSService
 from .services.tts_pool import TTSPool
 from .services.player import AudioPlayer
@@ -129,7 +129,11 @@ class Agent:
 
     # ── Turn Lifecycle ──────────────────────────────────────────────
 
-    async def start_turn(self, transcript: str) -> None:
+    async def start_turn(
+        self,
+        transcript: str,
+        prepared_response: Optional[PreparedLLMResponse] = None,
+    ) -> None:
         """Start a new agent turn."""
         if self._active:
             await self.cancel_turn()
@@ -162,9 +166,16 @@ class Agent:
             tape=self._tape,
         )
 
-        # Start LLM
+        # Start LLM. Phase 4C may reuse one exact-match provider stream;
+        # validation failure immediately falls back to the normal final-EOT path.
         self._tracer.begin(self._turn, "llm")
-        await self._llm.start(transcript)
+        reused = False
+        if prepared_response is not None:
+            reused = await self._llm.start_prepared(transcript, prepared_response)
+        if not reused:
+            await self._llm.start(transcript)
+        else:
+            log.info(f"Lifecycle: turn={self._turn} prepared_response_reused")
 
         tts_ms = int((self._t_tts_conn - self._t0) * 1000)
         log.info(f"Turn started  (TTS {tts_ms}ms = {tts_ms}ms setup)")
