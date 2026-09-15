@@ -61,3 +61,47 @@ legacy instruction wording and current code are in [KNOWN_ISSUES](KNOWN_ISSUES.m
 | ID / status | Context/evidence | Decision | Consequences | Revisit only when |
 |---|---|---|---|---|
 | BT-D23 — Accepted: do not enable Phase 4C yet | Controlled Phase 4B live shadow run observed 10 final turns, 0 ready-before-final, 10 not-ready-by-final and 4 resumed eager candidates. One resumed candidate reached a first token at 500.8ms and was correctly discarded. | Keep Phase 4B shadow-only. Do not reuse speculative output in caller-visible responses yet. Prioritize the measured TTS warm-connection issue and investigate an earlier safe turn/transcript signal before another Phase 4C gate. | Correctness and committed history remain protected; no latency claim is inflated from insufficient evidence. | A later controlled shadow run shows repeatable useful pre-final readiness with acceptable cancellation, provider load and history isolation. |
+
+## TTS idle-policy reversal — 2026-09-14
+
+Owner-supplied controlled live evidence showed successful warm reuse at 10,544,
+11,078 and 17,451ms, followed by a caller-visible silent turn after checkout at
+19,819ms: ElevenLabs rejected text with its 20-second input inactivity timeout.
+The old eight-second cutoff was too aggressive, but unlimited reuse is unsafe.
+
+Decision: retain liveness checks and use a separate `max_idle_age=15.0` with
+proactive expiry/refill and independent checkout enforcement. Keep legacy `ttl`
+as a fallback for the separately named health-check interval; add no keepalive
+text or synthetic speech. The roughly five-second margin and latency benefit
+need another controlled live validation. This reverses the initial unlimited-age
+offline implementation only; Phase 4C remains deferred.
+
+## TTS startup readiness decision — 2026-09-14
+
+Owner-reported first-turn setup of 4132ms exposed competing initial warm/cold
+handshakes. Source confirms `start()` schedules background filling without
+awaiting readiness. Keep that API nonblocking; use explicit bounded
+`wait_ready()` before Bluetooth Agent creation and let initial `get()` join
+warmup for shared callers. Changing every start into a blocking operation would
+silently alter existing callers; gating every media frame is unnecessary.
+Pool ownership precedes the barrier so abort/failure cleans up deterministically.
+This changes startup sequencing only, preserves the 15-second idle policy and
+does not implement Phase 4C. Live latency improvement remains unvalidated.
+
+Readiness review correction (2026-09-14): allow the existing preconnect retry
+loop to continue until the original readiness timeout. A transient failure must
+not immediately abort startup; timeout chains the latest error. Align warm idle
+age with the local initialization-send boundary after the handshake, retaining
+send/backpressure time. The former pre-handshake timestamp unnecessarily spent
+the 15-second budget on connection establishment. The five-second provider
+safety margin, cancellation ownership and phase boundaries are unchanged.
+
+Final controlled validation addendum (2026-09-14, task-owner supplied): retain
+the 15-second safe idle maximum and readiness barrier. Initial warmth preceded
+caller audio forwarding, first-turn warm setup was 0ms rather than the previous
+4132ms cold setup, and expiry/replacement occurred at 15.000–15.001s without
+over-limit checkout or input timeout. Later provider-account quota exhaustion
+was unrelated. This validates connection/setup behavior only, not lower
+ElevenLabs synthesis latency. Detailed evidence remains in the
+[Phase 4 record](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#final-controlled-tts-warm-pool-validation--2026-09-14);
+no phase advancement follows from this narrow result.

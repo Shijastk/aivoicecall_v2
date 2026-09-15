@@ -52,7 +52,7 @@ async def run_production_bluetooth_conversation(
       1. resolve one immutable call settings snapshot
       2. Phase-3 Bluetooth session starts inside the orchestrator
       3. real Flux starts inside the orchestrator
-      4. async Agent factory starts the per-call TTSPool
+      4. async Agent factory starts TTSPool and awaits usable initial readiness
       5. existing Agent streams LLM -> TTS -> AudioPlayer -> Bluetooth adapter
       6. teardown always stops the pool and saves the local trace
 
@@ -106,6 +106,9 @@ async def run_production_bluetooth_conversation(
         if not pool_started:
             await pool.start()
             pool_started = True
+            # Ownership is recorded before this cancellable barrier so startup
+            # failure/abort still stops the pool in the outer finally block.
+            await pool.wait_ready()
 
         return deps.agent_cls(
             session=outbound,

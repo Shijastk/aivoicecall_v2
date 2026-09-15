@@ -194,3 +194,27 @@ Current Phase 4 position:
 - next work: measured TTS warm-connection latency issue, then investigation of an
   earlier safe speculative trigger
 - Phase 5 and later phases remain unchanged
+
+2026-09-14 TTS follow-up: owner-supplied live evidence proved the old eight-second
+cutoff too aggressive, but disproved unlimited reuse with a silent turn at
+19,819ms near the provider's 20-second input timeout. The revised implementation
+uses a separate 15-second safe idle maximum plus liveness checks and proactive
+expiry/refill. At that stage controlled validation was pending; the final result
+is recorded below. This narrow, explicitly authorized warm-pool fix
+does not advance Phase 4C or complete Phase 4D. See the
+[implementation record](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#tts-warm-pool-follow-up--2026-09-14).
+
+Further 2026-09-14 startup correction: owner-reported 4132ms first-turn setup
+exposed a duplicate cold connection racing initial warmup. An explicit Bluetooth
+readiness barrier and shared initial-checkout wait prevented that race offline;
+controlled startup verification subsequently passed as recorded below.
+
+Final controlled TTS validation (owner-supplied, 2026-09-14): initial readiness
+preceded caller audio forwarding; first-turn setup was 0ms instead of the earlier
+4132ms cold setup. Warm reuse below 15s and proactive expiry/refill at
+15.000–15.001s were observed, with no over-limit checkout or input timeout.
+Later account quota exhaustion was unrelated to the pool. Only connection/setup
+behavior is proven, not lower synthesis latency. See the
+[final evidence](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#final-controlled-tts-warm-pool-validation--2026-09-14).
+This closes the narrow TTS live-validation item, not Phase 4/4D; no Phase 4C or
+later-phase advancement is implied.

@@ -101,6 +101,40 @@ flushes TTS. `TTSService.start` requests ElevenLabs `ulaw_8000` WebSocket audio;
 `_handle_message` dispatches audio/completion and provider failures. `TTSPool`
 pre-connects, rebinds callbacks and replenishes/evicts connections for one voice.
 
+TTS pool policy update (2026-09-14, verified in source/offline tests):
+`TTSPool.get` and `_evict_stale` discard inactive services and warm sockets at
+`max_idle_age` (default 15 seconds). This leaves roughly five seconds below the
+owner-observed ElevenLabs 20-second input timeout. Age is conservatively measured
+from immediately before sending initialization text after the WebSocket
+handshake. `TTSService.warm_idle_started_at` excludes handshake time but includes
+send/backpressure time; it is recorded only after a successful send. Injected
+services without this timestamp retain the conservative pre-start fallback.
+`health_check_interval` controls liveness polling;
+when omitted, legacy `ttl / 2` supplies the interval. Maintenance also wakes at
+the earliest idle expiry, and checkout independently enforces the limit.
+Maintenance detaches unusable entries before
+awaiting cleanup, and interrupted preconnections are cancelled before pool stop
+returns. `TTSService.is_active` still uses its running flag and socket presence;
+the receive loop marks disconnected services inactive. This adds no provider
+keepalive and does not guarantee that a remote socket cannot close after checkout.
+The owner observed successful reuse beyond eight seconds, but a silent turn at
+19,819ms disproved unlimited reuse. Subsequent owner-supplied controlled live
+validation confirmed the revised 15-second expiry/replacement behavior and
+startup readiness, with 0ms first-turn warm setup. Lower ElevenLabs synthesis
+latency is not established; see the
+[Phase 4 evidence record](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#final-controlled-tts-warm-pool-validation--2026-09-14).
+
+Startup readiness correction (2026-09-14): `TTSPool.start()` remains nonblocking.
+`wait_ready(timeout=10.0)` waits for an active socket below the safe idle maximum,
+and permits preconnect retries within its original timeout. Timeout reports the
+latest preconnect error as its cause; pool stop still fails immediately.
+Bluetooth's async Agent
+factory awaits it after recording pool ownership for cleanup. In the existing
+orchestrator this is after Flux startup but before reader creation/media event
+dispatch. A first `get()` during initial warmup also joins that warmup, protecting
+shared callers from a duplicate cold connection. This asynchronous startup-only
+barrier does not add per-frame work or change the 15-second idle policy.
+
 ## Playback, interruptions and completion
 
 `shuo/services/player.py` fixes FRAME_BYTES=160, FRAME_SECONDS=0.020 and three

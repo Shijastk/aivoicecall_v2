@@ -400,3 +400,160 @@ Controlled live Bluetooth shadow run:
 No speculative text was intentionally sent to TTS or committed conversation
 history. This run validates the shadow/cancellation measurement path, not a
 Phase 4C response-reuse path and not a sub-500ms caller-heard latency claim.
+
+## TTS warm-pool regression — 2026-09-14
+
+Historical unlimited-age implementation results, retained as evidence. That
+policy was subsequently disproven by owner-supplied live input-timeout evidence;
+the bounded policy and its new regression results are recorded below.
+
+Executed in the working tree using the existing Python 3.12 `.venv`, with
+`PYTHON_DOTENV_DISABLED=1` to prevent test imports from loading `.env`:
+
+```bash
+PATH="$PWD/.venv/bin:$PATH" PYTHON_DOTENV_DISABLED=1 python -m pytest -q \
+  tests/test_tts_failure.py \
+  tests/test_bluetooth_production.py \
+  tests/test_bluetooth_conversation.py \
+  -p no:cacheprovider
+PYTHON_DOTENV_DISABLED=1 ./scripts/dev/04_test_bluetooth.sh
+PYTHON_DOTENV_DISABLED=1 PYTEST_ADDOPTS='-o faulthandler_timeout=15' \
+  ./scripts/dev/05_test_full.sh
+```
+
+Results:
+
+- focused selection: **22 passed, 3 warnings in 0.86s**
+- Bluetooth regression: **86 passed, 3 warnings in 1.34s**
+- full regression: **873 passed, 4 failed, 4 warnings in 20.79s**
+
+The initial sandboxed full run stalled around call-history/lifecycle tests and
+was interrupted without a completed result. The full result above is the
+authorized rerun outside the sandbox with a diagnostic traceback timer.
+
+All four completed-run failures match the documented identities and signatures:
+
+- `scripts/test_v2_keys.py::test_shunya_key`: unmarked async function unsupported
+- `scripts/test_v2_keys.py::test_azure_key`: unmarked async function unsupported
+- `tests/test_config_api.py::TestIsolation::test_the_call_server_has_no_config_routes`:
+  `AttributeError: '_IncludedRouter' object has no attribute 'path'`
+- `tests/test_test_call.py::TestTheProcessSplitSurvives::test_the_call_server_has_no_test_call_routes`:
+  the same `_IncludedRouter.path` AttributeError
+
+No new failing identity appeared. Warnings remain the existing websockets,
+audioop and Starlette/AnyIO deprecations. No unrelated failures were changed.
+
+`TestPoolLiveness` now verifies checkout past the old TTL, periodic retention of
+healthy old sockets, idle death followed by automatic refill, callback/voice
+binding, idempotent stop, interrupted preconnect cleanup, checkout during
+eviction, and stop during detached-entry cleanup. Existing dead-checkout and
+zero-audio completion coverage remains. All provider boundaries are fake in
+these tests; no live calls or devices were used. **Live latency improvement is
+NOT yet proven.** The later measurement command and limits are in the
+[Phase 4 record](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#tts-warm-pool-follow-up--2026-09-14).
+
+## Bounded TTS idle-policy regression — 2026-09-14
+
+After the owner reported the 19,819ms silent turn, revised the policy to
+`max_idle_age=15.0` with a separate health-check interval and expiry-aware
+maintenance scheduling. The previous results above do not validate this policy.
+
+Executed with the existing Python 3.12 environment, dotenv loading disabled:
+
+```bash
+PATH="$PWD/.venv/bin:$PATH" PYTHON_DOTENV_DISABLED=1 python -m pytest -q \
+  tests/test_tts_failure.py \
+  tests/test_bluetooth_production.py \
+  tests/test_bluetooth_conversation.py \
+  -p no:cacheprovider
+PYTHON_DOTENV_DISABLED=1 ./scripts/dev/04_test_bluetooth.sh
+PYTHON_DOTENV_DISABLED=1 ./scripts/dev/05_test_full.sh
+```
+
+- Focused: **35 passed, 3 warnings in 0.90s**.
+- Bluetooth: **86 passed, 3 warnings in 1.34s**.
+- Full: **886 passed, 4 failed, 4 warnings in 20.79s**.
+
+The four failures are the same identities/signatures listed above: unsupported
+unmarked async Shunya/Azure probes, and `_IncludedRouter.path` AttributeError in
+the config/test-call isolation tests. No new failing identity or unrelated fix.
+
+Tests prove warm reuse at 11 seconds, rejection at 15, 16 and 19.819 seconds,
+proactive over-age replacement, expiry waking before a longer health interval,
+dead checkout/idle behavior, callback/voice binding, finite positive policy
+validation, and deterministic cleanup including preconnect/eviction interruption.
+These tests use fake providers and no live calls/devices. Final max-idle choice
+and latency improvement still require another controlled live validation.
+
+## Initial TTS startup readiness regression — 2026-09-14
+
+Executed after the first-turn race correction, using the same Python 3.12
+environment and dotenv-disabled commands as the bounded idle-policy run above:
+
+- Focused (`test_tts_failure`, `test_bluetooth_production`,
+  `test_bluetooth_conversation`): **43 passed, 3 warnings in 1.01s**.
+- `./scripts/dev/04_test_bluetooth.sh`: **89 passed, 3 warnings in 1.46s**.
+- `./scripts/dev/05_test_full.sh`: **894 passed, 4 failed, 4 warnings in 20.84s**.
+
+Failures remain exactly the two unsupported unmarked async Shunya/Azure probes
+and the two `_IncludedRouter.path` route-isolation AttributeErrors, with the
+previously recorded identities/signatures. No new failure identity appeared.
+
+Delayed fake preconnection tests show that first checkout stays pending with
+only one connection attempt, then receives that original socket. Production
+wiring tests use the real TTSPool with fake TTS to verify Agent creation waits,
+first acquisition retains the selected voice, and cancellation/provider failure
+still stops pool resources. Readiness tests also cover timeout, pool stop and
+waiter cancellation without cancelling the shared warmup. Existing 15-second
+expiry/refill and cleanup regressions remain green.
+
+No live calls/providers/devices were exercised. This is startup ordering and
+resource-ownership evidence, not proof of improved live first-turn latency.
+
+## Startup-readiness review corrections — 2026-09-14
+
+Readiness now permits transient preconnection retries within the existing
+timeout and chains the latest failure on timeout. The production idle timestamp
+is immediately before the successful initialization send, after the handshake;
+send/backpressure time still counts against the unchanged 15-second limit.
+
+Ran the same three dotenv-disabled commands recorded above, using Python 3.12:
+
+- Focused: **46 passed, 3 warnings in 5.26s**.
+- Bluetooth: **89 passed, 3 warnings in 2.34s**.
+- Full: **897 passed, 4 failed, 4 warnings in 25.13s**.
+- `git diff --check`: passed.
+
+Exact failure identities and signatures remain:
+
+- `scripts/test_v2_keys.py::test_shunya_key`: unsupported unmarked async function.
+- `scripts/test_v2_keys.py::test_azure_key`: unsupported unmarked async function.
+- `tests/test_config_api.py::TestIsolation::test_the_call_server_has_no_config_routes`:
+  `AttributeError: '_IncludedRouter' object has no attribute 'path'`.
+- `tests/test_test_call.py::TestTheProcessSplitSurvives::test_the_call_server_has_no_test_call_routes`:
+  the same `_IncludedRouter.path` AttributeError.
+
+New tests verify recovery after a transient initial failure without a duplicate
+cold checkout, production readiness through that retry, and the latest error
+as timeout cause after repeated failures. A real TTSService with a fake socket
+and clock verifies that a four-second handshake is excluded while a two-second
+initialization send remains in the idle budget, including eviction at 15 seconds.
+Existing cancellation, stop, expiry/refill and voice-binding coverage remains
+green. No live calls/providers/devices were exercised; live latency and the final
+idle-margin choice still need controlled validation.
+
+## Final controlled TTS validation — 2026-09-14
+
+Following the offline runs above, the task owner supplied final live validation
+of the startup barrier and 15-second idle policy. Initial warmth preceded caller
+audio forwarding; first-turn setup was 0ms versus the earlier 4132ms cold setup.
+Warm reuse at 10.164s, 12.995s and 14.629s and proactive replacement at
+15.000–15.001s were observed. No over-limit checkout or `input_timeout_exceeded`
+occurred. Later `quota_exceeded` was provider-account exhaustion, unrelated to
+the pool design. This is supplied runtime evidence, not an agent-executed run.
+
+Only warm-connection/setup behavior is validated; no lower ElevenLabs synthesis
+latency is claimed. Full scope and limits are owned by the
+[Phase 4 validation record](phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#final-controlled-tts-warm-pool-validation--2026-09-14).
+This documentation-only update ran `git diff --check`; tests and live calls were
+not rerun. Historical offline results and prior live failures remain preserved.

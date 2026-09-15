@@ -163,6 +163,148 @@ Planned work, each separately measured:
   lifecycle/cancellation safety.
 - Tune Bluetooth prebuffer only after upstream improvements and audio/XRUN tests.
 
+## TTS warm-pool follow-up — 2026-09-14
+
+The task owner explicitly authorized this narrow TTS fix ahead of the original
+4D sequence, consistent with the later Phase 4B decision to prioritize warm
+connection churn. Phase 4C remains deferred; other 4D work remains planned.
+
+The initial offline implementation removed age-only eviction and retained
+liveness checks. That unlimited-age policy passed offline tests but was disproven
+by the following **task-owner supplied controlled live evidence**, not reproduced
+by the coding agent:
+
+| Warm idle age | Reported outcome | Reported TTS latency |
+|---|---|---|
+| 10,544ms | Reused successfully | 255ms |
+| 11,078ms | Reused successfully | 260ms |
+| 17,451ms | Reused successfully | 258ms |
+| 19,819ms | Dispensed, then rejected; caller-visible silent turn | No audio |
+
+The last socket received `input_timeout_exceeded` with the provider message:
+`Have not received a new text input within the timeout of 20 seconds.`
+Successful reuse beyond eight seconds proves the old cutoff was too aggressive.
+The failure proves that local `TTSService.is_active` alone cannot determine safe
+reuse: first real text may arrive after the provider's input deadline.
+
+The revised production design in `shuo/services/tts_pool.py::TTSPool` uses
+`max_idle_age=15.0`, leaving roughly five seconds below the observed 20-second
+timeout. Checkout rejects at or above the maximum, even if locally active.
+Maintenance evicts/refills proactively and wakes at the earliest expiry rather
+than waiting past it for the next health poll. After review, age starts immediately
+before sending initialization text, after the handshake, via
+`TTSService.warm_idle_started_at`. This replaces the earlier pre-handshake origin
+and retains send/backpressure time in the idle budget. The timestamp is recorded
+only after successful send; it is not a provider receipt acknowledgement.
+Injected services without the timestamp retain the conservative pre-start origin.
+A long first-token
+delay can still consume the remaining margin; this is not a delivery guarantee.
+
+The separate `health_check_interval` controls liveness polling. Existing
+positional/keyword callers still work: absent that new argument, `ttl / 2`
+supplies the polling interval only, not the safe lifetime. Dead/inactive sockets
+are rejected on observation regardless of age. Cleanup, callback and per-call
+voice binding are preserved. No provider keepalive text or synthetic TTS is used.
+
+Offline coverage and executed results are recorded in
+[TESTING](../TESTING.md#tts-warm-pool-regression--2026-09-14).
+At this implementation stage, the maximum-idle choice and startup behavior still
+required controlled live validation. The subsequent
+[final controlled validation](#final-controlled-tts-warm-pool-validation--2026-09-14)
+below records the supplied results. Phase 4C, Phase 4 acceptance and later phases
+are unchanged.
+
+For a later explicitly authorized controlled measurement, manually establish the
+call first, load the existing provider environment, and set `BT_ADDRESS` to the
+explicitly selected phone. Run from the repository root:
+
+```bash
+LLM_MODEL=qwen/qwen3.6-27b SHUO_LOG_LEVEL=INFO PYTHONPATH=. \
+  .venv/bin/python -c 'from shuo.log import setup_logging; setup_logging(); import runpy; runpy.run_path("scripts/run_bluetooth_ai.py", run_name="__main__")' \
+  --bluetooth-address "${BT_ADDRESS:?Set BT_ADDRESS to the selected phone}" \
+  --latency 120ms --call-id bt-tts-safe-idle-15s
+```
+
+Keep model, voice and audio settings fixed across before/after trials. Include
+turn gaps of 10–14 seconds and gaps beyond 15 and 20 seconds. Verify proactive
+replacement and absence of over-limit checkout/silent turns; correlate warm
+checkout age and over-age eviction/cold reconnect logs
+with the existing `tts_pool` trace span, `llm_first_token` and `tts_first_audio`
+markers. Provider idle closures can still require reconnects. Compare warm/cold
+distributions; these timings alone do not measure caller mouth-to-ear latency.
+Ctrl+C stops the AI session; call answer/hangup remains manual. Speculation is
+disabled in this command to isolate the TTS pool change.
+
+## First-turn startup race correction — 2026-09-14
+
+Owner-supplied controlled live evidence reported Flux forwarding caller audio
+before initial TTS readiness, then `Pool empty, connecting fresh...` and
+`TTS 4132ms setup`; the background warm socket finished almost simultaneously.
+This observation was not reproduced with live providers by the coding agent.
+
+Source root cause: the manual runner builds the Bluetooth session, production
+wiring delegates lifecycle to `run_bluetooth_conversation`, and the orchestrator
+starts the session and Flux before awaiting the Agent factory. That factory
+awaited `TTSPool.start()`, but start merely scheduled `_fill_loop()`. Agent
+creation therefore completed before initial TTS readiness. The reader/event loop
+could deliver final EOT to `Agent.start_turn()` → `TTSPool.get()`, whose empty-pool
+path started a second connection rather than joining warmup. Carrier setup also
+awaits the same nonblocking start before constructing its Agent.
+
+Chosen minimal design: retain nonblocking `start()` for compatibility, add an
+explicit `wait_ready(timeout=10.0)` barrier in Bluetooth Agent creation, and
+make `get()` join initial warmup instead of racing it. Readiness requires an
+active socket below the 15-second limit, is not a reservation, and is rechecked
+on checkout. Following review, transient preconnection failures are retried within
+the original readiness timeout instead of aborting immediately. At timeout the
+most recent preconnection error is retained as the cause. Stop fails the waiter;
+cancelling one waiter does not cancel the pool-owned fill task. Production
+records pool ownership before awaiting readiness, so teardown still cancels
+warmup on failure/abort.
+
+This gates only initial Bluetooth reader/event dispatch, after Flux has started;
+the shared media/codec/state paths and call-control architecture are unchanged.
+It does not block the event loop, add per-frame checks, or wait on TTS before
+every turn. The startup bound remains ten seconds, including retry backoff;
+exhausting that budget ends startup rather than leaving a stalled session.
+Other shared callers acquire the initial
+socket through `get()` without opening a duplicate cold handshake.
+
+Offline tests cover delayed warmup/first checkout, production Agent creation,
+failure, timeout, cancellation, stop, voice binding, and the existing idle-age
+policy. Removing the competing handshake does not prove faster provider setup
+or caller-heard latency: startup waiting is moved ahead of turn dispatch. At this
+stage, startup order and first-turn timing still needed live verification; the
+final controlled validation below supplies that evidence. Phase 4C and later
+phases remain deferred. The coding agent did not run live calls.
+
+## Final controlled TTS warm-pool validation — 2026-09-14
+
+**VERIFIED AT RUNTIME — task-owner supplied controlled live results**, not
+independently reproduced by the coding agent. These validate the corrected
+startup-readiness barrier and 15-second safe warm-idle policy on the tested path:
+
+- The initial TTS warm connection was ready before caller audio forwarding.
+- The first turn used warm TTS with **0ms setup**, compared with the earlier
+  **4132ms cold setup** observed during the startup race.
+- Successful warm reuse was observed at **10.164s, 12.995s and 14.629s idle**.
+- Over-age sockets were proactively evicted at **15.000–15.001s** and replaced.
+- No `input_timeout_exceeded` occurred.
+- No socket older than the **15s safe maximum** was checked out.
+
+A later `quota_exceeded` failure was reported as **provider-account quota
+exhaustion**, unrelated to the pool design. It does not negate the observed
+readiness, warm reuse, expiry or replacement results, and this run must not be
+described as free of all provider failures.
+
+The proven result is **warm-connection/setup behavior**, including elimination
+of the observed first-turn cold setup. This does **not** establish lower
+ElevenLabs synthesis latency, faster provider handshakes, lower mouth-to-ear
+latency, or universal reliability under every provider/account condition.
+Retain the 15-second maximum and startup barrier. This validates the narrow TTS
+work only: it does not complete Phase 4/4D, authorize Phase 4C, or advance later
+phases. Earlier failed runs and offline-only evidence above remain historical.
+
 ## Phase 4A verification workflow
 
 The working tree may contain local Qwen/latency experiments that are not on remote

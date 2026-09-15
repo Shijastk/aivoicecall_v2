@@ -306,3 +306,36 @@ Decision: retain Phase 4B as shadow-only and do not advance to Phase 4C
 prepared-response reuse from this evidence. Next latency work should address
 the measured TTS 8-second warm-pool churn and investigate an earlier safe
 speculative trigger.
+
+## 2026-09-14 — TTS warm idle boundary correction
+
+Owner-supplied controlled live evidence: warm reuse succeeded at 10,544ms
+(255ms TTS), 11,078ms (260ms) and 17,451ms (258ms). Checkout at 19,819ms caused
+a caller-visible silent turn with ElevenLabs `input_timeout_exceeded` (20-second
+input timeout). The old eight-second eviction was too aggressive; unlimited-age
+reuse was disproven. Revised decision: a separate 15-second maximum safe idle
+age, liveness checks, proactive expiry/refill, no synthetic keepalive input.
+The margin and latency improvement await another controlled live validation.
+Phase 4C remains deferred. See docs/phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md.
+
+## 2026-09-14 — Initial TTS readiness correction
+
+Owner-reported first-turn `TTS 4132ms setup` occurred while background warmup
+completed almost simultaneously. Source confirmed `TTSPool.start()` returned
+after task creation, letting early checkout open a duplicate cold connection.
+Decision: keep start nonblocking, await explicit bounded readiness in Bluetooth
+Agent creation, and have initial checkout join warmup for shared callers.
+Startup cancellation/failure remains pool-owned and cleaned up; 15-second idle
+behavior is retained. Offline validation is not proof of live latency improvement.
+
+## 2026-09-14 — Final controlled TTS warm-pool validation
+
+Task-owner supplied live results: initial warmth preceded caller audio
+forwarding; first turn used warm TTS with 0ms setup instead of the prior 4132ms
+cold setup. Reuse succeeded at 10.164s, 12.995s and 14.629s idle. Over-age sockets
+were evicted/replaced at 15.000–15.001s, with no over-limit checkout and no
+`input_timeout_exceeded`. Later `quota_exceeded` was provider-account exhaustion,
+unrelated to pool design. Retain the 15-second policy and readiness barrier.
+Only connection/setup behavior is proven, not lower ElevenLabs synthesis latency.
+See docs/phases/PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md for scope/limits.
+Phase 4/4D acceptance and Phase 4C/later-phase authorization remain unchanged.
