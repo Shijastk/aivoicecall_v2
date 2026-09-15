@@ -9,6 +9,9 @@ Phase 3 real PipeWire capture/playback and AI-only route isolation were referenc
 validated. Remote revision `ae9d981eff861deb364bb8a34691d6008877860b` then
 added the first explicit Bluetooth→SHUO Phase 4 integration seam. Phase 4 is not
 accepted yet; realtime latency/correctness hardening and gate evidence remain.
+The task owner has separately approved a narrow Phase 5 Gate 1 controlled live
+validation exception while postponing STT-accuracy research; this does not
+retroactively complete Phase 4 or authorize Phase 6.
 
 ## Phase status
 
@@ -18,7 +21,7 @@ accepted yet; realtime latency/correctness hardening and gate evidence remain.
 | 2 | [Isolated adapter and codec](phases/PHASE_02_ADAPTER_AND_CODEC.md) | Complete for Phase 2 scope; production numeric queue/latency budget intentionally deferred to integrated measurement |
 | 3 | [PipeWire capture/playback integration](phases/PHASE_03_PIPEWIRE_INTEGRATION.md) | Complete on reference hardware; Phase 6 lifecycle ownership remains pending |
 | 4 | [SHUO conversation pipeline integration](phases/PHASE_04_SHUO_PIPELINE_INTEGRATION.md) | **In progress:** 4A/4B reference evidence plus default-off 4C/4D repository implementation are present; controlled provider/device/cellular validation and Phase 4 acceptance remain pending |
-| 5 | [Controlled cellular end-to-end validation](phases/PHASE_05_CELLULAR_E2E.md) | Planned / requires separate approval |
+| 5 | [Controlled cellular end-to-end validation](phases/PHASE_05_CELLULAR_E2E.md) | **Gate 1 non-live preparation complete; controlled manual live evidence pending; Phase 5 not accepted** |
 | 6 | [Call control and lifecycle ownership](phases/PHASE_06_CALL_CONTROL_AND_LIFECYCLE.md) | Planned / requires separate approval |
 | 7 | [Resilience and coexistence](phases/PHASE_07_RESILIENCE_AND_COEXISTENCE.md) | Planned / requires separate approval |
 | 8 | [Release and operations](phases/PHASE_08_RELEASE_AND_OPERATIONS.md) | Planned / requires separate approval |
@@ -261,3 +264,35 @@ default, and no caller-heard latency improvement is claimed. The remaining Phase
 4 gate is controlled real-path validation of the enabled 4C/4D candidates and
 rollback behavior. Phase 5 and later phases remain unchanged and separately
 authorized.
+
+## Phase 5 Gate 1 readiness — 2026-09-15
+
+The owner explicitly approved a controlled reference-user Gate 1 live run while
+postponing the unresolved STT-accuracy investigation. This is a narrow execution
+exception, not retroactive Phase 4 acceptance.
+
+Pre-live automated evidence on source revision
+`91d07a8dc1fe69b75d15063d5599c3dad087ec22` is baseline-clean:
+
+- Bluetooth-focused regression: **162 passed, 3 warnings**
+- full repository regression: **989 passed, 4 failed, 4 warnings**
+- all four failures match the documented historical baseline identities/signatures
+- no new Bluetooth/Phase-5-preflight failure identity was observed
+
+Source re-audit found the existing runner, directional capture/playback separation,
+AI-only route isolation/restoration, content-free diagnostics and lifecycle logging
+sufficient for the approved Gate 1 correctness/cleanup run. No new production
+behavior is justified before measured live evidence; the preparation commits are
+documentation-only.
+
+The exact approved morning procedure is
+[PHASE_05_GATE1_RUNBOOK](phases/PHASE_05_GATE1_RUNBOOK.md): it locks the itel P40+
+reference device, authorized second-phone participant, current providers, 5-minute
+maximum, 10-turn target, EOT `0.8`, two barge-in observations, no raw audio, local
+transcript retention only, manual answer/hangup, content-free public evidence and
+bounded cleanup checks.
+
+Phase 5 remains **not accepted** until the controlled live evidence is reviewed.
+Caller mouth-to-ear `<500 ms` is not claimable from current local timestamps, and
+no missing latency/echo threshold is invented. Phase 6 remains blocked pending a
+separate explicit approval after Phase 5 evidence review.
