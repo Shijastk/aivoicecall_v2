@@ -7,6 +7,7 @@ from ..agent import Agent
 from ..runtime_config import CallSettings, load_call_settings
 from ..services.flux import FluxService
 from ..services.llm import ShadowLLMProbe
+from ..services.player import PREROLL_FRAMES
 from ..services.tts_pool import TTSPool
 from ..tracer import Tracer
 from .conversation import run_bluetooth_conversation
@@ -43,6 +44,12 @@ async def run_production_bluetooth_conversation(
     eot_threshold: Optional[float] = None,
     shadow_speculation: bool = False,
     shadow_early_transcripts: bool = False,
+    prepared_response_reuse: bool = False,
+    tts_phrase_chars: Optional[int] = None,
+    llm_history_max_chars: Optional[int] = None,
+    llm_provider_timing: bool = False,
+    parallel_startup: bool = False,
+    player_preroll_frames: int = PREROLL_FRAMES,
     deps: BluetoothProductionDeps = BluetoothProductionDeps(),
 ) -> None:
     """Wire the real SHUO services to an already-built Bluetooth session.
@@ -71,8 +78,24 @@ async def run_production_bluetooth_conversation(
 
     if shadow_early_transcripts and not shadow_speculation:
         raise ValueError("shadow_early_transcripts requires shadow_speculation")
+    if prepared_response_reuse and not shadow_speculation:
+        raise ValueError("prepared_response_reuse requires shadow_speculation")
     if shadow_speculation and eager_eot_threshold is None:
         raise ValueError("shadow_speculation requires an explicit eager_eot_threshold")
+    if tts_phrase_chars is not None and (
+        isinstance(tts_phrase_chars, bool)
+        or not isinstance(tts_phrase_chars, int)
+        or not 24 <= tts_phrase_chars <= 160
+    ):
+        raise ValueError("tts_phrase_chars must be an integer between 24 and 160")
+    if llm_history_max_chars is not None and (
+        isinstance(llm_history_max_chars, bool)
+        or not isinstance(llm_history_max_chars, int)
+        or llm_history_max_chars <= 0
+    ):
+        raise ValueError("llm_history_max_chars must be a positive integer")
+    if player_preroll_frames not in (2, 3):
+        raise ValueError("player_preroll_frames must be 2 or 3")
 
     resolved = settings or deps.settings_loader()
     tracer = deps.tracer_factory()
@@ -119,25 +142,40 @@ async def run_production_bluetooth_conversation(
             # failure/abort still stops the pool in the outer finally block.
             await pool.wait_ready()
 
-        return deps.agent_cls(
-            session=outbound,
-            on_done=on_done,
-            tts_pool=pool,
-            tracer=tracer,
-            persona_id=persona_id,
-            settings=resolved,
-        )
+        agent_kwargs = {
+            "session": outbound,
+            "on_done": on_done,
+            "tts_pool": pool,
+            "tracer": tracer,
+            "persona_id": persona_id,
+            "settings": resolved,
+        }
+        if tts_phrase_chars is not None:
+            agent_kwargs["tts_phrase_chars"] = tts_phrase_chars
+        if llm_history_max_chars is not None:
+            agent_kwargs["llm_history_max_chars"] = llm_history_max_chars
+        if llm_provider_timing:
+            agent_kwargs["llm_provider_timing"] = True
+        if player_preroll_frames != PREROLL_FRAMES:
+            agent_kwargs["player_preroll_frames"] = player_preroll_frames
+        return deps.agent_cls(**agent_kwargs)
 
     def speculation_factory(agent):
         if shadow_gate is None:
             raise RuntimeError("shadow speculation gate was not initialized")
-        probe = deps.shadow_probe_cls(
-            system_prompt=resolved.system_prompt,
-            history_provider=lambda: agent.history,
-        )
+        probe_kwargs = {
+            "system_prompt": resolved.system_prompt,
+            "history_provider": lambda: agent.history,
+        }
+        if llm_history_max_chars is not None:
+            probe_kwargs["history_max_chars"] = llm_history_max_chars
+        if llm_provider_timing:
+            probe_kwargs["capture_provider_timing"] = True
+        probe = deps.shadow_probe_cls(**probe_kwargs)
         return SpeculativeTurnCoordinator(
             probe=probe, capacity_gate=shadow_gate,
             early_transcripts=shadow_early_transcripts,
+            prepared_reuse=prepared_response_reuse,
         )
 
     try:
@@ -149,6 +187,8 @@ async def run_production_bluetooth_conversation(
         }
         if shadow_speculation:
             runner_kwargs["speculation_factory"] = speculation_factory
+        if parallel_startup:
+            runner_kwargs["parallel_service_startup"] = True
         await deps.conversation_runner(session, **runner_kwargs)
     finally:
         if pool_started:

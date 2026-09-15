@@ -171,3 +171,33 @@ delay player clearing, and downstream/in-flight playback is not retractable by
 local queue clear. These are source observations, not a measured root cause of
 the reported audible cut. Diagnostics and real Agent/player regression coverage
 were added; see the [evidence and next-test gate](BLUETOOTH_BARGE_IN_INVESTIGATION.md).
+
+## Phase 4C external acceptance pending — 2026-09-15
+
+Phase 4C's default-off prepared-stream reuse has passed repository-level automated
+verification, but its live benefit is intentionally unproven. The current task
+defers provider/device/real-call exercise until the codebase is clean, and recent
+owner evidence also reached ElevenLabs account quota exhaustion. Treat real-call
+latency, audio continuity and provider behavior as pending external acceptance,
+not as an automated-test failure.
+
+## Phase 4D live-evidence limits — 2026-09-15
+
+The Phase 4D controls at `b56a38b132951b322ed5d63059a42f0a7600f829` are repository-verified but are not
+live-qualified. In particular:
+
+- `tts_phrase_chars` has no selected production value; batching too aggressively
+  can increase first-speech delay and batching too little may not improve TTS
+  synthesis behavior;
+- `llm_history_max_chars` has no default budget; any production value must preserve
+  digital-twin conversational fidelity even though system facts/rules and
+  canonical history are structurally retained;
+- Groq usage/timing fields are optional provider telemetry and do not by themselves
+  identify client/network versus provider causes unless compared with client spans;
+- `parallel_startup` is default-off pending live startup comparison;
+- two-frame playback pre-roll is default-off pending Bluetooth audio quality/XRUN
+  evidence; the current three-frame default remains;
+- Phase 4C prepared-stream reuse and these Phase 4D controls have not yet been
+  jointly validated on a controlled real call.
+
+No sub-500ms or other caller-heard latency claim follows from the offline pass.

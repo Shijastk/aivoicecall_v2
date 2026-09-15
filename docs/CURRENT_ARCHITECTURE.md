@@ -302,3 +302,35 @@ Bluetooth event/state/action, Agent start/cancel and outbound write/clear logs
 now complement shared Agent cancellation-stage and turn-numbered audio/completion
 logs. No state-machine, cancellation-order or shadow-admission behavior changed.
 Local write/dispatch remains distinct from phone playback.
+
+## Phase 4C optional prepared-stream seam — 2026-09-15
+
+The Bluetooth production path now has a default-off Phase 4C seam. Shadow work
+may pause one provider stream after its first content token. On final EOT, only an
+exact transcript/history/prompt match can transfer that same stream to the normal
+`Agent`; the Agent continues token-level streaming into the existing TTS/Player
+pipeline. Invalid, stale, resumed, timed-out or unavailable speculation is
+cancelled and the ordinary final-EOT LLM request remains the fallback.
+
+This does not change `process_event`, the core µ-law contract, normal server
+startup, carrier/browser behavior or TTS finality. Repository automation is green;
+real-call latency/audio acceptance is still pending.
+
+### Phase 4D default-off hardening controls — 2026-09-15
+
+Revision `b56a38b132951b322ed5d63059a42f0a7600f829` adds optional Bluetooth-only hardening controls while
+preserving the existing default pipeline. `Agent` can use a bounded incremental
+phrase buffer before `TTSService.send`; without the explicit option it continues
+the previous token-by-token path. `LLMService` can bound only the provider-visible
+conversation-history suffix and can request streaming usage metrics; canonical
+history and the complete system/digital-twin prompt remain retained locally and
+outside that budget. The same prompt budget is applied to prepared shadow streams
+when explicitly enabled so final matching remains coherent.
+
+`run_bluetooth_conversation` can explicitly overlap Flux startup with async
+Agent/TTS readiness and records content-free startup spans; serial startup remains
+default. `AudioPlayer` accepts only two or three pre-roll frames per rules C5 and
+keeps three as default. The existing 15-second TTS warm-idle/readiness behavior is
+unchanged. None of these controls are imported or started by default `main.py`.
+Offline automation proves wiring, bounds, cleanup and regressions, not live
+provider timing, caller-heard latency, XRUN/audio quality or production benefit.

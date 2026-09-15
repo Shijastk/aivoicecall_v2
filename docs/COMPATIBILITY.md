@@ -84,3 +84,13 @@ Hardware-free test evidence supplied by the task owner:
 This software evidence does **not** promote any additional phone/host combination
 to validated hardware support. Real PipeWire capture/playback, broader device
 compatibility, digital E2E and release support remain unvalidated.
+
+## Phase 4D compatibility note — 2026-09-15
+
+The Phase 4D implementation at `b56a38b132951b322ed5d63059a42f0a7600f829` does not expand the supported
+hardware matrix. All new tuning is attached to the explicit Bluetooth runner and
+is default-off; carrier/browser/default production startup remains unchanged.
+Player pre-roll is constrained to the already permitted two/three-frame range,
+with three retained as default. No claim is made that another phone, PipeWire
+version, codec/profile, provider region or operating system supports the reference
+Bluetooth path until independently qualified.

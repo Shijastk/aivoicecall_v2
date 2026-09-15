@@ -142,3 +142,27 @@ including slowly closing shadow work. Do not infer Agent restart failure from
 shadow `turn_closed` telemetry or long dispatch totals. The
 [investigation record](BLUETOOTH_BARGE_IN_INVESTIGATION.md) owns evidence, competing
 hypotheses and the next controlled test. No Phase 4C/6 advancement.
+
+## Phase 4C implementation authorization — 2026-09-15
+
+| ID / status | Context/evidence | Decision | Consequences | Revisit only when |
+|---|---|---|---|---|
+| BT-D26 — Accepted: implement Phase 4C as default-off exact-match prepared-stream reuse | Earlier BT-D23 evidence remains valid: the then-current trigger had insufficient live ready-before-final frequency. The task owner later explicitly authorized implementation while postponing new real-call/provider validation. Automated run `34966008520` passed focused, Bluetooth and full baseline-aware repository gates. | Permit Phase 4C only as an explicit Bluetooth opt-in. Reuse only a first-token-ready provider stream whose final transcript, prompt and committed history still match; otherwise use the ordinary final-EOT path. Keep TTS non-speculative and leave carrier/browser/default startup unchanged. | Code correctness can be exercised without spending provider quota or requiring a phone. No caller-latency benefit is claimed from offline automation. Rollback is omission of the Phase 4C flag. | Controlled real-call evidence demonstrates benefit/regression, or a correctness/cost/provider issue requires changing the promotion contract. |
+
+## BT-D27 — Phase 4D hardening remains default-off pending live evidence — 2026-09-15
+
+Revision `b56a38b132951b322ed5d63059a42f0a7600f829` passed focused, complete Bluetooth and baseline-aware
+full-root automation. Keep Phase 4D as explicit Bluetooth controls rather than new
+production defaults: bounded incremental TTS phrase grouping, provider-visible
+history budgeting that preserves full system/digital-twin facts and canonical
+history, content-free provider timing, fail-clean parallel startup, and rules-C5
+2/3-frame pre-roll selection. Retain the previously live-validated 15-second TTS
+warm-idle/readiness policy and the three-frame pre-roll default. The first full
+regression exposed and then verified the fix for an Agent constructor-bypass
+compatibility issue.
+
+Decision consequence: repository implementation is ready for controlled real-path
+comparison, but there is not enough evidence to choose phrase/history/pre-roll
+values, enable parallel startup or prepared reuse by default, or claim lower
+caller-heard latency. Rollback is omission of the explicit controls. Phase 4
+acceptance and Phase 5 advancement remain separate gates.

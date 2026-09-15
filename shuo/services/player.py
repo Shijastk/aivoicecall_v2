@@ -1,4 +1,4 @@
-﻿"""
+"""
 Audio player -- streams audio to the caller through the carrier session.
 
 Owns an independent playback loop that emits **exactly one 20ms frame per
@@ -102,10 +102,17 @@ class AudioPlayer:
         on_done: Optional[Callable[[], None]] = None,
         checkpoint_name: Optional[str] = None,
         tape: Optional["CallTape"] = None,
+        *,
+        preroll_frames: int = PREROLL_FRAMES,
     ):
         self._session = session
         self._on_done = on_done
         self._checkpoint_name = checkpoint_name
+        if preroll_frames not in (2, 3):
+            raise ValueError("preroll_frames must be 2 or 3 (rules.md C5)")
+        self._preroll_frames = preroll_frames
+        self._preroll_bytes = preroll_frames * FRAME_BYTES
+        self._preroll_seconds = preroll_frames * FRAME_SECONDS
         # The local recording's right channel (W5b). Defaults to a disabled
         # tape so `_send_frame` stays unconditional -- a player built outside
         # a call loop records nothing rather than needing a guard on the one
@@ -141,6 +148,10 @@ class AudioPlayer:
     @property
     def bytes_sent(self) -> int:
         return self._bytes_sent
+
+    @property
+    def preroll_frames(self) -> int:
+        return self._preroll_frames
 
     @property
     def frames_sent(self) -> int:
@@ -248,6 +259,10 @@ class AudioPlayer:
         """Emit one 20ms frame per 20ms tick, on a monotonic deadline."""
         try:
             await self._await_preroll()
+            log.info(
+                f"Playback start preroll_frames={self._preroll_frames} "
+                f"buffered_ms={len(self._buffer) // 8}"
+            )
 
             deadline = _now()
             while self._running:
@@ -301,11 +316,11 @@ class AudioPlayer:
         """
         await self._await_audio()
 
-        limit = _now() + PREROLL_SECONDS
+        limit = _now() + self._preroll_seconds
         while (
             self._running
             and not self._tts_done
-            and len(self._buffer) < PREROLL_BYTES
+            and len(self._buffer) < self._preroll_bytes
         ):
             remaining = limit - _now()
             if remaining <= 0:

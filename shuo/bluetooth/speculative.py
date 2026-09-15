@@ -17,6 +17,16 @@ EARLY_STABLE_SPAN_SECONDS = 0.1
 
 class ShadowProbe(Protocol):
     async def first_token_at(self, transcript: str) -> float: ...
+    def create_prepared(self, transcript: str): ...
+
+
+class PreparedResponse(Protocol):
+    @property
+    def first_token_at(self) -> Optional[float]: ...
+    def start(self) -> None: ...
+    async def wait_first_token(self) -> float: ...
+    async def wait_closed(self) -> None: ...
+    async def cancel(self) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -43,6 +53,8 @@ class _Candidate:
     task: Optional[asyncio.Task[None]] = None
     started_at: Optional[float] = None
     first_token_at: Optional[float] = None
+    prepared: Optional[PreparedResponse] = None
+    promoted: bool = False
 
 
 class AsyncCapacityGate:
@@ -82,7 +94,10 @@ class SpeculativeTurnCoordinator:
     def __init__(
         self, *, probe: ShadowProbe, capacity_gate: AsyncCapacityGate,
         early_transcripts: bool = False,
+        prepared_reuse: bool = False,
     ):
+        if prepared_reuse and not callable(getattr(probe, "create_prepared", None)):
+            raise ValueError("prepared reuse requires a prepared-response probe")
         self._probe = probe
         self._capacity_gate = capacity_gate
         self._generation_id = 0
@@ -90,6 +105,8 @@ class SpeculativeTurnCoordinator:
         self._tasks: set[asyncio.Task[None]] = set()
         self._observations: deque[ShadowObservation] = deque(maxlen=256)
         self._early_transcripts = early_transcripts
+        self._prepared_reuse = prepared_reuse
+        self._committed: Optional[tuple[int, str, PreparedResponse]] = None
         self._stable_text = ""
         self._stable_since = 0.0
         self._attempts = 0
@@ -141,7 +158,25 @@ class SpeculativeTurnCoordinator:
         candidate = self._candidate
         return candidate.generation_id if candidate is not None else None
 
+    def take_committed(self, transcript: str):
+        """Transfer one exact final-matching prepared stream to the Agent."""
+        committed = self._committed
+        if committed is None:
+            return None
+        generation_id, committed_transcript, prepared = committed
+        self._committed = None
+        if transcript.strip() != committed_transcript:
+            self._schedule_prepared_cancel(prepared)
+            log.info(
+                "BTPrepared: generation=%d discarded reason=take_mismatch",
+                generation_id,
+            )
+            return None
+        log.info("BTPrepared: generation=%d handed_to_agent", generation_id)
+        return prepared
+
     def on_start(self) -> None:
+        self._discard_committed("new_turn")
         self._diagnose("start_boundary", "reset")
         self._cancel_current("new_turn")
         self._reset_turn()
@@ -236,8 +271,21 @@ class SpeculativeTurnCoordinator:
         self._last_trigger_at = now
         self._generation_id += 1
         candidate = _Candidate(self._generation_id, transcript, now, trigger)
+        if self._prepared_reuse:
+            try:
+                candidate.prepared = self._probe.create_prepared(transcript)
+            except Exception as exc:
+                self._record(
+                    candidate,
+                    outcome=f"probe_error:{type(exc).__name__}",
+                )
+                return "prepare_error"
         self._candidate = self._last_candidate = candidate
-        task = asyncio.create_task(self._run_probe(candidate))
+        task = asyncio.create_task(
+            self._run_prepared(candidate)
+            if self._prepared_reuse
+            else self._run_probe(candidate)
+        )
         candidate.task = task
         self._tasks.add(task)
         task.add_done_callback(self._task_done)
@@ -248,6 +296,7 @@ class SpeculativeTurnCoordinator:
         return "admitted"
 
     def on_resumed(self, *, observed_at: Optional[float] = None) -> None:
+        self._discard_committed("resumed")
         self._diagnose("resumed", "stability_reset")
         self._same_transcript_repetitions = 0
         self._diagnostic_stable_since = None
@@ -293,6 +342,35 @@ class SpeculativeTurnCoordinator:
             self._candidate = None
             return
 
+        if (
+            self._prepared_reuse
+            and candidate.prepared is not None
+            and candidate.first_token_at is not None
+            and candidate.first_token_at <= final_at
+        ):
+            candidate.promoted = True
+            self._committed = (
+                candidate.generation_id,
+                final_transcript,
+                candidate.prepared,
+            )
+            shadow_ttft_ms = None
+            if candidate.started_at is not None:
+                shadow_ttft_ms = max(
+                    0.0,
+                    (candidate.first_token_at - candidate.started_at) * 1000.0,
+                )
+            self._record(
+                candidate,
+                outcome="promoted_ready_before_final",
+                eager_to_final_ms=eager_to_final_ms,
+                shadow_ttft_ms=shadow_ttft_ms,
+                first_token_before_final=True,
+                transcript_match=True,
+            )
+            self._candidate = None
+            return
+
         if candidate.first_token_at is not None and candidate.first_token_at <= final_at:
             shadow_ttft_ms = None
             if candidate.started_at is not None:
@@ -326,6 +404,7 @@ class SpeculativeTurnCoordinator:
     async def cleanup(self) -> None:
         self._diagnose("cleanup", "closed")
         self._closed = True
+        self._discard_committed("cleanup")
         if self._candidate is not None:
             self._cancel_current("cancelled")
 
@@ -378,6 +457,78 @@ class SpeculativeTurnCoordinator:
         finally:
             if acquired:
                 self._capacity_gate.release()
+
+    async def _run_prepared(self, candidate: _Candidate) -> None:
+        acquired = False
+        prepared = candidate.prepared
+        if prepared is None:
+            return
+        try:
+            acquired = await self._capacity_gate.acquire()
+            if not acquired:
+                if self._candidate is candidate:
+                    self._record(candidate, outcome="capacity_skip")
+                    self._candidate = None
+                await prepared.cancel()
+                return
+
+            if self._candidate is not candidate or self._closed:
+                await prepared.cancel()
+                return
+
+            candidate.started_at = time.perf_counter()
+            prepared.start()
+            async with asyncio.timeout(PROBE_TIMEOUT_SECONDS):
+                candidate.first_token_at = await prepared.wait_first_token()
+
+            if self._candidate is candidate and not self._closed:
+                ttft_ms = max(
+                    0.0,
+                    (candidate.first_token_at - candidate.started_at) * 1000.0,
+                )
+                log.info(
+                    "BTPrepared: first token ready generation=%d ttft=%.1fms "
+                    "trigger_to_first_token_ms=%.1f",
+                    candidate.generation_id,
+                    ttft_ms,
+                    (candidate.first_token_at - candidate.trigger_at) * 1000.0,
+                )
+
+            # Keep the single provider stream alive but unread until final EOT
+            # either commits it to Agent or invalidation closes it.
+            await prepared.wait_closed()
+
+        except asyncio.CancelledError:
+            if not candidate.promoted:
+                await prepared.cancel()
+            raise
+        except Exception as exc:
+            if self._candidate is candidate:
+                self._record(candidate, outcome=f"probe_error:{type(exc).__name__}")
+                self._candidate = None
+            if not candidate.promoted:
+                await prepared.cancel()
+        finally:
+            if acquired:
+                self._capacity_gate.release()
+
+    def _schedule_prepared_cancel(self, prepared: PreparedResponse) -> None:
+        task = asyncio.create_task(prepared.cancel())
+        self._tasks.add(task)
+        task.add_done_callback(self._task_done)
+
+    def _discard_committed(self, reason: str) -> None:
+        committed = self._committed
+        if committed is None:
+            return
+        generation_id, _transcript, prepared = committed
+        self._committed = None
+        self._schedule_prepared_cancel(prepared)
+        log.info(
+            "BTPrepared: generation=%d discarded reason=%s",
+            generation_id,
+            reason,
+        )
 
     def _cancel_task(self, candidate: _Candidate) -> None:
         task = candidate.task

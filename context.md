@@ -389,3 +389,37 @@ coverage with stale shadow work. Decision: preserve thresholds and cancellation
 semantics pending a captured failure; Phase 4C/6 do not advance. See
 [full evidence](docs/BLUETOOTH_BARGE_IN_INVESTIGATION.md) and
 [test results](docs/TESTING.md#bluetooth-barge-in-lifecycle-investigation--2026-09-15).
+
+## 2026-09-15 — Phase 4C repository-verified implementation
+
+Task-owner authorization advanced Phase 4C implementation while explicitly
+deferring real-call/provider/device testing until repository automation passed.
+A default-off prepared-response seam now retains at most a first-token-ready LLM
+stream, promotes it once only after exact final transcript/history/prompt match,
+and otherwise falls back to ordinary final-EOT generation. TTS remains
+non-speculative and carrier/browser/default startup is unchanged.
+
+GitHub Actions run `34966008520` passed compile, focused Phase 4, complete Bluetooth,
+full baseline-aware regression and diff validation; verified source commit:
+`bc9996f727bf4ff7870d6f112e73200d82a49b87`. This supersedes the earlier *implementation authorization* stop but
+not the historical BT-D23 evidence or Phase 4 live-acceptance gate. No latency or
+caller-heard improvement is claimed until final real-call validation is possible.
+
+## 2026-09-15 — Phase 4D repository hardening milestone
+
+Task-owner authorization to continue Phase 4 through 4D was applied without
+advancing later phases. Revision `b56a38b132951b322ed5d63059a42f0a7600f829` adds default-off bounded TTS
+phrase grouping, provider-visible history budgeting with full system/digital-twin
+prompt and canonical history preservation, optional content-free Groq usage timing,
+fail-clean parallel Bluetooth startup, and a rules-C5 two/three-frame player
+pre-roll A/B control. The earlier validated 15-second TTS warm-pool policy was not
+changed.
+
+Automated evidence: GitHub Actions `34968119711` passed 195 focused tests and
+149 complete Bluetooth tests; the full root result was 976 passed / 4 failed / 4
+warnings, with only the exact documented baseline failure identities/signatures.
+An initial full run exposed a new `Agent.__new__()` compatibility regression; it
+was fixed and the entire relevant gate was rerun rather than bypassed. No live
+provider/device/cellular call was performed. Phase 4 remains open only for
+controlled real-path acceptance evidence; no new default or latency claim and no
+Phase 5 advancement follows from this repository milestone.

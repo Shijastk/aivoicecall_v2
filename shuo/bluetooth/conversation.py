@@ -40,7 +40,7 @@ class BluetoothAgent(Protocol):
     @property
     def history(self): ...
 
-    async def start_turn(self, transcript: str) -> None: ...
+    async def start_turn(self, transcript: str, prepared_response=None) -> None: ...
     async def cancel_turn(self) -> None: ...
     async def cleanup(self) -> None: ...
 
@@ -51,6 +51,7 @@ class BluetoothSpeculator(Protocol):
     def on_eager(self, transcript: str, *, observed_at: Optional[float] = None) -> None: ...
     def on_resumed(self, *, observed_at: Optional[float] = None) -> None: ...
     def on_final(self, transcript: str, *, observed_at: Optional[float] = None) -> None: ...
+    def take_committed(self, transcript: str): ...
     async def cleanup(self) -> None: ...
 
 
@@ -75,6 +76,7 @@ async def run_bluetooth_conversation(
     speculation_factory: Optional[SpeculationFactory] = None,
     stream_id: str = "bluetooth-local",
     call_id: str = "bluetooth-local",
+    parallel_service_startup: bool = False,
 ) -> None:
     """Run the SHUO state/action loop over one Phase-3 Bluetooth session.
 
@@ -171,10 +173,25 @@ async def run_bluetooth_conversation(
             await event_queue.put(StreamStopEvent())
 
     state = AppState(call_id=call_id)
+    startup_started_at = time.perf_counter()
+
+    async def build_agent() -> BluetoothAgent:
+        created_agent = agent_factory(outbound, on_agent_done)
+        return (
+            await created_agent
+            if inspect.isawaitable(created_agent)
+            else created_agent
+        )
 
     try:
+        stage_started_at = time.perf_counter()
         await session.start()
         session_started = True
+        _latency_log.info(
+            "BTStartup: stage=session_ready stage_ms=%.1f total_ms=%.1f",
+            (time.perf_counter() - stage_started_at) * 1000,
+            (time.perf_counter() - startup_started_at) * 1000,
+        )
 
         if speculation_factory is None:
             flux = flux_factory(
@@ -190,14 +207,44 @@ async def run_bluetooth_conversation(
                 on_flux_eager_end_of_turn,
                 on_flux_turn_resumed,
             )
-        await flux.start()
-
-        created_agent = agent_factory(outbound, on_agent_done)
-        agent = (
-            await created_agent
-            if inspect.isawaitable(created_agent)
-            else created_agent
-        )
+        if parallel_service_startup:
+            stage_started_at = time.perf_counter()
+            flux_task = asyncio.create_task(flux.start())
+            agent_task = asyncio.create_task(build_agent())
+            try:
+                _flux_result, agent = await asyncio.gather(flux_task, agent_task)
+            except BaseException:
+                for task in (flux_task, agent_task):
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(flux_task, agent_task, return_exceptions=True)
+                if (
+                    agent_task.done()
+                    and not agent_task.cancelled()
+                    and agent_task.exception() is None
+                ):
+                    agent = agent_task.result()
+                raise
+            _latency_log.info(
+                "BTStartup: stage=services_ready mode=parallel stage_ms=%.1f total_ms=%.1f",
+                (time.perf_counter() - stage_started_at) * 1000,
+                (time.perf_counter() - startup_started_at) * 1000,
+            )
+        else:
+            stage_started_at = time.perf_counter()
+            await flux.start()
+            _latency_log.info(
+                "BTStartup: stage=flux_ready mode=serial stage_ms=%.1f total_ms=%.1f",
+                (time.perf_counter() - stage_started_at) * 1000,
+                (time.perf_counter() - startup_started_at) * 1000,
+            )
+            stage_started_at = time.perf_counter()
+            agent = await build_agent()
+            _latency_log.info(
+                "BTStartup: stage=agent_ready mode=serial stage_ms=%.1f total_ms=%.1f",
+                (time.perf_counter() - stage_started_at) * 1000,
+                (time.perf_counter() - startup_started_at) * 1000,
+            )
         if speculation_factory is not None:
             speculator = speculation_factory(agent)
 
@@ -205,6 +252,11 @@ async def run_bluetooth_conversation(
             StreamStartEvent(stream_sid=stream_id, call_id=call_id)
         )
         reader_task = asyncio.create_task(read_bluetooth())
+        _latency_log.info(
+            "BTStartup: stage=reader_started parallel=%s total_ms=%.1f",
+            parallel_service_startup,
+            (time.perf_counter() - startup_started_at) * 1000,
+        )
 
         while True:
             event = await event_queue.get()
@@ -237,7 +289,30 @@ async def run_bluetooth_conversation(
                             "BTLatency: Flux EndOfTurn -> Agent start %.1fms",
                             eot_to_agent_ms,
                         )
-                    await agent.start_turn(action.transcript)
+                    prepared_response = None
+                    if speculator is not None:
+                        prepared_response = speculator.take_committed(
+                            action.transcript
+                        )
+                    if prepared_response is None:
+                        await agent.start_turn(action.transcript)
+                    else:
+                        _latency_log.info(
+                            "BTPrepared: event=AgentStart reuse=true normal_turn=%d",
+                            normal_turn,
+                        )
+                        try:
+                            await agent.start_turn(
+                                action.transcript,
+                                prepared_response=prepared_response,
+                            )
+                        except BaseException:
+                            cancel = getattr(prepared_response, "cancel", None)
+                            if cancel is not None:
+                                result = cancel()
+                                if inspect.isawaitable(result):
+                                    await result
+                            raise
                     _latency_log.info("BTLifecycle: event=AgentStart_returned normal_turn=%d", normal_turn)
 
                 elif isinstance(action, ResetAgentTurnAction):

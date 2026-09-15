@@ -18,10 +18,11 @@ from .call_monitor import CallRecorder
 from .carrier.base import CarrierSession
 from .recording import CallTape
 from .runtime_config import CallSettings
-from .services.llm import LLMService
+from .services.llm import LLMService, PreparedLLMResponse
 from .services.tts import TTSService
 from .services.tts_pool import TTSPool
-from .services.player import AudioPlayer
+from .services.phrase_buffer import BoundedPhraseBuffer
+from .services.player import AudioPlayer, PREROLL_FRAMES
 from .tracer import Tracer
 from .log import ServiceLogger
 
@@ -52,6 +53,10 @@ class Agent:
         settings: Optional[CallSettings] = None,
         recorder: Optional[CallRecorder] = None,
         tape: Optional[CallTape] = None,
+        tts_phrase_chars: Optional[int] = None,
+        llm_history_max_chars: Optional[int] = None,
+        llm_provider_timing: bool = False,
+        player_preroll_frames: int = PREROLL_FRAMES,
     ):
         self._session = session
         self._on_done = on_done
@@ -88,7 +93,11 @@ class Agent:
             on_token=self._on_llm_token,
             on_done=self._on_llm_done,
             system_prompt=self._settings.system_prompt,
+            history_max_chars=llm_history_max_chars,
+            capture_provider_timing=llm_provider_timing,
         )
+        self._tts_phrase_chars = tts_phrase_chars
+        self._player_preroll_frames = player_preroll_frames
 
         # Active per-turn services (set during start, cleared on cancel)
         self._tts: Optional[TTSService] = None
@@ -109,6 +118,8 @@ class Agent:
         # chain the whole latency argument rests on (CLAUDE.md rule 2), and a
         # read-only preview does not get to put anything heavier in it.
         self._response: List[str] = []
+        self._phrase_buffer: Optional[BoundedPhraseBuffer] = None
+        self._tts_text_chunks = 0
 
         # Latency milestones (monotonic timestamps, reset each turn)
         self._t0: float = 0.0
@@ -129,7 +140,11 @@ class Agent:
 
     # ── Turn Lifecycle ──────────────────────────────────────────────
 
-    async def start_turn(self, transcript: str) -> None:
+    async def start_turn(
+        self,
+        transcript: str,
+        prepared_response: Optional[PreparedLLMResponse] = None,
+    ) -> None:
         """Start a new agent turn."""
         if self._active:
             await self.cancel_turn()
@@ -139,6 +154,12 @@ class Agent:
         self._got_first_token = False
         self._got_first_audio = False
         self._response = []
+        self._phrase_buffer = (
+            BoundedPhraseBuffer(self._tts_phrase_chars)
+            if self._tts_phrase_chars is not None
+            else None
+        )
+        self._tts_text_chunks = 0
 
         # Begin tracing this turn
         self._turn = self._tracer.begin_turn(transcript)
@@ -160,11 +181,19 @@ class Agent:
             on_done=self._on_playback_done,
             checkpoint_name=self._checkpoint,
             tape=self._tape,
+            preroll_frames=self._player_preroll_frames,
         )
 
-        # Start LLM
+        # Start LLM. Phase 4C may reuse one exact-match provider stream;
+        # validation failure immediately falls back to the normal final-EOT path.
         self._tracer.begin(self._turn, "llm")
-        await self._llm.start(transcript)
+        reused = False
+        if prepared_response is not None:
+            reused = await self._llm.start_prepared(transcript, prepared_response)
+        if not reused:
+            await self._llm.start(transcript)
+        else:
+            log.info(f"Lifecycle: turn={self._turn} prepared_response_reused")
 
         tts_ms = int((self._t_tts_conn - self._t0) * 1000)
         log.info(f"Turn started  (TTS {tts_ms}ms = {tts_ms}ms setup)")
@@ -197,6 +226,7 @@ class Agent:
             await self._tts.cancel()
             log.info(f"Lifecycle: turn={self._turn} cancel_stage=tts_returned")
             self._tts = None
+        self._phrase_buffer = None
 
         if self._player:
             if self._player.is_playing:
@@ -234,13 +264,36 @@ class Agent:
             self._recorder.timing("llm_first_token", ttft, turn=self._turn)
 
         self._response.append(token)
-        await self._tts.send(token)
+        # A few legacy tests intentionally construct Agent via __new__ to isolate
+        # token accumulation. Treat absent Phase-4D fields exactly like the
+        # default-off path so constructor-bypass tests and compatible embeddings
+        # retain their previous behavior.
+        phrase_buffer = getattr(self, "_phrase_buffer", None)
+        if phrase_buffer is None:
+            self._tts_text_chunks = getattr(self, "_tts_text_chunks", 0) + 1
+            await self._tts.send(token)
+        else:
+            for chunk in phrase_buffer.feed(token):
+                self._tts_text_chunks = getattr(self, "_tts_text_chunks", 0) + 1
+                await self._tts.send(chunk)
 
     async def _on_llm_done(self) -> None:
-        """LLM finished -> flush TTS."""
+        """LLM finished -> flush any bounded phrase fragment, then end TTS."""
         if not self._active or not self._tts:
             return
-        self._tracer.end(self._turn, "llm")
+        if self._tracer is not None:
+            self._tracer.end(self._turn, "llm")
+        phrase_buffer = getattr(self, "_phrase_buffer", None)
+        if phrase_buffer is not None:
+            pending = phrase_buffer.flush()
+            if pending:
+                self._tts_text_chunks = getattr(self, "_tts_text_chunks", 0) + 1
+                await self._tts.send(pending)
+            log.info(
+                f"TTS text batching turn={self._turn} "
+                f"chunks={getattr(self, '_tts_text_chunks', 0)} "
+                f"max_chars={getattr(self, '_tts_phrase_chars', None)}"
+            )
         await self._tts.flush()
 
     async def _on_tts_audio(self, audio_base64: str) -> None:
@@ -332,6 +385,7 @@ class Agent:
         self._active = False
         self._tts = None
         self._player = None
+        self._phrase_buffer = None
         self._checkpoint = None
 
         self._publish_response(interrupted=False)
