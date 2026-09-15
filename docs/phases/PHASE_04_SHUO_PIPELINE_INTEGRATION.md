@@ -161,6 +161,18 @@ applicable. Preserve the append-only recovery/decision history in `context.md`.
 
 ## Approval and stop boundary
 
+### TTS controlled validation update — 2026-09-14
+
+Task-owner supplied final live results validate startup readiness before caller
+audio forwarding, first-turn warm setup of 0ms (previously 4132ms cold), reuse
+below 15 seconds, and proactive expiry/replacement at 15.000–15.001s. No
+over-limit checkout or `input_timeout_exceeded` occurred. A later
+`quota_exceeded` was provider-account quota exhaustion, unrelated to pool design.
+Only warm-connection/setup behavior is proven; lower ElevenLabs synthesis
+latency is not claimed. See the
+[complete evidence and limits](PHASE_04_REALTIME_LATENCY_IMPLEMENTATION.md#final-controlled-tts-warm-pool-validation--2026-09-14).
+Phase 4 acceptance remains pending; Phase 4C and later phases are unchanged.
+
 Phase 5 still requires explicit authorization naming controlled calls/providers/
 devices, approved measurements and manual emergency exit. Phase 4 work does not
 authorize automatic call control, concurrency qualification or release work.

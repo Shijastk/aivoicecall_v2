@@ -5,6 +5,7 @@ ElevenLabs Text-to-Speech service with WebSocket streaming.
 import os
 import json
 import asyncio
+import time
 from typing import Optional, Callable, Awaitable
 
 import websockets
@@ -69,6 +70,7 @@ class TTSService:
         self._ws: Optional[WebSocketClientProtocol] = None
         self._receive_task: Optional[asyncio.Task] = None
         self._running = False
+        self._warm_idle_started_at: Optional[float] = None
 
         # Whether this connection has ever emitted an audio chunk. Sole
         # discriminator between a stream that ended and one that was
@@ -97,6 +99,15 @@ class TTSService:
     def fatal_error(self) -> Optional[str]:
         """Reason this connection is unusable, or None if it is healthy."""
         return self._fatal_error
+
+    @property
+    def warm_idle_started_at(self) -> Optional[float]:
+        """Monotonic time immediately before sending successful initialization.
+
+        Excludes the handshake but conservatively includes send/backpressure
+        time. This is a local bound, not an acknowledgement of provider receipt.
+        """
+        return self._warm_idle_started_at
 
     def bind(
         self,
@@ -140,7 +151,9 @@ class TTSService:
                 },
                 "xi_api_key": self._api_key,
             }
+            idle_started_at = time.monotonic()
             await self._ws.send(json.dumps(init_message))
+            self._warm_idle_started_at = idle_started_at
             
             self._receive_task = asyncio.create_task(self._receive_loop())
             log.connected()
