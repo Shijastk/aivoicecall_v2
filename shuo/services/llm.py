@@ -4,6 +4,7 @@ LLM service with streaming (Groq, OpenAI-compatible).
 
 import os
 import asyncio
+import time
 from typing import Optional, Callable, Awaitable, List, Dict
 
 from openai import AsyncOpenAI
@@ -43,11 +44,19 @@ class LLMService:
         self._system_prompt = system_prompt or SYSTEM_PROMPT
 
         self._client = AsyncOpenAI(
-            api_key=os.getenv("GROQ_API_KEY", ""),
-            base_url="https://api.groq.com/openai/v1",
+            api_key=(
+                os.getenv("LLM_API_KEY")
+                or os.getenv("GROQ_API_KEY", "")
+                or "local"
+            ),
+            base_url=os.getenv(
+                "LLM_BASE_URL",
+                "https://api.groq.com/openai/v1",
+            ),
         )
         self._task: Optional[asyncio.Task] = None
         self._running = False
+        self._request_seq = 0
         
         self._history: List[Dict[str, str]] = []
     
@@ -98,6 +107,25 @@ class LLMService:
             
             model = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
 
+            self._request_seq += 1
+            request_seq = self._request_seq
+            history_messages = len(self._history)
+            system_prompt_chars = len(self._system_prompt)
+            total_prompt_chars = sum(
+                len(str(message.get("content") or ""))
+                for message in messages
+            )
+
+            log.info(
+                "LLMRequest: begin "
+                f"seq={request_seq} "
+                f"model={model} "
+                f"message_count={len(messages)} "
+                f"history_messages={history_messages} "
+                f"system_prompt_chars={system_prompt_chars} "
+                f"total_prompt_chars={total_prompt_chars}"
+            )
+
             extra_body = {}
 
             if model.startswith("openai/gpt-oss"):
@@ -106,10 +134,15 @@ class LLMService:
                     "include_reasoning": False,
                 }
 
-            elif model == "qwen/qwen3.6-27b":
+            elif model in {
+                "qwen/qwen3.6-27b",
+                "qwen/qwen3.8-27b",
+            }:
                 extra_body = {
                     "reasoning_effort": "none",
                 }
+
+            request_started_at = time.perf_counter()
 
             stream = await self._client.chat.completions.create(
                 model=model,
@@ -119,13 +152,32 @@ class LLMService:
                 temperature=0.7,
                 extra_body=extra_body,
             )
-            
+
+            stream_opened_at = time.perf_counter()
+            log.info(
+                "LLMRequest: stream_open "
+                f"seq={request_seq} "
+                f"elapsed_ms={(stream_opened_at - request_started_at) * 1000:.1f}"
+            )
+
+            first_content_logged = False
+
             async for chunk in stream:
                 if not self._running:
                     break
                 
                 delta = chunk.choices[0].delta if chunk.choices else None
                 if delta and delta.content:
+                    if not first_content_logged:
+                        first_content_at = time.perf_counter()
+                        log.info(
+                            "LLMRequest: first_token "
+                            f"seq={request_seq} "
+                            f"ttft_ms={(first_content_at - request_started_at) * 1000:.1f} "
+                            f"stream_to_token_ms={(first_content_at - stream_opened_at) * 1000:.1f}"
+                        )
+                        first_content_logged = True
+
                     token = delta.content
                     assistant_response += token
                     await self._on_token(token)
@@ -182,7 +234,10 @@ class ShadowLLMProbe:
         extra_body = {}
         if model.startswith("openai/gpt-oss"):
             extra_body = {"reasoning_effort": "low", "include_reasoning": False}
-        elif model == "qwen/qwen3.6-27b":
+        elif model in {
+            "qwen/qwen3.6-27b",
+            "qwen/qwen3.8-27b",
+        }:
             extra_body = {"reasoning_effort": "none"}
 
         stream = await self._client.chat.completions.create(

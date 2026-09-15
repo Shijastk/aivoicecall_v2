@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 
 from shuo.bluetooth.phase3_session import build_phase3_ai_only_session
 from shuo.bluetooth.pipewire_live import PwCatConfig, PwDumpDiscovery
@@ -28,6 +29,17 @@ def _eager_threshold(value: str) -> float:
     # separately measured plan update.
     if not 0.3 <= threshold <= 0.7:
         raise argparse.ArgumentTypeError("must be between 0.3 and 0.7")
+    return threshold
+
+
+def _eot_threshold(value: str) -> float:
+    try:
+        threshold = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a number") from exc
+
+    if not 0.5 <= threshold <= 1.0:
+        raise argparse.ArgumentTypeError("must be between 0.5 and 1.0")
     return threshold
 
 
@@ -60,6 +72,15 @@ def parse_args() -> argparse.Namespace:
         type=_eager_threshold,
         default=None,
         help="Enable Deepgram EagerEndOfTurn at an explicit 0.3-0.7 threshold.",
+    )
+    parser.add_argument(
+    "--eot-threshold",
+    type=_eot_threshold,
+    default=0.5,
+        help=(
+            "Optional Deepgram Flux final EndOfTurn threshold (0.5-1.0). "
+            "Omit to preserve provider default."
+        ),
     )
     parser.add_argument(
         "--shadow-speculation",
@@ -98,18 +119,23 @@ async def _main(args: argparse.Namespace) -> None:
         stream_id="bluetooth-manual",
         call_id=args.call_id,
         eager_eot_threshold=args.eager_eot_threshold,
+        eot_threshold=args.eot_threshold,
         shadow_speculation=args.shadow_speculation,
         shadow_early_transcripts=args.shadow_early_transcripts,
     )
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
     args = parse_args()
     try:
         asyncio.run(_main(args))
     except KeyboardInterrupt:
         pass
-
 
 if __name__ == "__main__":
     main()

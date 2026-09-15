@@ -40,6 +40,7 @@ async def run_production_bluetooth_conversation(
     call_id: str = "bluetooth-local",
     settings: Optional[CallSettings] = None,
     eager_eot_threshold: Optional[float] = None,
+    eot_threshold: Optional[float] = None,
     shadow_speculation: bool = False,
     shadow_early_transcripts: bool = False,
     deps: BluetoothProductionDeps = BluetoothProductionDeps(),
@@ -102,6 +103,8 @@ async def run_production_bluetooth_conversation(
             # feature is off; only the explicit measurement path receives the
             # new argument.
             kwargs["eager_eot_threshold"] = eager_eot_threshold
+        if eot_threshold is not None:
+            kwargs["eot_threshold"] = eot_threshold
         return deps.flux_cls(**kwargs)
 
     async def agent_factory(

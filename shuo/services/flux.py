@@ -70,9 +70,13 @@ class FluxService:
         on_eager_end_of_turn: Optional[Callable[[str], Awaitable[None]]] = None,
         on_turn_resumed: Optional[Callable[[], Awaitable[None]]] = None,
         eager_eot_threshold: Optional[float] = None,
+        eot_threshold: Optional[float] = None,
         include_empty_interims: bool = False,
         diagnose_updates: bool = False,
     ):
+        if eot_threshold is not None and not (0.5 <= eot_threshold <= 1.0):
+            raise ValueError("eot_threshold must be between 0.5 and 1.0")
+
         if eager_eot_threshold is not None and not (
             0.3 <= eager_eot_threshold <= 0.7
         ):
@@ -91,6 +95,16 @@ class FluxService:
         self._on_eager_end_of_turn = on_eager_end_of_turn
         self._on_turn_resumed = on_turn_resumed
         self._eager_eot_threshold = eager_eot_threshold
+        self._eot_threshold = eot_threshold
+
+        if (
+            self._eager_eot_threshold is not None
+            and self._eot_threshold is not None
+            and self._eager_eot_threshold > self._eot_threshold
+        ):
+            raise ValueError(
+                "eager_eot_threshold must be less than or equal to eot_threshold"
+            )
 
         self._api_key = os.getenv("DEEPGRAM_API_KEY", "")
         self._client: Optional[AsyncDeepgramClient] = None
@@ -140,6 +154,9 @@ class FluxService:
                 "encoding": "mulaw",
                 "sample_rate": 8000,
             }
+            if self._eot_threshold is not None:
+                connect_kwargs["eot_threshold"] = str(self._eot_threshold)
+
             if self._eager_eot_threshold is not None:
                 # Deepgram documents threshold values as strings in the SDK
                 # examples. Do not alter eot_threshold here: Phase 4A measures
