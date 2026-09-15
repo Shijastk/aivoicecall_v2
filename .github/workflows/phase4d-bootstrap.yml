@@ -33,6 +33,7 @@ jobs:
       - name: Apply Phase 4D implementation
         run: |
           python .phase4d_apply.py
+          python .phase4d_fix.py
           git diff --check
 
       - name: Compile changed Python
@@ -59,6 +60,7 @@ jobs:
             tests/test_tts_failure.py \
             tests/test_flux.py \
             tests/test_update.py \
+            tests/test_call_monitor.py::TestItSeesARealCall::test_the_token_loop_actually_accumulates \
             -p no:cacheprovider
 
       - name: Bluetooth regression
@@ -109,7 +111,7 @@ jobs:
 
       - name: Commit verified Phase 4D implementation
         run: |
-          rm -f .phase4d_apply.py .github/workflows/phase4d-bootstrap.yml
+          rm -f .phase4d_apply.py .phase4d_fix.py .github/workflows/phase4d-bootstrap.yml
           git add -A
           git diff --cached --check
           git config user.name "github-actions[bot]"
