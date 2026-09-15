@@ -49,6 +49,7 @@ async def run_production_bluetooth_conversation(
     llm_history_max_chars: Optional[int] = None,
     llm_provider_timing: bool = False,
     parallel_startup: bool = False,
+    diagnostics=None,
     player_preroll_frames: int = PREROLL_FRAMES,
     deps: BluetoothProductionDeps = BluetoothProductionDeps(),
 ) -> None:
@@ -114,6 +115,8 @@ async def run_production_bluetooth_conversation(
             "on_start_of_turn": on_sot,
             "on_interim": on_interim,
         }
+        if diagnostics is not None:
+            kwargs["message_observer"] = diagnostics.flux_message
         if shadow_early_transcripts:
             kwargs["include_empty_interims"] = True
             kwargs["diagnose_updates"] = True
@@ -187,6 +190,8 @@ async def run_production_bluetooth_conversation(
         }
         if shadow_speculation:
             runner_kwargs["speculation_factory"] = speculation_factory
+        if diagnostics is not None:
+            runner_kwargs["diagnostics"] = diagnostics
         if parallel_startup:
             runner_kwargs["parallel_service_startup"] = True
         await deps.conversation_runner(session, **runner_kwargs)

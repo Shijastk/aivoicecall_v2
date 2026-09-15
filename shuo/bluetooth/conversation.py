@@ -77,6 +77,7 @@ async def run_bluetooth_conversation(
     stream_id: str = "bluetooth-local",
     call_id: str = "bluetooth-local",
     parallel_service_startup: bool = False,
+    diagnostics=None,
 ) -> None:
     """Run the SHUO state/action loop over one Phase-3 Bluetooth session.
 
@@ -93,7 +94,7 @@ async def run_bluetooth_conversation(
     event_queue: asyncio.Queue[Event] = asyncio.Queue(
         maxsize=EVENT_QUEUE_CAPACITY
     )
-    inbound = BluetoothInboundEvents(session)
+    inbound = BluetoothInboundEvents(session, diagnostics=diagnostics)
     outbound = BluetoothOutboundMedia(session)
 
     agent: Optional[BluetoothAgent] = None

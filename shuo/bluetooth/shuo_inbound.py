@@ -24,7 +24,9 @@ class BluetoothInboundEvents:
         session: Phase3AiOnlySession,
         *,
         codec: Optional[BluetoothInboundCodec] = None,
+        diagnostics=None,
     ) -> None:
+        self._diagnostics = diagnostics
         self._session = session
         self._codec = codec or BluetoothInboundCodec()
         self._closed = False
@@ -45,7 +47,11 @@ class BluetoothInboundEvents:
 
         while True:
             pcm = await self._session.read()
+            if self._diagnostics is not None:
+                self._diagnostics.raw_pcm(pcm)
             mulaw = self._codec.feed(pcm)
+            if self._diagnostics is not None:
+                self._diagnostics.codec_output(mulaw)
             if mulaw:
                 return MediaEvent(audio_bytes=mulaw, track="inbound")
 
@@ -62,6 +68,8 @@ class BluetoothInboundEvents:
             return self._codec.finish()
         finally:
             self._closed = True
+            if self._diagnostics is not None:
+                self._diagnostics.flush()
 
     def reset(self) -> None:
         """Reset only inbound conversion state for a new Bluetooth stream."""

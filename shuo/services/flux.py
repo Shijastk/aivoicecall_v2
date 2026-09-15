@@ -73,6 +73,7 @@ class FluxService:
         eot_threshold: Optional[float] = None,
         include_empty_interims: bool = False,
         diagnose_updates: bool = False,
+        message_observer: Optional[Callable[[str, str, int], None]] = None,
     ):
         if eot_threshold is not None and not (0.5 <= eot_threshold <= 1.0):
             raise ValueError("eot_threshold must be between 0.5 and 1.0")
@@ -86,6 +87,7 @@ class FluxService:
                 "is not changed"
             )
 
+        self._message_observer = message_observer
         self._on_end_of_turn = on_end_of_turn
         self._on_start_of_turn = on_start_of_turn
         self._on_interim = on_interim
@@ -264,19 +266,30 @@ class FluxService:
         try:
             msg_type = _field(message, "type")
 
+            if self._message_observer is not None:
+                transcript = _field(message, "transcript", "")
+                try:
+                    self._message_observer(
+                        msg_type, _field(message, "event"),
+                        len(transcript) if isinstance(transcript, str) else 0,
+                    )
+                except Exception:
+                    pass  # Optional observation must not affect provider callbacks.
+
             self._messages_seen += 1
             if self._messages_seen == 1:
                 # Deepgram's first message is `Connected`. Seeing it is the
                 # difference between "the socket opened" and "Deepgram is
                 # actually serving this model on this endpoint".
-                log.info(f"← first message from Deepgram: {msg_type}")
+                log.info("← first message from Deepgram" if self._message_observer is not None
+                         else f"← first message from Deepgram: {msg_type}")
 
             if msg_type == "FatalError":
                 # The stream is over. Loud, because every later turn will
                 # silently produce nothing.
                 log.error(
                     f"Deepgram FatalError: "
-                    f"{_field(message, 'description') or message}"
+                    f"{'details suppressed' if self._message_observer is not None else (_field(message, 'description') or message)}"
                 )
                 return
 
@@ -373,11 +386,15 @@ class FluxService:
                         )
 
         except Exception as e:
-            log.error("Message handling failed", e)
+            if self._message_observer is not None:
+                log.error("Message handling failed (details suppressed)")
+            else:
+                log.error("Message handling failed", e)
 
     async def _on_error(self, error, *args, **kwargs) -> None:
         """Handle Deepgram errors."""
-        log.error("Deepgram: " + str(error))
+        log.error("Deepgram error (details suppressed)" if self._message_observer is not None
+                  else "Deepgram: " + str(error))
 
     async def _on_close(self, *args, **kwargs) -> None:
         """

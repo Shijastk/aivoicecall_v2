@@ -158,12 +158,14 @@ class AiOnlyRouteIsolation:
         runner: ProcessRunner,
         restore_retry_attempts: int = 5,
         restore_retry_delay_seconds: float = 0.10,
+        diagnostics=None,
     ) -> None:
         if restore_retry_attempts <= 0:
             raise ValueError("restore_retry_attempts must be positive")
         if restore_retry_delay_seconds < 0:
             raise ValueError("restore_retry_delay_seconds must be non-negative")
 
+        self._diagnostics = diagnostics
         self._downlink = downlink
         self._uplink = uplink
         self._runner = runner
@@ -171,6 +173,12 @@ class AiOnlyRouteIsolation:
         self._restore_retry_delay_seconds = restore_retry_delay_seconds
         self._removed: list[PipeWireLink] = []
         self._running = False
+
+    def _observe(self, event, link=None, **fields):
+        if self._diagnostics is not None:
+            if link is not None:
+                fields.update(output_port=link.output_port, input_port=link.input_port)
+            self._diagnostics.record(event, **fields)
 
     @property
     def running(self) -> bool:
@@ -187,12 +195,14 @@ class AiOnlyRouteIsolation:
             raise RouteIsolationError(
                 f"pw-link -l failed with exit {result.returncode}: {stderr}"
             )
+        self._observe("route_listing", returncode=result.returncode)
         return parse_pw_link_listing(result.stdout)
 
     async def _disconnect(self, link: PipeWireLink) -> None:
         result = await self._runner.run(
             ("pw-link", "-d", link.output_port, link.input_port)
         )
+        self._observe("route_disconnect_result", link, returncode=result.returncode)
         if result.returncode != 0:
             stderr = result.stderr.decode("utf-8", errors="replace").strip()
             raise RouteIsolationError(
@@ -201,9 +211,11 @@ class AiOnlyRouteIsolation:
             )
 
     async def _connect(self, link: PipeWireLink) -> None:
+        self._observe("route_connect_attempt", link)
         result = await self._runner.run(
             ("pw-link", link.output_port, link.input_port)
         )
+        self._observe("route_connect_result", link, returncode=result.returncode)
         if result.returncode != 0:
             stderr = result.stderr.decode("utf-8", errors="replace").strip()
             raise RouteIsolationError(
@@ -233,6 +245,7 @@ class AiOnlyRouteIsolation:
             for link in targets:
                 await self._disconnect(link)
                 self._removed.append(link)
+                self._observe("route_owned_removed", link)
 
             # Fail closed: prove the forbidden links are actually gone before
             # capture/playback is allowed to start.
@@ -252,7 +265,13 @@ class AiOnlyRouteIsolation:
         except BaseException:
             # ResourceGroup cannot roll this object back until start() returns,
             # so partial-start rollback is owned here.
-            await self._restore_best_effort()
+            try:
+                await self._restore_best_effort()
+            finally:
+                self._observe("route_rollback_final", pending_links=[
+                    {"output_port": link.output_port, "input_port": link.input_port}
+                    for link in self._removed
+                ])
             raise
 
         self._running = True
@@ -285,6 +304,15 @@ class AiOnlyRouteIsolation:
         self._running = False
 
     async def stop(self) -> None:
+        try:
+            await self._stop()
+        finally:
+            self._observe("route_stop_final", pending_links=[
+                {"output_port": link.output_port, "input_port": link.input_port}
+                for link in self._removed
+            ])
+
+    async def _stop(self) -> None:
         if not self._running and not self._removed:
             return
 
@@ -293,7 +321,9 @@ class AiOnlyRouteIsolation:
         last_errors: dict[PipeWireLink, str] = {}
 
         for attempt in range(self._restore_retry_attempts):
+            self._observe("route_restore_attempt", attempt=attempt + 1, pending_count=len(pending))
             result = await self._runner.run(("pw-link", "-l"))
+            self._observe("route_restore_listing", returncode=result.returncode)
             if result.returncode != 0:
                 stderr = result.stderr.decode("utf-8", errors="replace").strip()
                 self._removed = pending
@@ -308,6 +338,7 @@ class AiOnlyRouteIsolation:
 
             for link in pending:
                 if link in existing:
+                    self._observe("route_already_present", link)
                     last_errors.pop(link, None)
                     continue
 
@@ -327,6 +358,9 @@ class AiOnlyRouteIsolation:
                     )
                     continue
 
+                self._observe("route_port_presence", link,
+                              bluetooth_port_listed=bluetooth_port in ports,
+                              physical_port_listed=physical_port in ports)
                 if bluetooth_port in ports and physical_port in ports:
                     try:
                         await self._connect(link)
@@ -386,6 +420,8 @@ class AiOnlyRouteIsolation:
                 bluetooth_port = None
 
             if bluetooth_port is not None and bluetooth_port not in ports:
+                self._observe("route_dropped_as_obsolete", link,
+                              reason="bluetooth_port_absent_from_pw_link_listing")
                 continue
 
             still_pending.append(link)
