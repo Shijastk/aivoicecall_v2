@@ -775,3 +775,56 @@ Remaining gate: a controlled real call/provider/device exercise is still require
 to establish actual latency benefit, audio correctness and caller-heard behavior.
 Phase 4C code is repository-verified; Phase 4 overall acceptance is not yet
 claimed.
+
+## Phase 4D repository implementation — 2026-09-15
+
+Revision `b56a38b132951b322ed5d63059a42f0a7600f829` implements the repository-safe Phase 4D controls
+without changing production defaults:
+
+- `BoundedPhraseBuffer` releases punctuation-aware or hard-size-bounded fragments
+  incrementally. It never waits for a complete LLM response, preserves exact text
+  ordering/content, creates no timer/background task, and is enabled only with an
+  explicit Bluetooth `tts_phrase_chars` value.
+- LLM request history can be bounded for the provider-visible prompt only. The
+  canonical in-memory history remains intact, the current user message remains,
+  and the full system/digital-twin prompt sits outside the trimming budget.
+  No history budget is enabled by default.
+- Optional streaming usage capture requests `stream_options={"include_usage":
+  True}` and emits only content-free token/timing metadata when the provider
+  supplies it (`queue_time`, `prompt_time`, `completion_time`, `total_time`, and
+  token counts). This is measurement instrumentation, not a server/network cause
+  claim.
+- Bluetooth startup can explicitly overlap independent Flux startup and Agent/TTS
+  readiness. Failure cancels/awaits the sibling task and falls through the
+  existing deterministic teardown. Serial startup remains the default.
+- Player pre-roll now supports only the two values already permitted by
+  `rules.md` C5: two or three 20ms frames. Three frames remains the default; the
+  two-frame setting is only an A/B control pending real audio/XRUN evidence.
+- The previously validated TTS pool policy (`max_idle_age=15.0`, liveness checks,
+  proactive refill, Bluetooth readiness barrier) is unchanged.
+
+### Automated implementation evidence
+
+GitHub Actions run `34968119711` on Ubuntu 24.04.5 / Python 3.12.14 produced:
+
+- focused Phase 4D/related regression: **195 passed, 3 warnings**;
+- complete Bluetooth regression: **149 passed, 3 warnings**;
+- full root regression: **976 passed, 4 failed, 4 warnings**;
+- the four failures match the documented baseline by exact identity/signature;
+- `py_compile`, `git diff --check`, and staged diff validation passed.
+
+The first full-suite attempt found one new constructor-bypass compatibility
+failure in `test_the_token_loop_actually_accumulates`; the implementation was
+corrected so absent Phase-4D Agent fields take the legacy/default-off path, then
+all applicable gates were rerun to the result above. No validation was skipped or
+weakened.
+
+### Phase 4D stop boundary
+
+Repository-level implementation is complete for the current authorized hardening
+slice, but Phase 4 acceptance is **not** complete. No live provider/device/cellular
+exercise was performed in this milestone. Phrase sizing, history budget,
+parallel-startup benefit, provider/server timing interpretation, two-frame pre-roll
+quality/XRUN behavior, prepared-stream reuse benefit, and caller-heard latency
+still require a controlled real-path comparison before any candidate becomes a
+default or any latency target is claimed. Phase 5 is not advanced.

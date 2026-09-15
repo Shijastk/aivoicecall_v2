@@ -315,3 +315,22 @@ cancelled and the ordinary final-EOT LLM request remains the fallback.
 This does not change `process_event`, the core µ-law contract, normal server
 startup, carrier/browser behavior or TTS finality. Repository automation is green;
 real-call latency/audio acceptance is still pending.
+
+### Phase 4D default-off hardening controls — 2026-09-15
+
+Revision `b56a38b132951b322ed5d63059a42f0a7600f829` adds optional Bluetooth-only hardening controls while
+preserving the existing default pipeline. `Agent` can use a bounded incremental
+phrase buffer before `TTSService.send`; without the explicit option it continues
+the previous token-by-token path. `LLMService` can bound only the provider-visible
+conversation-history suffix and can request streaming usage metrics; canonical
+history and the complete system/digital-twin prompt remain retained locally and
+outside that budget. The same prompt budget is applied to prepared shadow streams
+when explicitly enabled so final matching remains coherent.
+
+`run_bluetooth_conversation` can explicitly overlap Flux startup with async
+Agent/TTS readiness and records content-free startup spans; serial startup remains
+default. `AudioPlayer` accepts only two or three pre-roll frames per rules C5 and
+keeps three as default. The existing 15-second TTS warm-idle/readiness behavior is
+unchanged. None of these controls are imported or started by default `main.py`.
+Offline automation proves wiring, bounds, cleanup and regressions, not live
+provider timing, caller-heard latency, XRUN/audio quality or production benefit.

@@ -723,3 +723,40 @@ validation was disabled or weakened.
 
 Not measured: real Groq/Deepgram/ElevenLabs latency, PipeWire/Bluetooth behavior,
 cellular transport or caller-heard audio. Those remain external final validation.
+
+## Phase 4D repository hardening regression — 2026-09-15
+
+Implementation revision: `b56a38b132951b322ed5d63059a42f0a7600f829`. Final automated GitHub Actions run:
+`34968119711` on Ubuntu 24.04.5 with CPython 3.12.14. No provider credentials,
+phone, PipeWire call stream or cellular call were used by this gate.
+
+Final results:
+
+- changed Python compilation: **PASS**;
+- focused Phase 4D + Phase 4C/speculation/player/Flux/TTS + exact legacy Agent
+  monitor regression: **195 passed, 3 warnings**;
+- `scripts/dev/04_test_bluetooth.sh`: **149 passed, 3 warnings**;
+- full root suite: **976 passed, 4 failed, 4 warnings**;
+- `git diff --check` and staged diff check: **PASS**.
+
+The four full-root failures are exactly the documented baseline identities:
+
+1. `scripts/test_v2_keys.py::test_shunya_key` — async test collection signature;
+2. `scripts/test_v2_keys.py::test_azure_key` — async test collection signature;
+3. `tests/test_config_api.py::TestIsolation::test_the_call_server_has_no_config_routes`
+   — `_IncludedRouter` path signature;
+4. `tests/test_test_call.py::TestTheProcessSplitSurvives::test_the_call_server_has_no_test_call_routes`
+   — `_IncludedRouter` path signature.
+
+The fix/test cycle was exercised rather than bypassed: an earlier full run had a
+fifth failure,
+`tests/test_call_monitor.py::TestItSeesARealCall::test_the_token_loop_actually_accumulates`,
+because that legacy isolation test constructs `Agent` with `__new__`. The Agent
+callback was made backward-compatible with absent Phase-4D fields; that exact test
+was added to focused validation; focused, Bluetooth and full suites were rerun and
+the new failure disappeared.
+
+Limit: this evidence establishes repository correctness only. It does not select
+phrase/history/pre-roll defaults and does not establish provider/server latency,
+Bluetooth XRUN/audio quality, prepared-stream latency gain, or caller mouth-to-ear
+performance. Those remain controlled real-path Phase 4 acceptance evidence.

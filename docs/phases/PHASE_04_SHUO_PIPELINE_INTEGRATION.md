@@ -206,3 +206,19 @@ GitHub Actions run `34966008520` passed focused Phase 4, complete Bluetooth and 
 baseline-aware regressions plus compile/diff validation. No live provider/device
 or real call was used. Real-call validation remains the final gate before any
 caller-latency benefit or Phase 4 acceptance claim.
+
+## Phase 4D repository milestone — 2026-09-15
+
+The default-off Phase 4D hardening slice is implemented at `b56a38b132951b322ed5d63059a42f0a7600f829`.
+It adds bounded incremental TTS phrase grouping, optional provider-visible history
+budgeting that never trims the system/digital-twin prompt or canonical history,
+optional content-free Groq usage timing, optional fail-clean parallel service
+startup, and a controlled 2/3-frame pre-roll A/B setting. The validated 15-second
+TTS warm pool remains unchanged and three pre-roll frames remain the default.
+
+Automated repository validation passed: 195 focused tests, 149 Bluetooth tests,
+and a full root run with 976 passes plus only the four documented baseline
+failures. No provider/device/cellular call was used. Therefore Phase 4 remains
+**IN PROGRESS**: the remaining acceptance gate is controlled real-path validation
+of correctness, latency, audio quality/XRUN behavior and rollback. Phase 5 and
+later phases are not authorized by this milestone.

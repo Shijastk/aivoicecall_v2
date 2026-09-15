@@ -17,7 +17,7 @@ accepted yet; realtime latency/correctness hardening and gate evidence remain.
 | 1 | [Hardware/runtime contract](phases/PHASE_01_RUNTIME_CONTRACT.md) | Complete: supplied runtime evidence |
 | 2 | [Isolated adapter and codec](phases/PHASE_02_ADAPTER_AND_CODEC.md) | Complete for Phase 2 scope; production numeric queue/latency budget intentionally deferred to integrated measurement |
 | 3 | [PipeWire capture/playback integration](phases/PHASE_03_PIPEWIRE_INTEGRATION.md) | Complete on reference hardware; Phase 6 lifecycle ownership remains pending |
-| 4 | [SHUO conversation pipeline integration](phases/PHASE_04_SHUO_PIPELINE_INTEGRATION.md) | **In progress:** base integration exists; Phase 4A opt-in eager-turn measurement is being implemented; acceptance pending |
+| 4 | [SHUO conversation pipeline integration](phases/PHASE_04_SHUO_PIPELINE_INTEGRATION.md) | **In progress:** 4A/4B reference evidence plus default-off 4C/4D repository implementation are present; controlled provider/device/cellular validation and Phase 4 acceptance remain pending |
 | 5 | [Controlled cellular end-to-end validation](phases/PHASE_05_CELLULAR_E2E.md) | Planned / requires separate approval |
 | 6 | [Call control and lifecycle ownership](phases/PHASE_06_CALL_CONTROL_AND_LIFECYCLE.md) | Planned / requires separate approval |
 | 7 | [Resilience and coexistence](phases/PHASE_07_RESILIENCE_AND_COEXISTENCE.md) | Planned / requires separate approval |
@@ -244,3 +244,20 @@ Bluetooth flag and has passed repository-level automated verification. This is a
 implementation milestone, not Phase 4 acceptance: real provider/device/cellular
 validation is still required before enabling the feature by default or claiming a
 latency/caller-heard improvement. Phase 5 remains unchanged.
+
+### Phase 4D repository status — 2026-09-15
+
+Phase 4D hardening controls are implemented at revision `b56a38b132951b322ed5d63059a42f0a7600f829` and
+passed the repository-level automated gates recorded in [TESTING](TESTING.md).
+The new controls remain explicit Bluetooth opt-ins: bounded incremental TTS phrase
+batching, provider-visible conversation-history budgeting, content-free Groq
+usage/timing capture, parallel Flux/TTS startup, and a rules-C5 2/3-frame player
+pre-roll A/B control. Existing carrier/browser/default startup behavior and the
+validated 15-second TTS warm-idle policy are unchanged.
+
+This does **not** complete Phase 4. No provider/device/cellular call was executed
+for this milestone, no 2-frame pre-roll or context budget was promoted to a
+default, and no caller-heard latency improvement is claimed. The remaining Phase
+4 gate is controlled real-path validation of the enabled 4C/4D candidates and
+rollback behavior. Phase 5 and later phases remain unchanged and separately
+authorized.
