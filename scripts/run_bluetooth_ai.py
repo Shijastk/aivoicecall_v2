@@ -43,6 +43,26 @@ def _eot_threshold(value: str) -> float:
     return threshold
 
 
+def _phase4d_phrase_chars(value: str) -> int:
+    try:
+        chars = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be an integer") from exc
+    if not 24 <= chars <= 160:
+        raise argparse.ArgumentTypeError("must be between 24 and 160")
+    return chars
+
+
+def _positive_chars(value: str) -> int:
+    try:
+        chars = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be an integer") from exc
+    if chars <= 0:
+        raise argparse.ArgumentTypeError("must be positive")
+    return chars
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run SHUO over an already-active Bluetooth HFP cellular call."
@@ -102,6 +122,41 @@ def parse_args() -> argparse.Namespace:
             "LLM stream after final EndOfTurn; normal generation is fallback."
         ),
     )
+    parser.add_argument(
+        "--tts-phrase-chars",
+        type=_phase4d_phrase_chars,
+        default=None,
+        help=(
+            "Phase-4D opt-in: batch LLM text into punctuation/size-bounded TTS "
+            "phrases; explicit 24-160 character cap required."
+        ),
+    )
+    parser.add_argument(
+        "--llm-history-max-chars",
+        type=_positive_chars,
+        default=None,
+        help=(
+            "Phase-4D opt-in: bound provider-visible conversation history by "
+            "characters while retaining canonical in-memory history and the full system prompt."
+        ),
+    )
+    parser.add_argument(
+        "--llm-provider-timing",
+        action="store_true",
+        help="Phase-4D opt-in: request/log content-free streaming usage timing when supported.",
+    )
+    parser.add_argument(
+        "--parallel-startup",
+        action="store_true",
+        help="Phase-4D opt-in: warm Flux and TTS/Agent concurrently with fail-clean teardown.",
+    )
+    parser.add_argument(
+        "--player-preroll-frames",
+        type=int,
+        choices=(2, 3),
+        default=3,
+        help="Phase-4D controlled A/B knob; rules.md C5 permits only 2 or 3 frames.",
+    )
     args = parser.parse_args()
     if args.shadow_early_transcripts and not args.shadow_speculation:
         parser.error("--shadow-early-transcripts requires --shadow-speculation")
@@ -133,6 +188,11 @@ async def _main(args: argparse.Namespace) -> None:
         shadow_speculation=args.shadow_speculation,
         shadow_early_transcripts=args.shadow_early_transcripts,
         prepared_response_reuse=args.prepared_response_reuse,
+        tts_phrase_chars=args.tts_phrase_chars,
+        llm_history_max_chars=args.llm_history_max_chars,
+        llm_provider_timing=args.llm_provider_timing,
+        parallel_startup=args.parallel_startup,
+        player_preroll_frames=args.player_preroll_frames,
     )
 
 
