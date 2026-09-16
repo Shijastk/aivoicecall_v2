@@ -1,123 +1,135 @@
-# TTS provider routing and eSpeak fallback
+# TTS provider routing and local Pocket TTS
 
-**Status:** implementation is automated-regression validated; local/reference-hardware live validation remains required before Phase 5 or latency acceptance claims.
+**Status:** Pocket TTS is the approved replacement candidate for the prior eSpeak local testing/fallback path. Repository automated validation must be baseline-clean before merge; real reference-hardware validation is still required before Phase 5 or caller-heard latency/quality claims.
 
 ## Purpose
 
-ElevenLabs remains SHUO's production-quality primary TTS. The local eSpeak path exists for two narrow reasons:
+ElevenLabs remains SHUO's production-quality default TTS. Pocket TTS is the local CPU provider for two narrow reasons:
 
-1. cost-free development / heavy functional testing; and
-2. an opt-in emergency fallback so a pre-audio ElevenLabs failure does not leave a turn silent.
+1. cost-free development / heavy functional testing with speech that is materially clearer than the prior eSpeak path; and
+2. an opt-in pre-audio emergency fallback so an ElevenLabs failure can continue locally without replaying speech the caller already heard.
 
-This does not make eSpeak voice quality or latency equivalent to ElevenLabs, and eSpeak evidence must not be used as ElevenLabs-specific latency/voice-quality evidence.
+Pocket evidence is not ElevenLabs evidence. A local Pocket benchmark is also not caller mouth-to-ear evidence.
+
+## Why Pocket replaced eSpeak — 2026-09-16
+
+The owner reported that eSpeak was too generic/robotic to reliably understand during live functional testing. A suspected repeat/loop was then isolated with transcript-bearing local diagnostics: the AI had generated one normal response per caller turn and there was no new STT StartOfTurn/EndOfTurn during the supposedly repeated playback. A direct eSpeak sentence also completed normally in 2.54 seconds with no fatal error. The incident therefore did not establish a conversation feedback loop; it exposed poor test-voice intelligibility.
+
+Pocket TTS and Supertonic 3 were then benchmarked outside the repository on the reference MSI laptop before any provider code was changed. Pocket native streaming produced first audio at roughly 101–105 ms in the three-sentence comparison and a 20-run warm stability test produced **20/20 successful generations, 0 failures, 75.1–88.8 ms TTFA, 78.3 ms average TTFA**. Supertonic 3's measured 18–21 character synthesis completion was roughly 467–490 ms. Telephone-band 8 kHz G.711 mu-law A/B listening favored Pocket in two of three blind pairs. Those measurements justify Pocket as the better local functional-test candidate for this reference machine; they do not establish caller-heard latency or universal voice-quality superiority.
 
 ## Configuration
 
-Default behavior is unchanged:
+Default production behavior remains unchanged:
 
 ```bash
 TTS_PROVIDER=elevenlabs
 TTS_FALLBACK_PROVIDER=
 ```
 
-Cost-free testing can bypass ElevenLabs completely:
+Cost-free local functional testing:
 
 ```bash
-TTS_PROVIDER=espeak
+TTS_PROVIDER=pocket
 TTS_FALLBACK_PROVIDER=
 ```
 
-Production may keep ElevenLabs primary and opt into the local emergency fallback:
+Optional ElevenLabs primary with local pre-audio fallback:
 
 ```bash
 TTS_PROVIDER=elevenlabs
-TTS_FALLBACK_PROVIDER=espeak
+TTS_FALLBACK_PROVIDER=pocket
 ```
 
-With that fallback configuration, an absent `ELEVENLABS_API_KEY` selects eSpeak without contacting ElevenLabs. With a configured key, ElevenLabs remains primary.
+With the fallback configured, an absent `ELEVENLABS_API_KEY` selects Pocket directly without constructing/contacting ElevenLabs. With a key present, ElevenLabs stays primary and Pocket is pre-warmed for the restricted pre-audio fallback path.
 
-## System dependency
+`TTS_PROVIDER=espeak` and `TTS_FALLBACK_PROVIDER=espeak` are no longer supported runtime selections after this replacement.
 
-eSpeak is an optional operating-system dependency, not a Python package dependency. On Ubuntu:
+## Optional dependency profile
+
+Pocket is deliberately not added to the default `requirements.txt`, because ElevenLabs remains the default provider and Pocket pulls a CPU PyTorch/model stack that default production does not need. Install the explicit local profile instead:
 
 ```bash
-sudo apt update
-sudo apt install -y espeak-ng
-espeak-ng --version
+python -m pip install -r requirements-pocket-tts.txt
 ```
 
-The provider prefers `espeak-ng` and accepts a compatible `espeak` binary if already installed. Python 3.13+ also needs the repository's already-documented `audioop-lts` compatibility shim when eSpeak PCM conversion is used.
+`requirements-pocket-tts.txt` pins `pocket-tts==3.1.0`, includes the base requirements and adds the PyTorch CPU index. The CPU index is important on Linux because the normal PyPI Torch path can otherwise pull several gigabytes of CUDA runtime packages that Pocket does not require.
 
-If either `TTS_PROVIDER=espeak` or `TTS_FALLBACK_PROVIDER=espeak` is configured for `main.py`, startup fails clearly when no eSpeak binary is installed. Default ElevenLabs-only startup does not acquire this dependency.
+The first model/voice use may populate the Hugging Face cache. SHUO uses Pocket's built-in catalog voice alias `alba` by default. This is intentional: the first automated real-package validation attempt used an `hf://...wav` prompt, which Pocket 3.1.0 correctly interpreted as voice cloning and rejected without gated cloning weights. The implementation was corrected from that evidence to the ungated built-in catalog alias. No Hugging Face token or cloned voice is required for the supported SHUO local path.
+
+An optional `POCKET_TTS_VOICE` can select another Pocket catalog voice. Custom/clone voice URLs are outside the approved reference path and must not be treated as already validated.
 
 ## Audio contract
 
-eSpeak emits PCM WAV internally. `shuo/services/tts_espeak.py` contains that PCM entirely inside the provider boundary and converts each bounded phrase to mono G.711 mu-law / 8 kHz before calling the existing `on_audio` callback.
+Pocket generates native float PCM (normally 24 kHz) only inside `shuo/services/tts_pocket.py`. Each native streaming chunk is converted in-memory to mono PCM16, statefully resampled to 8 kHz within the phrase, encoded as G.711 mu-law and base64-wrapped before the existing callback is invoked.
 
-Therefore the SHUO/player/carrier contract remains unchanged:
+The core contract therefore remains:
 
 ```text
-provider boundary -> base64 mu-law / 8 kHz / mono -> AudioPlayer -> carrier/Bluetooth adapter
+provider boundary -> base64 G.711 mu-law / 8 kHz / mono -> AudioPlayer -> carrier/Bluetooth adapter
 ```
 
-No raw audio file is written and no PCM/L16 carrier route is added.
+No raw audio file is written. No L16/PCM route is added to the carrier/core path.
 
-## Streaming and latency safety
+## Streaming and boundedness
 
-The direct local provider does not wait for a complete model answer. It uses the existing deterministic `BoundedPhraseBuffer` with a 24-character cap, synthesizes one bounded phrase at a time through a shell-free subprocess, converts it in memory and immediately forwards the resulting mu-law chunk to the existing player.
+The local provider does not wait for a complete LLM response. It keeps the established deterministic `BoundedPhraseBuffer` with a 24-character hard cap. Once a bounded phrase is available, Pocket's synchronous CPU generator runs off the asyncio event loop and `generate_audio_stream()` native chunks cross back through a bounded four-chunk queue. Each chunk is converted and forwarded immediately.
 
-The ElevenLabs+eSpeak emergency wrapper also preserves the live streaming seam required by `rules.md` A4: every `send()` is forwarded to the active primary immediately. Before the first ElevenLabs audio arrives, the wrapper keeps a **shadow recovery copy** of already-forwarded text, capped at 4096 characters. That copy never gates token delivery or waits for LLM completion. If the cap would be exceeded, the shadow copy is cleared and same-turn replay is disabled rather than growing without bound. `tests/test_tts_streaming_contract.py` pins both immediate forwarding and the hard cap.
+This preserves the A4 rule: there is no whole-answer TTS gate. The 24-character phrase seam is intentionally retained from the already-tested local-provider design rather than inventing a new unmeasured batching threshold.
 
-A live/reference-machine benchmark is still required before making any eSpeak latency claim. A local provider being fast in isolation is not evidence of caller mouth-to-ear latency.
+Pocket model/voice state is process-local and reused so TTSPool service refill does not reload the model on every turn. Native inference is serialized because one shared model instance must not be driven concurrently by overlapping provider objects.
+
+## Cancellation
+
+A Pocket generation owns a cooperative cancellation event and a tracked worker task. Cancellation:
+
+- marks the provider inactive;
+- clears buffered text;
+- signals native generation to stop at the next yielded chunk;
+- invalidates queued audio;
+- wakes any waiter blocked on the bounded queue; and
+- waits up to one second for the tracked worker to stop.
+
+No post-cancel audio is intentionally forwarded. Unit coverage uses a cooperative blocking fake runtime to prove that cancellation wakes the consumer, stops generation and suppresses late audio.
+
+Pocket's underlying Python/native inference thread is not force-killable by the interpreter if the vendor code itself stops yielding. The implementation fails closed and logs if the tracked worker does not return inside the bounded one-second window. Real-device barge-in/cancellation evidence is therefore still required before treating this provider as live-call accepted.
 
 ## Fallback semantics
 
-The emergency wrapper validates eSpeak availability when the pooled service starts. While ElevenLabs has produced no audio, it retains only the bounded shadow recovery copy described above. If ElevenLabs fails before its first audio chunk, that already-forwarded but unheard text is replayed through eSpeak and the turn continues.
+The ElevenLabs+Pocket wrapper preserves the same bounded pre-audio recovery contract previously proven for the eSpeak fallback:
 
-Once any ElevenLabs audio has been emitted, same-turn replay is permanently disabled. If ElevenLabs later fails mid-answer, SHUO does **not** restart the response from the beginning in eSpeak because that would duplicate speech the caller already heard. The current turn completes/truncates through the existing failure path; a later turn may use a newly prepared provider service.
+- every primary `send()` is forwarded immediately;
+- before first primary audio, a shadow recovery copy is retained up to 4096 characters;
+- that copy never gates primary streaming;
+- overflow clears/disables same-turn replay instead of growing without bound;
+- if ElevenLabs fails before first audio, the unheard shadow text may be replayed through already-warmed Pocket;
+- once any ElevenLabs audio has been emitted, replay is permanently disabled for that turn;
+- a mid-answer ElevenLabs failure therefore never restarts the whole answer in another voice.
 
-If the bounded shadow window is exceeded before first audio, replay fallback is disabled for that turn instead of retaining unbounded text.
+`tests/test_tts_streaming_contract.py` pins the immediate-forwarding and bounded-shadow invariants independently of the concrete local fallback implementation.
 
-## Provider selection invariants
+## Provider-selection invariants
 
-- no new state-machine event/action is introduced;
+- default provider remains ElevenLabs;
+- Pocket is explicit/optional and does not change default startup behavior;
+- `TTS_PROVIDER=pocket` never constructs ElevenLabs;
+- configured Pocket fallback with a missing ElevenLabs key bypasses ElevenLabs entirely;
+- missing optional Pocket package fails clearly before the turn when Pocket is selected;
+- no state-machine event/action was added;
 - `process_event` remains pure;
-- existing `TTSPool` lifecycle and test monkeypatch seam are preserved;
-- default environment remains ElevenLabs-only;
-- `TTS_PROVIDER=espeak` never constructs or contacts ElevenLabs;
+- TTSPool contract and existing ElevenLabs monkeypatch seam remain intact;
+- Pocket SDK import is lazy and stays inside the provider module;
 - no secret is logged or inspected;
-- eSpeak subprocesses use argument arrays + stdin/stdout, never a shell;
-- cancellation terminates/kills an owned child with bounded waits;
-- eSpeak is not a Phase 6 call-control feature.
+- no raw audio recording is introduced;
+- this is not Phase 6 call control.
 
-## Automated validation — 2026-09-16
+## Automated validation commands
 
-The implementation was validated in GitHub Actions on Ubuntu 24.04 with CPython 3.12.14 and `espeak-ng` 1.51. Validation workflows lived only on temporary CI branches; the tested source branches did not include those workflow files.
-
-The final automated gate was GitHub Actions run `35118235590`. It established:
-
-- real installed `espeak-ng` subprocess -> in-memory WAV -> mu-law conversion: **PASS**, 3 audio chunks / 22,241 mu-law bytes;
-- direct `TTS_PROVIDER=espeak` with no ElevenLabs key: **PASS**;
-- ElevenLabs primary + configured eSpeak fallback with no ElevenLabs key: **PASS** and no ElevenLabs requirement at startup;
-- default ElevenLabs-only configuration with a missing key: **fail-closed PASS**;
-- focused TTS/streaming/production/player regression: **99 passed, 3 warnings**;
-- complete Bluetooth regression: **162 passed, 3 warnings**;
-- full repository regression: **1001 passed, 4 failed, 4 warnings**;
-- the four full-suite failures matched the exact documented historical identities/signatures, and the CI verifier printed `FULL_SUITE_BASELINE_CLEAN`.
-
-The focused gate includes `tests/test_tts_streaming_contract.py`, which proves that the bounded pre-audio shadow copy never delays primary `send()` calls and disables itself rather than exceeding its cap.
-
-The full-suite baseline failures remain the two unsupported unmarked async Shunya/Azure probes and the two `_IncludedRouter.path` isolation-test failures. They were not changed, bypassed or reclassified as passes.
-
-These automated results establish code-path, subprocess, codec-boundary, streaming-seam and regression behavior only. They do **not** prove eSpeak caller-heard latency, voice quality, real-call fallback during an actual ElevenLabs outage, Phase 5 acceptance, or Phase 6 readiness.
-
-## Focused regression commands
-
-After pulling the implementation, run before any live call:
+The focused gate for this replacement is:
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 PYTHON_DOTENV_DISABLED=1 \
 python -m pytest -q \
+  tests/test_tts_pocket.py \
   tests/test_tts_provider.py \
   tests/test_tts_streaming_contract.py \
   tests/test_tts_failure.py \
@@ -127,20 +139,44 @@ python -m pytest -q \
   -p no:cacheprovider
 ```
 
-Then the Bluetooth suite:
+Then:
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 PYTHON_DOTENV_DISABLED=1 \
 python -m pytest -q tests/test_bluetooth_*.py -p no:cacheprovider
 ```
 
-Then the full repository suite:
+Then the complete repository suite:
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 PYTHON_DOTENV_DISABLED=1 \
 python -m pytest -q -p no:cacheprovider
 ```
 
-The historical full-suite baseline contains four unrelated failures. Compare failure **identities/signatures**, not only totals; any new failure identity is a regression until explained.
+The complete-suite gate remains baseline-identity based. The only tolerated historical failures are:
 
-Do not mark Phase 5 accepted merely because the automated provider tests pass. The separately authorized live Gate 1 evidence and remaining Phase 5 measurement gates still control phase acceptance.
+- `scripts/test_v2_keys.py::test_shunya_key` — unsupported unmarked async test;
+- `scripts/test_v2_keys.py::test_azure_key` — unsupported unmarked async test;
+- `tests/test_config_api.py::TestIsolation::test_the_call_server_has_no_config_routes` — `_IncludedRouter.path` AttributeError;
+- `tests/test_test_call.py::TestTheProcessSplitSurvives::test_the_call_server_has_no_test_call_routes` — same `_IncludedRouter.path` AttributeError.
+
+Any new failure identity/signature is a regression and must be fixed before merge.
+
+## Historical eSpeak record
+
+eSpeak was introduced and automated-regression validated earlier on 2026-09-16. Its final gate proved real subprocess/WAV/mu-law conversion, direct/fallback routing, 99 focused passes, 162 Bluetooth passes and a full-suite baseline-clean result. That evidence remains historical and is not rewritten as a failure. The replacement decision is about practical intelligibility for the remaining functional Phase 5 work, backed by the later A/B measurements above.
+
+The eSpeak runtime provider file and routing options are removed by this replacement; historical issue/doc evidence remains preserved.
+
+## Acceptance boundary
+
+Automated provider regression, even when baseline-clean, proves only code-path, codec-boundary, streaming, boundedness and regression behavior. It does **not** prove:
+
+- caller-heard Pocket latency over Bluetooth/cellular;
+- reference-call clarity after the actual Bluetooth path;
+- real barge-in/cancellation under simultaneous STT/LLM/TTS CPU load;
+- echo/feedback behavior;
+- Phase 5 acceptance; or
+- Phase 6 readiness.
+
+Those items require the separately authorized reference-device/manual evidence. Phase 6 remains blocked.
