@@ -1,0 +1,134 @@
+name: eSpeak final validation
+
+on:
+  push:
+    branches:
+      - validation/espeak-final-ci-20260916
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PYTHON_DOTENV_DISABLED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install eSpeak and Python dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y espeak-ng
+          espeak-ng --version
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Real eSpeak and startup-policy smoke
+        shell: bash
+        run: |
+          python - <<'PY'
+          import asyncio
+          import base64
+          from shuo.services.tts_espeak import EspeakTTSService
+
+          async def main():
+              audio = []
+              done = []
+              async def on_audio(chunk):
+                  decoded = base64.b64decode(chunk)
+                  assert decoded
+                  audio.append(decoded)
+              async def on_done():
+                  done.append(True)
+              service = EspeakTTSService(on_audio=on_audio, on_done=on_done)
+              await service.start()
+              await service.send("This is a real local eSpeak validation sentence.")
+              await service.flush()
+              assert audio
+              assert done == [True]
+              assert service.fatal_error is None
+              print(f"REAL_ESPEAK_SMOKE_OK chunks={len(audio)} mulaw_bytes={sum(map(len, audio))}")
+          asyncio.run(main())
+          PY
+
+          env -u ELEVENLABS_API_KEY \
+            TTS_PROVIDER=espeak \
+            VOBIZ_AUTH_ID=test VOBIZ_AUTH_TOKEN=test VOBIZ_PHONE_NUMBER=+911234567890 \
+            DEEPGRAM_API_KEY=test GROQ_API_KEY=test PUBLIC_URL=https://example.invalid \
+            python - <<'PY'
+          import main
+          assert main.check_environment()
+          print("DIRECT_ESPEAK_ENV_OK")
+          PY
+
+          env -u ELEVENLABS_API_KEY \
+            TTS_PROVIDER=elevenlabs TTS_FALLBACK_PROVIDER=espeak \
+            VOBIZ_AUTH_ID=test VOBIZ_AUTH_TOKEN=test VOBIZ_PHONE_NUMBER=+911234567890 \
+            DEEPGRAM_API_KEY=test GROQ_API_KEY=test PUBLIC_URL=https://example.invalid \
+            python - <<'PY'
+          import main
+          assert main.check_environment()
+          print("ESPEAK_FALLBACK_ENV_OK")
+          PY
+
+          if env -u ELEVENLABS_API_KEY -u TTS_FALLBACK_PROVIDER \
+            TTS_PROVIDER=elevenlabs \
+            VOBIZ_AUTH_ID=test VOBIZ_AUTH_TOKEN=test VOBIZ_PHONE_NUMBER=+911234567890 \
+            DEEPGRAM_API_KEY=test GROQ_API_KEY=test PUBLIC_URL=https://example.invalid \
+            python - <<'PY'
+          import main
+          raise SystemExit(0 if main.check_environment() else 1)
+          PY
+          then
+            echo "Default ElevenLabs mode unexpectedly accepted a missing API key"
+            exit 1
+          else
+            echo "DEFAULT_ELEVENLABS_ENV_FAIL_CLOSED_OK"
+          fi
+
+      - name: Focused TTS and production regression
+        run: |
+          python -m pytest -q \
+            tests/test_tts_provider.py \
+            tests/test_tts_streaming_contract.py \
+            tests/test_tts_failure.py \
+            tests/test_bluetooth_production.py \
+            tests/test_bluetooth_conversation.py \
+            tests/test_player.py \
+            -p no:cacheprovider
+
+      - name: Bluetooth full regression
+        run: python -m pytest -q tests/test_bluetooth_*.py -p no:cacheprovider
+
+      - name: Full repository regression and exact baseline verification
+        shell: bash
+        run: |
+          set +e
+          python -m pytest -q -p no:cacheprovider 2>&1 | tee /tmp/full-regression.log
+          pytest_status=${PIPESTATUS[0]}
+          set -e
+
+          python - <<'PY'
+          import re
+          from pathlib import Path
+          text = Path('/tmp/full-regression.log').read_text(encoding='utf-8', errors='replace')
+          expected = {
+              'scripts/test_v2_keys.py::test_shunya_key',
+              'scripts/test_v2_keys.py::test_azure_key',
+              'tests/test_config_api.py::TestIsolation::test_the_call_server_has_no_config_routes',
+              'tests/test_test_call.py::TestTheProcessSplitSurvives::test_the_call_server_has_no_test_call_routes',
+          }
+          observed = set(re.findall(r'^FAILED\s+([^\s]+)', text, re.MULTILINE))
+          assert observed == expected, (sorted(expected), sorted(observed))
+          assert 'async def functions are not natively supported' in text
+          assert text.count("'_IncludedRouter' object has no attribute 'path'") >= 2
+          print('FULL_SUITE_BASELINE_CLEAN')
+          PY
+
+          if [ "$pytest_status" -eq 0 ]; then
+            echo "Full suite unexpectedly returned zero; baseline expectations changed"
+            exit 1
+          fi
