@@ -32,6 +32,75 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
+      - name: Real eSpeak subprocess and startup-policy smoke
+        shell: bash
+        run: |
+          python - <<'PY'
+          import asyncio
+          import base64
+
+          from shuo.services.tts_espeak import EspeakTTSService
+
+          async def main():
+              audio = []
+              done = []
+
+              async def on_audio(chunk):
+                  decoded = base64.b64decode(chunk)
+                  assert decoded, "eSpeak emitted an empty audio chunk"
+                  audio.append(decoded)
+
+              async def on_done():
+                  done.append(True)
+
+              service = EspeakTTSService(on_audio=on_audio, on_done=on_done)
+              await service.start()
+              await service.send("This is a real local eSpeak validation sentence.")
+              await service.flush()
+
+              assert audio, "real espeak-ng subprocess produced no mu-law audio"
+              assert done == [True], f"unexpected done callbacks: {done}"
+              assert service.fatal_error is None, service.fatal_error
+              print(f"REAL_ESPEAK_SMOKE_OK chunks={len(audio)} mulaw_bytes={sum(map(len, audio))}")
+
+          asyncio.run(main())
+          PY
+
+          env -u ELEVENLABS_API_KEY \
+            TTS_PROVIDER=espeak \
+            VOBIZ_AUTH_ID=test VOBIZ_AUTH_TOKEN=test VOBIZ_PHONE_NUMBER=+911234567890 \
+            DEEPGRAM_API_KEY=test GROQ_API_KEY=test PUBLIC_URL=https://example.invalid \
+            python - <<'PY'
+          import main
+          assert main.check_environment(), "direct eSpeak mode incorrectly requires ElevenLabs"
+          print("DIRECT_ESPEAK_ENV_OK")
+          PY
+
+          env -u ELEVENLABS_API_KEY \
+            TTS_PROVIDER=elevenlabs TTS_FALLBACK_PROVIDER=espeak \
+            VOBIZ_AUTH_ID=test VOBIZ_AUTH_TOKEN=test VOBIZ_PHONE_NUMBER=+911234567890 \
+            DEEPGRAM_API_KEY=test GROQ_API_KEY=test PUBLIC_URL=https://example.invalid \
+            python - <<'PY'
+          import main
+          assert main.check_environment(), "configured eSpeak fallback incorrectly requires ElevenLabs"
+          print("ESPEAK_FALLBACK_ENV_OK")
+          PY
+
+          if env -u ELEVENLABS_API_KEY -u TTS_FALLBACK_PROVIDER \
+            TTS_PROVIDER=elevenlabs \
+            VOBIZ_AUTH_ID=test VOBIZ_AUTH_TOKEN=test VOBIZ_PHONE_NUMBER=+911234567890 \
+            DEEPGRAM_API_KEY=test GROQ_API_KEY=test PUBLIC_URL=https://example.invalid \
+            python - <<'PY'
+          import main
+          raise SystemExit(0 if main.check_environment() else 1)
+          PY
+          then
+            echo "Default ElevenLabs mode unexpectedly accepted a missing API key"
+            exit 1
+          else
+            echo "DEFAULT_ELEVENLABS_ENV_FAIL_CLOSED_OK"
+          fi
+
       - name: Focused TTS and production regression
         run: |
           python -m pytest -q \
@@ -78,10 +147,7 @@ jobs:
           if text.count("'_IncludedRouter' object has no attribute 'path'") < 2:
               raise SystemExit('IncludedRouter baseline failure signature changed')
 
-          summary = re.findall(r'=+\s+([^\n]*passed[^\n]*)\s+=+', text)
           print('FULL_SUITE_BASELINE_CLEAN')
-          if summary:
-              print(summary[-1])
           PY
 
           if [ "$pytest_status" -eq 0 ]; then
