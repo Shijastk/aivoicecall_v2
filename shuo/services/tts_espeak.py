@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import audioop
 import base64
 import io
 import shutil
@@ -25,6 +24,17 @@ def wav_to_mulaw_8k(wav_bytes: bytes) -> bytes:
     """Convert an in-memory PCM WAV into SHUO's mono G.711 mu-law/8 kHz contract."""
     if not wav_bytes:
         return b""
+
+    # Python 3.13 removed audioop from the stdlib. Keep this import lazy so
+    # default ElevenLabs deployments do not acquire a new startup dependency;
+    # eSpeak users on 3.13 can install the already-documented audioop-lts shim.
+    try:
+        import audioop
+    except ImportError as exc:
+        raise RuntimeError(
+            "eSpeak PCM conversion requires audioop; on Python 3.13+ install "
+            "audioop-lts"
+        ) from exc
 
     try:
         with wave.open(io.BytesIO(wav_bytes), "rb") as reader:
