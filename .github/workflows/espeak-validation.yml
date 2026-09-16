@@ -1,0 +1,90 @@
+name: eSpeak validation
+
+on:
+  push:
+    branches:
+      - validation/espeak-fallback-ci-20260916
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PYTHON_DOTENV_DISABLED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y espeak-ng
+          espeak-ng --version
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Focused TTS and production regression
+        run: |
+          python -m pytest -q \
+            tests/test_tts_provider.py \
+            tests/test_tts_failure.py \
+            tests/test_bluetooth_production.py \
+            -p no:cacheprovider
+
+      - name: Bluetooth full regression
+        run: |
+          python -m pytest -q tests/test_bluetooth_*.py -p no:cacheprovider
+
+      - name: Full repository regression and baseline verification
+        shell: bash
+        run: |
+          set +e
+          python -m pytest -q -p no:cacheprovider 2>&1 | tee /tmp/full-regression.log
+          pytest_status=${PIPESTATUS[0]}
+          set -e
+
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          text = Path('/tmp/full-regression.log').read_text(encoding='utf-8', errors='replace')
+          expected = {
+              'scripts/test_v2_keys.py::test_shunya_key',
+              'scripts/test_v2_keys.py::test_azure_key',
+              'tests/test_config_api.py::TestIsolation::test_the_call_server_has_no_config_routes',
+              'tests/test_test_call.py::TestTheProcessSplitSurvives::test_the_call_server_has_no_test_call_routes',
+          }
+          observed = set(re.findall(r'^FAILED\s+([^\s]+)', text, re.MULTILINE))
+          if observed != expected:
+              raise SystemExit(f'Unexpected full-suite failures. expected={sorted(expected)} observed={sorted(observed)}')
+
+          for test_id in (
+              'scripts/test_v2_keys.py::test_shunya_key',
+              'scripts/test_v2_keys.py::test_azure_key',
+          ):
+              if test_id not in text:
+                  raise SystemExit(f'Missing expected async baseline failure: {test_id}')
+          if 'async def functions are not natively supported' not in text:
+              raise SystemExit('Async baseline failure signature changed')
+          if text.count("'_IncludedRouter' object has no attribute 'path'") < 2:
+              raise SystemExit('IncludedRouter baseline failure signature changed')
+
+          summary = re.findall(r'=+\s+([^\n]*passed[^\n]*)\s+=+', text)
+          print('FULL_SUITE_BASELINE_CLEAN')
+          if summary:
+              print(summary[-1])
+          PY
+
+          if [ "$pytest_status" -eq 0 ]; then
+            echo "Full suite unexpectedly returned zero; baseline expectations may have changed."
+            exit 1
+          fi
