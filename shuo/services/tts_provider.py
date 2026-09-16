@@ -6,12 +6,12 @@ from typing import Awaitable, Callable, Optional, Type
 
 from ..log import ServiceLogger
 from .tts import TTSService as ElevenLabsTTSService
-from .tts_espeak import EspeakTTSService
+from .tts_pocket import PocketTTSService
 
 log = ServiceLogger("TTSRouter")
 
-_SUPPORTED_PRIMARY = {"elevenlabs", "espeak"}
-_SUPPORTED_FALLBACK = {"", "espeak"}
+_SUPPORTED_PRIMARY = {"elevenlabs", "pocket"}
+_SUPPORTED_FALLBACK = {"", "pocket"}
 _MAX_REPLAY_CHARS = 4096
 
 
@@ -26,21 +26,21 @@ def tts_fallback_provider_name() -> str:
 def tts_required_env_vars() -> tuple[str, ...]:
     """Secrets required for the selected routing policy.
 
-    An explicitly configured eSpeak fallback is allowed to carry the call when
-    the ElevenLabs key is absent, so that configuration has no ElevenLabs-key
-    startup requirement.
+    An explicitly configured Pocket TTS fallback is allowed to carry the call
+    when the ElevenLabs key is absent, so that configuration has no ElevenLabs
+    key startup requirement.
     """
     primary = tts_provider_name()
     fallback = tts_fallback_provider_name()
-    if primary == "elevenlabs" and fallback != "espeak":
+    if primary == "elevenlabs" and fallback != "pocket":
         return ("ELEVENLABS_API_KEY",)
     return ()
 
 
-def espeak_requested() -> bool:
+def pocket_requested() -> bool:
     return (
-        tts_provider_name() == "espeak"
-        or tts_fallback_provider_name() == "espeak"
+        tts_provider_name() == "pocket"
+        or tts_fallback_provider_name() == "pocket"
     )
 
 
@@ -55,15 +55,15 @@ def validate_tts_provider_config() -> Optional[str]:
     if fallback not in _SUPPORTED_FALLBACK:
         return (
             f"Unsupported TTS_FALLBACK_PROVIDER={fallback!r}. "
-            "Supported: espeak or empty"
+            "Supported: pocket or empty"
         )
-    if primary == "espeak" and fallback:
-        return "TTS_FALLBACK_PROVIDER must be empty when TTS_PROVIDER=espeak"
+    if primary == "pocket" and fallback:
+        return "TTS_FALLBACK_PROVIDER must be empty when TTS_PROVIDER=pocket"
     return None
 
 
 class FallbackTTSService:
-    """ElevenLabs primary with an eSpeak pre-audio emergency fallback.
+    """ElevenLabs primary with a Pocket TTS pre-audio emergency fallback.
 
     The fallback may replay only text that has not produced primary audio yet.
     Once a primary audio chunk has been emitted, replay is disabled for the rest
@@ -78,7 +78,7 @@ class FallbackTTSService:
         *,
         voice_id: Optional[str],
         primary_cls: Type = ElevenLabsTTSService,
-        fallback_cls: Type = EspeakTTSService,
+        fallback_cls: Type = PocketTTSService,
     ) -> None:
         self._on_audio = on_audio
         self._on_done = on_done
@@ -148,9 +148,9 @@ class FallbackTTSService:
         self._fallback.bind(self._on_fallback_audio, self._on_fallback_done)
 
     async def start(self) -> None:
-        # eSpeak has no long-lived speech process; start() only verifies the
-        # executable. Validate the configured emergency path up front so it
-        # cannot silently be unavailable during an ElevenLabs outage.
+        # Pre-warm the configured local fallback so a first-audio primary
+        # failure never switches into a cold model load. Pocket keeps its model
+        # process-local and subsequent provider service objects reuse it.
         await self._fallback.start()
 
         try:
@@ -166,7 +166,7 @@ class FallbackTTSService:
                 log.error(f"ElevenLabs startup cleanup failed ({cleanup_exc})")
             self._using_fallback = True
             log.error(
-                "ElevenLabs startup failed; using local eSpeak fallback "
+                "ElevenLabs startup failed; using local Pocket TTS fallback "
                 f"({exc})"
             )
 
@@ -242,7 +242,7 @@ class FallbackTTSService:
                 flush_after_replay = self._flush_requested
                 log.error(
                     "ElevenLabs ended before first audio; switching this turn "
-                    "to local eSpeak fallback"
+                    "to local Pocket TTS fallback"
                 )
             else:
                 finish_without_fallback = True
@@ -280,7 +280,7 @@ def build_tts_service(
     *,
     voice_id: Optional[str] = None,
     elevenlabs_cls: Type = ElevenLabsTTSService,
-    espeak_cls: Type = EspeakTTSService,
+    pocket_cls: Type = PocketTTSService,
 ):
     error = validate_tts_provider_config()
     if error:
@@ -289,20 +289,20 @@ def build_tts_service(
     primary = tts_provider_name()
     fallback = tts_fallback_provider_name()
 
-    if primary == "espeak":
-        return espeak_cls(
+    if primary == "pocket":
+        return pocket_cls(
             on_audio=on_audio,
             on_done=on_done,
             voice_id=None,
         )
 
-    if fallback == "espeak":
+    if fallback == "pocket":
         if not (os.getenv("ELEVENLABS_API_KEY") or "").strip():
             log.error(
-                "ELEVENLABS_API_KEY is absent; using configured local eSpeak "
+                "ELEVENLABS_API_KEY is absent; using configured local Pocket TTS "
                 "fallback without contacting ElevenLabs"
             )
-            return espeak_cls(
+            return pocket_cls(
                 on_audio=on_audio,
                 on_done=on_done,
                 voice_id=None,
@@ -312,7 +312,7 @@ def build_tts_service(
             on_done=on_done,
             voice_id=voice_id,
             primary_cls=elevenlabs_cls,
-            fallback_cls=espeak_cls,
+            fallback_cls=pocket_cls,
         )
 
     return elevenlabs_cls(
