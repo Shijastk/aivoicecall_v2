@@ -92,24 +92,24 @@ If the bounded shadow window is exceeded before first audio, replay fallback is 
 
 ## Automated validation — 2026-09-16
 
-The implementation source candidate was validated in GitHub Actions on Ubuntu 24.04 with CPython 3.12.14 and `espeak-ng` 1.51. The CI-only branch differed from the source candidate only by `.github/workflows/espeak-validation.yml`; that temporary workflow is not part of the production source commit.
+The implementation was validated in GitHub Actions on Ubuntu 24.04 with CPython 3.12.14 and `espeak-ng` 1.51. Validation workflows lived only on temporary CI branches; the tested source branches did not include those workflow files.
 
-Two completed CI runs succeeded. The stronger second run (`35117165791`) established:
+The final automated gate was GitHub Actions run `35118235590`. It established:
 
 - real installed `espeak-ng` subprocess -> in-memory WAV -> mu-law conversion: **PASS**, 3 audio chunks / 22,241 mu-law bytes;
 - direct `TTS_PROVIDER=espeak` with no ElevenLabs key: **PASS**;
 - ElevenLabs primary + configured eSpeak fallback with no ElevenLabs key: **PASS** and no ElevenLabs requirement at startup;
 - default ElevenLabs-only configuration with a missing key: **fail-closed PASS**;
-- focused TTS/production regression: **54 passed, 3 warnings**;
+- focused TTS/streaming/production/player regression: **99 passed, 3 warnings**;
 - complete Bluetooth regression: **162 passed, 3 warnings**;
-- full repository regression: **999 passed, 4 failed, 4 warnings**;
-- the four full-suite failures matched the exact documented historical identities/signatures; no new failure identity appeared.
+- full repository regression: **1001 passed, 4 failed, 4 warnings**;
+- the four full-suite failures matched the exact documented historical identities/signatures, and the CI verifier printed `FULL_SUITE_BASELINE_CLEAN`.
 
-The full-suite baseline failures remain the two unsupported unmarked async Shunya/Azure probes and the two `_IncludedRouter.path` isolation-test failures. They were not changed or bypassed.
+The focused gate includes `tests/test_tts_streaming_contract.py`, which proves that the bounded pre-audio shadow copy never delays primary `send()` calls and disables itself rather than exceeding its cap.
 
-A later source-contract test additionally pins that the bounded pre-audio shadow copy never delays primary `send()` calls and disables itself rather than exceeding its cap. That final test must pass in the same focused/Bluetooth/full baseline-aware sequence before the final source revision is moved to `main`.
+The full-suite baseline failures remain the two unsupported unmarked async Shunya/Azure probes and the two `_IncludedRouter.path` isolation-test failures. They were not changed, bypassed or reclassified as passes.
 
-These automated results establish code-path, subprocess, codec-boundary and regression behavior only. They do **not** prove eSpeak caller-heard latency, voice quality, real-call fallback during an actual ElevenLabs outage, Phase 5 acceptance, or Phase 6 readiness.
+These automated results establish code-path, subprocess, codec-boundary, streaming-seam and regression behavior only. They do **not** prove eSpeak caller-heard latency, voice quality, real-call fallback during an actual ElevenLabs outage, Phase 5 acceptance, or Phase 6 readiness.
 
 ## Focused regression commands
 
