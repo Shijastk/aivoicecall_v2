@@ -19,12 +19,19 @@ and [compatibility matrix](COMPATIBILITY.md). AGENTS.md and the Bluetooth
 requirements now explicitly scope the PCM and Linux-only adapter exceptions;
 carrier/core protections remain mandatory. [Phase 2](phases/PHASE_02_ADAPTER_AND_CODEC.md)
 lists candidate files only; no implementation is authorized or added.
+
+2026-09-16 TTS note: the owner approved an optional local eSpeak test provider
+and pre-audio emergency fallback while retaining ElevenLabs as the default
+production-quality primary. See [TTS_PROVIDERS.md](TTS_PROVIDERS.md) and the
+Phase 5 owner amendment; this does not authorize Phase 6 or a new latency claim.
+
 ## Find the right document
 
 | Question | Source of truth | Evidence type |
 |---|---|---|
 | What does this backend do? | [PROJECT.md](PROJECT.md) | VERIFIED IN CODE |
 | How do calls, audio and processes work? | [CURRENT_ARCHITECTURE.md](CURRENT_ARCHITECTURE.md) | VERIFIED IN CODE |
+| How are TTS provider selection and the eSpeak fallback constrained? | [TTS_PROVIDERS.md](TTS_PROVIDERS.md) | IMPLEMENTED contract; local/live validation still required |
 | What is the final product? | [PRODUCT_VISION.md](PRODUCT_VISION.md) | PLANNED direction |
 | What must be preserved or built? | [REQUIREMENTS.md](REQUIREMENTS.md) | Requirements, not proof of compliance |
 | What did hardware validation establish? What is the adapter design? | [BLUETOOTH_ARCHITECTURE.md](BLUETOOTH_ARCHITECTURE.md) | Supplied runtime evidence / PROPOSED design |
