@@ -26,6 +26,12 @@ from shuo.server import app
 from shuo.carrier import get_carrier
 from shuo.spool import SPOOL
 from shuo.log import setup_logging, Logger, get_logger
+from shuo.services.tts_espeak import find_espeak_executable
+from shuo.services.tts_provider import (
+    espeak_requested,
+    tts_required_env_vars,
+    validate_tts_provider_config,
+)
 import shuo.server as server_module
 
 # Load environment variables
@@ -42,16 +48,15 @@ CARRIER_REQUIRED_VARS = {
     "twilio": ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_PHONE_NUMBER"],
 }
 
-# Needed regardless of carrier.
+# Needed regardless of carrier/TTS provider.
 PIPELINE_REQUIRED_VARS = [
     "DEEPGRAM_API_KEY",
     "GROQ_API_KEY",
-    "ELEVENLABS_API_KEY",
 ]
 
 
 def check_environment() -> bool:
-    """Check that the variables this carrier and pipeline need are set."""
+    """Check that the selected carrier and pipeline configuration are usable."""
     carrier = config.carrier_name()
 
     if carrier not in CARRIER_REQUIRED_VARS:
@@ -61,7 +66,16 @@ def check_environment() -> bool:
         )
         return False
 
-    required = CARRIER_REQUIRED_VARS[carrier] + PIPELINE_REQUIRED_VARS
+    tts_error = validate_tts_provider_config()
+    if tts_error:
+        logger.error(tts_error)
+        return False
+
+    required = (
+        CARRIER_REQUIRED_VARS[carrier]
+        + PIPELINE_REQUIRED_VARS
+        + list(tts_required_env_vars())
+    )
     missing = [var for var in required if not os.getenv(var)]
 
     if not config.public_url():
@@ -70,6 +84,13 @@ def check_environment() -> bool:
     if missing:
         logger.error(f"Missing environment variables: {', '.join(missing)}")
         logger.error("Copy .env.example to .env and fill it in.")
+        return False
+
+    if espeak_requested() and not find_espeak_executable():
+        logger.error(
+            "eSpeak TTS is configured but no 'espeak-ng' (or compatible "
+            "'espeak') binary is installed. On Ubuntu: sudo apt install espeak-ng"
+        )
         return False
 
     return True
