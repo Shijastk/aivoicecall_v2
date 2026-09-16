@@ -26,9 +26,9 @@ from shuo.server import app
 from shuo.carrier import get_carrier
 from shuo.spool import SPOOL
 from shuo.log import setup_logging, Logger, get_logger
-from shuo.services.tts_espeak import find_espeak_executable
+from shuo.services.tts_pocket import pocket_tts_available
 from shuo.services.tts_provider import (
-    espeak_requested,
+    pocket_requested,
     tts_required_env_vars,
     validate_tts_provider_config,
 )
@@ -86,10 +86,10 @@ def check_environment() -> bool:
         logger.error("Copy .env.example to .env and fill it in.")
         return False
 
-    if espeak_requested() and not find_espeak_executable():
+    if pocket_requested() and not pocket_tts_available():
         logger.error(
-            "eSpeak TTS is configured but no 'espeak-ng' (or compatible "
-            "'espeak') binary is installed. On Ubuntu: sudo apt install espeak-ng"
+            "Pocket TTS is configured but the optional 'pocket-tts' package is "
+            "not installed. Install requirements-pocket-tts.txt first."
         )
         return False
 
