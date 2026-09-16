@@ -98,3 +98,23 @@ Gate 1 live validation is explicitly approved within the scope above. Explicit P
 
 Stop after the authorized Gate 1 run, report evidence and unresolved gates. Do not
 mark Phase 5 accepted, mark a later phase implemented, or start later-phase work from this document alone.
+
+## TTS cost/resilience owner amendment — 2026-09-16
+
+The task owner later approved a scoped TTS implementation change after repeated ElevenLabs test usage incurred non-trivial cost. This is a later owner decision and supersedes only the earlier Gate 1 provider/dependency prohibition for the TTS scope described here; it does not broaden the call, recording, privacy, Phase 6 or acceptance scope.
+
+Approved behavior:
+
+- ElevenLabs remains SHUO's default and intended production-quality primary TTS.
+- `TTS_PROVIDER=espeak` may be used for cost-free functional testing and must not contact ElevenLabs.
+- `TTS_PROVIDER=elevenlabs` plus `TTS_FALLBACK_PROVIDER=espeak` enables an opt-in emergency local fallback.
+- If the ElevenLabs key is absent while that fallback is configured, SHUO may select eSpeak without contacting ElevenLabs.
+- If ElevenLabs fails before producing its first audio chunk, only bounded text not yet heard by the caller may be replayed through eSpeak.
+- Once ElevenLabs has emitted any audio, same-turn replay in eSpeak is forbidden to avoid duplicated speech.
+- eSpeak PCM exists only inside the provider implementation and is converted in memory to the existing mono G.711 mu-law/8 kHz boundary before the player; the carrier/core audio contract remains unchanged.
+- No raw audio file is written.
+- `espeak-ng` is an optional system dependency authorized for this scoped provider/fallback behavior; it is not added to Python requirements.
+
+Detailed provider behavior, installation and regression commands are owned by [TTS_PROVIDERS](../TTS_PROVIDERS.md).
+
+For Phase 5 interpretation, eSpeak-backed live evidence may establish only provider-independent functional observations (digital duplex/routing, turn-taking, interruption mechanics, continuity, manual hangup and bounded cleanup). It cannot establish ElevenLabs TTS latency/quality or caller mouth-to-ear performance. Existing ElevenLabs runs remain separate evidence. Phase 5 remains **not accepted** until all remaining Gate 1 observations are reviewed and the final quantitative latency/echo methodology, sample and thresholds required by this document are separately approved and satisfied.
