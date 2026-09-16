@@ -202,3 +202,38 @@ Local timestamps can support component timing such as Flux EOT → Agent start a
 Only after reviewing the live evidence should the owning Phase 5 document, `ROADMAP.md`, `TESTING.md`, `COMPATIBILITY.md`, `KNOWN_ISSUES.md`, `DECISIONS.md` and `context.md` be updated with sanitized results. Preserve failures and unresolved gates instead of rewriting history. Phase 5 must remain unaccepted if any required acceptance evidence is missing.
 
 Phase 6 remains blocked until Phase 5 evidence is reviewed and the task owner gives separate explicit Phase 6 approval.
+
+## Owner amendment — 2026-09-16: cost-controlled TTS testing and emergency fallback
+
+After the original locked Gate 1 authorization above, the task owner explicitly approved a narrow TTS scope amendment to avoid repeated ElevenLabs charges during heavy testing and to prevent a pre-audio ElevenLabs failure from leaving an AI turn silent.
+
+This later owner decision supersedes **only** the earlier Gate 1 restrictions that said "current provider path only" and "no dependency addition/provider swap". All other Gate 1 restrictions remain unchanged, including the reference phone/participant scope, EOT `0.8`, no raw audio, content-free diagnostics, local-only transcript-bearing artifacts, manual answer/hangup, no Phase 6 and no caller-heard `<500 ms` claim.
+
+The approved implementation is:
+
+- ElevenLabs remains the default/production-quality primary TTS;
+- local eSpeak is an explicitly selectable cost-free test provider;
+- eSpeak is an opt-in emergency fallback for ElevenLabs failures **before first audio**;
+- after any ElevenLabs audio has already been emitted, the current answer is never replayed from the beginning in eSpeak;
+- PCM produced by eSpeak is contained inside its provider module and converted to the existing mono mu-law/8 kHz TTS boundary; no PCM/L16 carrier/core route is authorized;
+- `espeak-ng` is an optional system dependency, not a new Python runtime dependency;
+- no raw audio is written by the provider;
+- the state machine and call-control scope are unchanged.
+
+For the remaining **functional** Gate 1 checks, eSpeak may be selected explicitly after the focused and full regression commands in `docs/TTS_PROVIDERS.md` are reviewed:
+
+```bash
+TTS_PROVIDER=espeak TTS_FALLBACK_PROVIDER= \
+PYTHONPATH=. \
+.venv/bin/python scripts/run_bluetooth_ai.py \
+  --bluetooth-address 00:C7:11:7B:84:21 \
+  --latency 120ms \
+  --eot-threshold 0.8 \
+  --diagnose-caller-audio \
+  --call-id phase5-gate1-espeak-final \
+  2>&1 | tee /tmp/shuo/phase5-gate1-espeak-final.log
+```
+
+eSpeak-backed evidence may support provider-independent functional observations such as digital routing, turn-taking, interruption mechanics, continuity, manual hangup and bounded cleanup. It **must not** be used to claim ElevenLabs TTS latency/quality, production voice quality, or caller mouth-to-ear performance. Existing ElevenLabs evidence remains separate and final Phase 5 quantitative latency/echo acceptance still requires its own approved methodology, sample size and thresholds.
+
+The original "no new runtime behavior" section above is retained as historical pre-live reasoning from the 2026-09-15 authorization. This 2026-09-16 owner amendment is the later governing decision for the scoped TTS resilience/testing change only.
