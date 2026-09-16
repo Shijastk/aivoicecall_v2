@@ -14,7 +14,10 @@ from .phrase_buffer import BoundedPhraseBuffer
 
 log = ServiceLogger("TTS-Pocket")
 
-_DEFAULT_VOICE = "hf://kyutai/tts-voices/alba-mackenna/casual.wav"
+# Pocket's catalog aliases use the ungated non-cloning weights. Passing an
+# hf:// WAV here invokes the separate voice-cloning path, which requires gated
+# model access and is intentionally not part of SHUO's local test provider.
+_DEFAULT_VOICE = "alba"
 _AUDIO_QUEUE_CHUNKS = 4
 _WORKER_STOP_TIMEOUT = 1.0
 
