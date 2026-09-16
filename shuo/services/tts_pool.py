@@ -1,8 +1,19 @@
-"""Provider-aware TTS connection/service pool.
+"""
+TTS connection/service pool.
 
-ElevenLabs remains the default production provider. An explicitly selected local
-provider or fallback is constructed through the provider router while preserving
-the existing warm-pool lifecycle and callback contract.
+ElevenLabs remains the default production provider. The pool preserves the
+existing warm lifecycle while an explicitly selected local provider/fallback is
+constructed through the provider router.
+
+Usage:
+    pool = TTSPool(pool_size=1, ttl=8.0, voice_id="JBFqnCBsd6RMkjVDRZzb")
+    await pool.start()
+    await pool.wait_ready()  # optional startup barrier before accepting turns
+
+    tts = await pool.get(on_audio=..., on_done=...)
+    # tts is ready to use immediately (if warm) or after a fresh connect
+
+    await pool.stop()
 """
 
 import asyncio
@@ -21,8 +32,6 @@ log = ServiceLogger("TTSPool")
 
 # Owner-observed ElevenLabs input timeout: 20s. Leave roughly 5s for the
 # first real text to arrive after checkout; this margin needs live validation.
-# Local eSpeak services do not need this bound, but applying it is harmless:
-# their "warm" state owns no speech process and is cheap to recreate.
 DEFAULT_MAX_IDLE_AGE = 15.0
 
 
@@ -43,21 +52,29 @@ class _Entry:
 
 
 class TTSPool:
-    """Warm TTS service pool with provider-neutral checkout semantics.
+    """
+    Connection/service pool for the configured TTS provider.
 
-    - Prepares `pool_size` services at startup
-    - Dispenses ready services via get() with callback rebinding
-    - Evicts inactive or over-age services on checkout and maintenance
+    - Pre-connects/prepares `pool_size` services at startup
+    - Dispenses warm services via get() with callback rebinding
+    - Evicts inactive or over-age services on checkout and during maintenance
     - Auto-refills in the background after dispensing or eviction
 
-    ElevenLabs remains the default, so without TTS_PROVIDER /
-    TTS_FALLBACK_PROVIDER this class behaves exactly as the previous
-    ElevenLabs-only pool. The pool still carries one configured voice id;
-    providers that do not use that id may ignore it.
+    **The pool is scoped to one voice**, which is why `voice_id` is set here
+    and not on `get()`. ElevenLabs binds the voice into the `stream-input`
+    URL at connect time, so a warm connection is already committed to a
+    voice before any turn asks for one -- a per-turn voice would throw away
+    the pre-connection that is the point of the pool. One call is one voice,
+    so the pool is built per call. Providers that do not use that voice id may
+    ignore it.
 
-    `max_idle_age` remains the safety bound required by the ElevenLabs warm
-    socket. Injected/local services expose the same readiness timestamp so the
-    lifecycle machinery stays provider-neutral.
+    `max_idle_age` bounds warm reuse below the observed provider input timeout.
+    Idle time starts before sending initialization, excluding the handshake but
+    conservatively including send time. Injected services without that timestamp
+    retain the conservative pre-start origin.
+    `health_check_interval` controls liveness polling; expiry deadlines can wake
+    maintenance sooner. Legacy `ttl` is only a compatibility fallback for that
+    interval (`ttl / 2`); it does not control the safe maximum idle age.
     """
 
     def __init__(
@@ -96,7 +113,7 @@ class TTSPool:
         self,
         on_audio: Callable[[str], Awaitable[None]],
         on_done: Callable[[], Awaitable[None]],
-    ):
+    ) -> Any:
         return build_tts_service(
             on_audio,
             on_done,
@@ -120,10 +137,10 @@ class TTSPool:
     async def wait_ready(self, timeout: float = 10.0) -> None:
         """Await a usable warm service without borrowing it or cancelling warmup.
 
-        Allow preparation retries until the timeout; report the latest error as
-        its cause. Stop still fails immediately. The pool owner remains
-        responsible for stop(), including on cancellation. Readiness is not a
-        reservation: get() still checks liveness and age.
+        Allow preparation retries until the timeout; report the latest error
+        as its cause. Stop still fails immediately.
+        The pool owner remains responsible for stop(), including on cancellation.
+        Readiness isn't a reservation: get() still checks liveness and idle age.
         """
         if not math.isfinite(timeout) or timeout <= 0:
             raise ValueError("timeout must be finite and positive")
@@ -153,18 +170,26 @@ class TTSPool:
         self,
         on_audio: Callable[[str], Awaitable[None]],
         on_done: Callable[[], Awaitable[None]],
-    ):
-        """Get a ready TTS service with the given callbacks."""
-        if self._initial_warmup:
-            # Share the pool-owned initial service, never race it with a second
-            # cold preparation. Cancellation only cancels this waiter.
-            await self.wait_ready()
+    ) -> Any:
+        """
+        Get a ready TTS service with the given callbacks.
 
+        Returns a warm service if active and below the safe idle maximum,
+        otherwise blocks to create a fresh one.
+        """
+        if self._initial_warmup:
+            # Share the pool-owned initial service, never race it with a
+            # second cold preparation. Cancellation only cancels this waiter.
+            await self.wait_ready()
+        # Try to grab a warm, active service
         while self._ready:
             entry = self._ready.pop(0)
             age = time.monotonic() - entry.created_at
 
             if not entry.tts.is_active:
+                # A pooled provider can die where it sits. Dispensing the corpse
+                # is worse than having nothing warm: a dead service can accept no
+                # useful audio and leave the turn waiting for completion.
                 reason = entry.tts.fatal_error or "service closed while pooled"
                 log.error(f"Discarded dead connection -- {reason}")
                 await entry.tts.cancel()
@@ -216,8 +241,10 @@ class TTSPool:
         """Background loop that keeps the pool at target size."""
         try:
             while self._running:
+                # Evict inactive entries and services at their safe idle limit
                 await self._evict_stale()
 
+                # Fill to target
                 while self._running and len(self._ready) < self._pool_size:
                     tts = self._create_service(_noop_audio, _noop_done)
                     created_at = time.monotonic()
@@ -226,7 +253,7 @@ class TTSPool:
                             await tts.start()
                         except BaseException:
                             # start() may already own resources when it fails or
-                            # stop() cancels the fill task. It is not in _ready yet.
+                            # stop() cancels the fill task. It isn't in _ready yet.
                             await tts.cancel()
                             raise
                         idle_started_at = getattr(tts, "warm_idle_started_at", None)
@@ -248,6 +275,7 @@ class TTSPool:
                         log.error("Pre-connect failed", e)
                         await asyncio.sleep(1.0)  # back off
 
+                # Wait for signal (dispensed/evicted) or periodic refresh
                 self._fill_event.clear()
                 timeout = self._health_check_interval
                 if self._ready:
@@ -270,12 +298,16 @@ class TTSPool:
             self._ready_changed.set()
 
     async def _evict_stale(self) -> None:
-        """Remove inactive services and those at the safe idle limit."""
+        """Remove inactive services and those at the safe provider idle limit."""
         for entry in list(self._ready):
             if entry not in self._ready:
                 continue  # transferred to a caller while another entry closed
-
             if not entry.tts.is_active:
+                # Same liveness rule as `get()`, applied proactively. Left
+                # in `_ready` a dead entry still counts toward `_pool_size`,
+                # so the fill loop would not replace it and the next turn
+                # would discard it and then block on a cold preparation. Drop
+                # it here and the refill happens in the idle time instead.
                 reason = entry.tts.fatal_error or "service closed while pooled"
                 log.error(f"Evicted dead connection -- {reason}")
             elif time.monotonic() - entry.created_at >= self._max_idle_age:
@@ -283,9 +315,8 @@ class TTSPool:
                 log.info(f"Evicted over-age connection (idle {age_ms}ms)")
             else:
                 continue
-
-            # Remove before yielding: get() may dispense another entry during
-            # cleanup. Never replace _ready with an old snapshot.
+            # Remove before yielding: get() may dispense another entry
+            # during cleanup. Never replace _ready with an old snapshot.
             self._ready.remove(entry)
             try:
                 await entry.tts.cancel()
