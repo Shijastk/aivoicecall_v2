@@ -158,6 +158,7 @@ class PocketTTSService:
         self._lock = asyncio.Lock()
         self._cancel_event: Optional[threading.Event] = None
         self._worker_task: Optional[asyncio.Task] = None
+        self._active_queue: Optional[asyncio.Queue] = None
 
     @property
     def is_active(self) -> bool:
@@ -183,6 +184,7 @@ class PocketTTSService:
         self._fatal_error = None
         self._cancel_event = None
         self._worker_task = None
+        self._active_queue = None
 
     async def start(self) -> None:
         if self._running:
@@ -241,7 +243,25 @@ class PocketTTSService:
         cancel_event = self._cancel_event
         if cancel_event is not None:
             cancel_event.set()
+        self._wake_cancelled_consumer()
         await self._wait_for_worker()
+
+    def _wake_cancelled_consumer(self) -> None:
+        queue = self._active_queue
+        if queue is None:
+            return
+        # Cancellation makes queued audio obsolete. Make room for a local
+        # sentinel without waiting on the producer thread so an uncancelled
+        # send()/flush() waiter cannot remain blocked on queue.get().
+        while queue.full():
+            try:
+                queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+        try:
+            queue.put_nowait(("cancelled", None))
+        except asyncio.QueueFull:
+            pass
 
     async def _synthesize_phrase(self, text: str) -> bool:
         if not text.strip():
@@ -251,6 +271,7 @@ class PocketTTSService:
         queue: asyncio.Queue = asyncio.Queue(maxsize=_AUDIO_QUEUE_CHUNKS)
         cancel_event = threading.Event()
         self._cancel_event = cancel_event
+        self._active_queue = queue
         worker = asyncio.create_task(
             asyncio.to_thread(
                 self._produce_phrase,
@@ -273,10 +294,10 @@ class PocketTTSService:
                 elif kind == "error":
                     await self._fail(f"Pocket TTS synthesis failed: {payload}")
                     return False
-                elif kind == "done":
+                elif kind in ("done", "cancelled"):
                     break
 
-            await worker
+            await self._wait_for_specific_worker(worker)
             return self._running
         except asyncio.CancelledError:
             cancel_event.set()
@@ -287,6 +308,8 @@ class PocketTTSService:
                 self._cancel_event = None
             if self._worker_task is worker:
                 self._worker_task = None
+            if self._active_queue is queue:
+                self._active_queue = None
 
     def _produce_phrase(
         self,
@@ -324,17 +347,21 @@ class PocketTTSService:
                     queue,
                     ("error", str(exc)),
                     cancel_event,
-                    allow_cancelled=True,
                 )
-        finally:
-            if not cancel_event.is_set():
                 self._put_from_thread(
                     loop,
                     queue,
                     ("done", None),
                     cancel_event,
-                    allow_cancelled=True,
                 )
+                return
+        if not cancel_event.is_set():
+            self._put_from_thread(
+                loop,
+                queue,
+                ("done", None),
+                cancel_event,
+            )
 
     @staticmethod
     def _put_from_thread(
@@ -342,10 +369,8 @@ class PocketTTSService:
         queue: asyncio.Queue,
         item,
         cancel_event: threading.Event,
-        *,
-        allow_cancelled: bool = False,
     ) -> bool:
-        if cancel_event.is_set() and not allow_cancelled:
+        if cancel_event.is_set():
             return False
         try:
             future = asyncio.run_coroutine_threadsafe(queue.put(item), loop)
@@ -356,7 +381,7 @@ class PocketTTSService:
                 future.result(timeout=0.05)
                 return True
             except concurrent.futures.TimeoutError:
-                if cancel_event.is_set() and not allow_cancelled:
+                if cancel_event.is_set():
                     future.cancel()
                     return False
             except (asyncio.CancelledError, concurrent.futures.CancelledError):
@@ -394,6 +419,7 @@ class PocketTTSService:
         cancel_event = self._cancel_event
         if cancel_event is not None:
             cancel_event.set()
+        self._wake_cancelled_consumer()
         await self._emit_done_once()
 
     async def _emit_done_once(self) -> None:
