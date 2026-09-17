@@ -1,0 +1,154 @@
+name: Pocket cache-only startup validation
+
+on:
+  push:
+    branches:
+      - fix/pocket-cache-only-startup-20260917
+
+jobs:
+  validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.14"]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      PYTHON_DOTENV_DISABLED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Pocket profile
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-pocket-tts.txt
+          python - <<'PY'
+          import sys
+          import audioop
+          import pocket_tts
+          import torch
+          print("PYTHON", sys.version)
+          print("AUDIOOP_IMPORT_OK", audioop.__name__)
+          print("POCKET_TTS_IMPORT_OK")
+          print("TORCH_VERSION", torch.__version__)
+          print("TORCH_CUDA_AVAILABLE", torch.cuda.is_available())
+          PY
+
+      - name: Populate Pocket cache with explicit online opt-in
+        env:
+          HF_HUB_OFFLINE: "0"
+        run: |
+          python - <<'PY'
+          import asyncio
+          import time
+          from shuo.services.tts_pocket import PocketTTSService
+
+          async def main():
+              service = PocketTTSService(
+                  on_audio=lambda chunk: asyncio.sleep(0),
+                  on_done=lambda: asyncio.sleep(0),
+              )
+              started = time.perf_counter()
+              await asyncio.wait_for(service.start(), timeout=120.0)
+              elapsed = time.perf_counter() - started
+              assert service.is_active
+              assert service.fatal_error is None
+              await service.cancel()
+              print("POCKET_ONLINE_PRELOAD_OK", f"seconds={elapsed:.3f}")
+
+          asyncio.run(main())
+          PY
+
+      - name: Verify default cache-only startup and real synthesis
+        run: |
+          python - <<'PY'
+          import asyncio
+          import base64
+          import os
+          import time
+          from shuo.services.tts_pocket import PocketTTSService
+
+          async def main():
+              audio = []
+              done = []
+
+              async def on_audio(chunk):
+                  decoded = base64.b64decode(chunk)
+                  assert decoded
+                  audio.append(decoded)
+
+              async def on_done():
+                  done.append(True)
+
+              assert "HF_HUB_OFFLINE" not in os.environ
+              service = PocketTTSService(on_audio=on_audio, on_done=on_done)
+              started = time.perf_counter()
+              await asyncio.wait_for(service.start(), timeout=15.0)
+              elapsed = time.perf_counter() - started
+              assert os.environ.get("HF_HUB_OFFLINE") == "1"
+              await service.send("This is a cached Pocket startup validation test.")
+              await service.flush()
+              assert audio
+              assert done == [True]
+              assert service.fatal_error is None
+              print(
+                  "POCKET_CACHE_ONLY_SMOKE_OK",
+                  f"startup_seconds={elapsed:.3f}",
+                  f"chunks={len(audio)}",
+                  f"mulaw_bytes={sum(map(len, audio))}",
+              )
+
+          asyncio.run(main())
+          PY
+
+      - name: Focused Pocket and production regression
+        run: |
+          python -m pytest -q \
+            tests/test_tts_pocket.py \
+            tests/test_tts_provider.py \
+            tests/test_tts_streaming_contract.py \
+            tests/test_tts_failure.py \
+            tests/test_bluetooth_production.py \
+            tests/test_bluetooth_conversation.py \
+            tests/test_player.py \
+            -p no:cacheprovider
+
+      - name: Bluetooth full regression
+        run: python -m pytest -q tests/test_bluetooth_*.py -p no:cacheprovider
+
+      - name: Full repository regression and exact baseline verification
+        shell: bash
+        run: |
+          set +e
+          python -m pytest -q -p no:cacheprovider 2>&1 | tee /tmp/full-regression.log
+          pytest_status=${PIPESTATUS[0]}
+          set -e
+
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          text = Path('/tmp/full-regression.log').read_text(
+              encoding='utf-8', errors='replace'
+          )
+          expected = {
+              'scripts/test_v2_keys.py::test_shunya_key',
+              'scripts/test_v2_keys.py::test_azure_key',
+              'tests/test_config_api.py::TestIsolation::test_the_call_server_has_no_config_routes',
+              'tests/test_test_call.py::TestTheProcessSplitSurvives::test_the_call_server_has_no_test_call_routes',
+          }
+          observed = set(re.findall(r'^FAILED\s+([^\s]+)', text, re.MULTILINE))
+          assert observed == expected, (sorted(expected), sorted(observed))
+          assert 'async def functions are not natively supported' in text
+          assert text.count("'_IncludedRouter' object has no attribute 'path'") >= 2
+          print('FULL_SUITE_BASELINE_CLEAN')
+          PY
+
+          if [ "$pytest_status" -eq 0 ]; then
+            echo "Full suite unexpectedly returned zero; baseline expectations changed"
+            exit 1
+          fi
