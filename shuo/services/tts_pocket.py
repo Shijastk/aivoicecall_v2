@@ -20,11 +20,37 @@ log = ServiceLogger("TTS-Pocket")
 _DEFAULT_VOICE = "alba"
 _AUDIO_QUEUE_CHUNKS = 4
 _WORKER_STOP_TIMEOUT = 1.0
+_HF_OFFLINE_TRUE_VALUES = {"1", "ON", "YES", "TRUE"}
 
 
 def pocket_tts_available() -> bool:
     """Return whether the optional Pocket TTS package is importable."""
     return importlib.util.find_spec("pocket_tts") is not None
+
+
+def _configure_hf_hub_for_pocket() -> bool:
+    """Default Pocket's lazy Hugging Face resolution to the local cache.
+
+    Pocket 3.1.0 resolves its pinned tokenizer/model/voice assets through
+    ``hf_hub_download`` during ``TTSModel.load_model()``. Even when those exact
+    revisions are already cached, the Hub client normally performs metadata
+    HTTP requests first. On the reference host that check stalled for more than
+    a minute before returning 401, while the same cached model became ready in
+    about two seconds with ``HF_HUB_OFFLINE=1``.
+
+    Set the standard Hugging Face flag only when the operator did not already
+    choose a value. This happens immediately before Pocket's lazy import so the
+    Hub library sees the flag at import time. An explicit ``HF_HUB_OFFLINE=0``
+    remains the one-time opt-in for populating a missing cache.
+    """
+    if "HF_HUB_OFFLINE" not in os.environ:
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        log.info("Hugging Face cache-only mode enabled for Pocket TTS")
+
+    return (
+        (os.getenv("HF_HUB_OFFLINE") or "").strip().upper()
+        in _HF_OFFLINE_TRUE_VALUES
+    )
 
 
 def float_audio_to_mulaw_8k(
@@ -88,12 +114,28 @@ class _PocketRuntime:
                         "Pocket TTS requested but the optional 'pocket-tts' package "
                         "is not installed"
                     )
+
+                cache_only = _configure_hf_hub_for_pocket()
+
                 # Vendor SDK stays inside this provider module. Import lazily so
                 # default ElevenLabs startup does not acquire the heavyweight
-                # PyTorch/Pocket import or model-download path.
+                # PyTorch/Pocket import or model-download path. The cache mode
+                # above must be configured before this import because
+                # huggingface_hub reads its environment at import time.
                 from pocket_tts import TTSModel
 
-                self._model = TTSModel.load_model()
+                try:
+                    self._model = TTSModel.load_model()
+                except Exception as exc:
+                    if cache_only:
+                        raise RuntimeError(
+                            "Pocket TTS failed to load in Hugging Face cache-only "
+                            "mode. If this machine has never populated the pinned "
+                            "Pocket assets, perform one authorized online preload "
+                            "with HF_HUB_OFFLINE=0, then restart normally. "
+                            f"Original error: {exc}"
+                        ) from exc
+                    raise
             if voice_source not in self._voices:
                 self._voices[voice_source] = self._model.get_state_for_audio_prompt(
                     voice_source
