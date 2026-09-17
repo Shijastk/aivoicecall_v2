@@ -5,3 +5,7 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 -r requirements.txt
 pocket-tts==3.1.0
+# audioop was removed from CPython 3.13. Pocket's in-provider PCM->mu-law path
+# and the existing Bluetooth codec both still use that stdlib-compatible API.
+# audioop-lts provides the same import name only on Python 3.13+.
+audioop-lts==0.2.2; python_version >= "3.13"

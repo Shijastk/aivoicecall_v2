@@ -54,6 +54,12 @@ python -m pip install -r requirements-pocket-tts.txt
 
 `requirements-pocket-tts.txt` pins `pocket-tts==3.1.0`, includes the base requirements and adds the PyTorch CPU index. The CPU index is important on Linux because the normal PyPI Torch path can otherwise pull several gigabytes of CUDA runtime packages that Pocket does not require.
 
+### Python 3.13+ audio compatibility
+
+CPython removed the stdlib `audioop` module in Python 3.13. SHUO's Pocket provider keeps native PCM inside the provider boundary and uses the stdlib-compatible `audioop` API for stateful resampling and G.711 mu-law encoding; the existing Bluetooth codec also uses that API. The Pocket dependency profile therefore conditionally installs `audioop-lts==0.2.2` only on Python 3.13+ while Python 3.12 and older continue using the stdlib module.
+
+This requirement was added from direct reference-host evidence on 2026-09-17: a fresh Python 3.14 Pocket install loaded the model but emitted zero SHUO audio chunks and reported `Pocket TTS PCM conversion requires audioop`. No real call was attempted after that failure. The corrected profile was then exercised by GitHub Actions run `35182574743` on both Python 3.12 and Python 3.14: dependency install, `audioop` import, real Pocket synthesis, focused Pocket/production tests, the Bluetooth suite and the full repository baseline verifier all completed successfully in both jobs. This compatibility result does not substitute for the separate reference-hardware cellular call gate.
+
 The first model/voice use may populate the Hugging Face cache. SHUO uses Pocket's built-in catalog voice alias `alba` by default. This is intentional: the first automated real-package validation attempt used an `hf://...wav` prompt, which Pocket 3.1.0 correctly interpreted as voice cloning and rejected without gated cloning weights. The implementation was corrected from that evidence to the ungated built-in catalog alias. No Hugging Face token or cloned voice is required for the supported SHUO local path.
 
 An optional `POCKET_TTS_VOICE` can select another Pocket catalog voice. Custom/clone voice URLs are outside the approved reference path and must not be treated as already validated.

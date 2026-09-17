@@ -2,6 +2,7 @@ import asyncio
 import base64
 import threading
 import time
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -55,6 +56,13 @@ def test_float_audio_conversion_has_mulaw_8k_duration_geometry():
     mulaw, state = float_audio_to_mulaw_8k(samples, 24_000)
     assert len(mulaw) == 160
     assert state is not None
+
+
+def test_pocket_profile_installs_audioop_lts_for_python_313_plus():
+    profile = (
+        Path(__file__).resolve().parents[1] / "requirements-pocket-tts.txt"
+    ).read_text(encoding="utf-8")
+    assert 'audioop-lts==0.2.2; python_version >= "3.13"' in profile
 
 
 @pytest.mark.asyncio
