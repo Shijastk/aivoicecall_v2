@@ -20,11 +20,39 @@ log = ServiceLogger("TTS-Pocket")
 _DEFAULT_VOICE = "alba"
 _AUDIO_QUEUE_CHUNKS = 4
 _WORKER_STOP_TIMEOUT = 1.0
+_NETWORK_TRUE_VALUES = {"1", "true", "yes", "on"}
 
 
 def pocket_tts_available() -> bool:
     """Return whether the optional Pocket TTS package is importable."""
     return importlib.util.find_spec("pocket_tts") is not None
+
+
+def _configure_hf_cache_resolution() -> bool:
+    """Prefer Pocket's already-populated Hugging Face cache at runtime.
+
+    Reference-host Phase 5 evidence showed Pocket 3.1.0 could stall for more
+    than 60 seconds while validating already-cached hf:// assets over the
+    network, then complete immediately after the failed HEAD request. Running
+    the same cached model with HF_HUB_OFFLINE=1 loaded in ~2.3 seconds.
+
+    Pocket is therefore cache-only by default once selected. Operators who
+    intentionally need the vendor to populate/refresh the cache can opt back
+    into network resolution with POCKET_TTS_ALLOW_NETWORK=1.
+
+    The setting is process-scoped because Hugging Face reads this environment
+    switch during the lazy Pocket import/model load. It is applied only when
+    the Pocket provider actually starts, so the default ElevenLabs path remains
+    unchanged.
+    """
+    allow_network = (
+        (os.getenv("POCKET_TTS_ALLOW_NETWORK") or "").strip().lower()
+        in _NETWORK_TRUE_VALUES
+    )
+    if allow_network:
+        return False
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    return True
 
 
 def float_audio_to_mulaw_8k(
@@ -198,9 +226,17 @@ class PocketTTSService:
                 "installed. Install requirements-pocket-tts.txt first."
             )
 
+        cache_only = _configure_hf_cache_resolution()
         try:
             await asyncio.to_thread(self._runtime.ensure_loaded, self._voice_source)
         except Exception as exc:
+            if cache_only:
+                raise RuntimeError(
+                    "Pocket TTS failed to load from the local Hugging Face cache. "
+                    "If this is the first model load, run once with "
+                    "POCKET_TTS_ALLOW_NETWORK=1 to populate the cache: "
+                    f"{exc}"
+                ) from exc
             raise RuntimeError(f"Pocket TTS failed to load: {exc}") from exc
 
         self._warm_idle_started_at = time.monotonic()
