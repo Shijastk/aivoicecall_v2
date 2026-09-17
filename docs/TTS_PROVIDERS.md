@@ -60,7 +60,21 @@ CPython removed the stdlib `audioop` module in Python 3.13. SHUO's Pocket provid
 
 This requirement was added from direct reference-host evidence on 2026-09-17: a fresh Python 3.14 Pocket install loaded the model but emitted zero SHUO audio chunks and reported `Pocket TTS PCM conversion requires audioop`. No real call was attempted after that failure. The corrected profile was then exercised by GitHub Actions run `35182574743` on both Python 3.12 and Python 3.14: dependency install, `audioop` import, real Pocket synthesis, focused Pocket/production tests, the Bluetooth suite and the full repository baseline verifier all completed successfully in both jobs. This compatibility result does not substitute for the separate reference-hardware cellular call gate.
 
-The first model/voice use may populate the Hugging Face cache. SHUO uses Pocket's built-in catalog voice alias `alba` by default. This is intentional: the first automated real-package validation attempt used an `hf://...wav` prompt, which Pocket 3.1.0 correctly interpreted as voice cloning and rejected without gated cloning weights. The implementation was corrected from that evidence to the ungated built-in catalog alias. No Hugging Face token or cloned voice is required for the supported SHUO local path.
+### Cached model startup policy — 2026-09-17
+
+The supported Pocket runtime now resolves already-downloaded Hugging Face assets from the local cache by default. This is an evidence-backed reliability change: on the reference host, normal Hub resolution stalled for more than 60 seconds while checking an already-cached Pocket model and later logged an HTTP `401 Unauthorized` HEAD request before the local 438 MB model finally completed loading. Running the same cached model with `HF_HUB_OFFLINE=1` completed provider startup in **2.255 seconds**.
+
+SHUO therefore sets `HF_HUB_OFFLINE=1` immediately before the lazy Pocket model load whenever Pocket is actually selected. The default ElevenLabs path is unchanged and does not acquire Pocket/PyTorch or alter Hugging Face behavior.
+
+A machine whose Pocket assets have not yet been cached must explicitly opt into network resolution for the one-time population/refresh step:
+
+```bash
+POCKET_TTS_ALLOW_NETWORK=1 TTS_PROVIDER=pocket python <your-command>
+```
+
+After the cache is populated, omit `POCKET_TTS_ALLOW_NETWORK`; Pocket returns to cache-only startup. This opt-in is intentionally explicit so a live/manual validation cannot silently turn a local provider startup into an unbounded network dependency. No Hugging Face token is required for the validated built-in `alba` path.
+
+The first model/voice use may therefore populate the Hugging Face cache only when network resolution is explicitly enabled as above. SHUO uses Pocket's built-in catalog voice alias `alba` by default. This is intentional: the first automated real-package validation attempt used an `hf://...wav` prompt, which Pocket 3.1.0 correctly interpreted as voice cloning and rejected without gated cloning weights. The implementation was corrected from that evidence to the ungated built-in catalog alias. No Hugging Face token or cloned voice is required for the supported SHUO local path.
 
 An optional `POCKET_TTS_VOICE` can select another Pocket catalog voice. Custom/clone voice URLs are outside the approved reference path and must not be treated as already validated.
 
