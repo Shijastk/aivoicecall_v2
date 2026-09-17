@@ -1,7 +1,9 @@
 import asyncio
 import base64
+import sys
 import threading
 import time
+import types
 from pathlib import Path
 
 import numpy as np
@@ -9,6 +11,7 @@ import pytest
 
 from shuo.services.tts_pocket import (
     PocketTTSService,
+    _PocketRuntime,
     float_audio_to_mulaw_8k,
 )
 
@@ -46,8 +49,31 @@ class CooperativeBlockingRuntime(FakeRuntime):
         self.stopped.set()
 
 
+class _LoadedPocketModel:
+    sample_rate = 24_000
+
+    def get_state_for_audio_prompt(self, voice_source):
+        return {"voice": voice_source}
+
+
 async def _noop_done():
     pass
+
+
+def _install_fake_pocket_module(monkeypatch, load_model):
+    module = types.ModuleType("pocket_tts")
+
+    class FakeTTSModel:
+        @classmethod
+        def load_model(cls):
+            return load_model()
+
+    module.TTSModel = FakeTTSModel
+    monkeypatch.setitem(sys.modules, "pocket_tts", module)
+    monkeypatch.setattr(
+        "shuo.services.tts_pocket.pocket_tts_available",
+        lambda: True,
+    )
 
 
 def test_float_audio_conversion_has_mulaw_8k_duration_geometry():
@@ -63,6 +89,49 @@ def test_pocket_profile_installs_audioop_lts_for_python_313_plus():
         Path(__file__).resolve().parents[1] / "requirements-pocket-tts.txt"
     ).read_text(encoding="utf-8")
     assert 'audioop-lts==0.2.2; python_version >= "3.13"' in profile
+
+
+@pytest.mark.parametrize(
+    ("configured", "expected"),
+    [(None, "1"), ("0", "0")],
+)
+def test_pocket_hf_cache_mode_defaults_offline_but_respects_explicit_override(
+    monkeypatch,
+    configured,
+    expected,
+):
+    if configured is None:
+        monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+    else:
+        monkeypatch.setenv("HF_HUB_OFFLINE", configured)
+
+    observed = []
+
+    def load_model():
+        observed.append(__import__("os").environ.get("HF_HUB_OFFLINE"))
+        return _LoadedPocketModel()
+
+    _install_fake_pocket_module(monkeypatch, load_model)
+    runtime = _PocketRuntime()
+    runtime.ensure_loaded("alba")
+
+    assert observed == [expected]
+    assert runtime.sample_rate == 24_000
+
+
+def test_pocket_cache_only_load_failure_explains_one_time_online_preload(monkeypatch):
+    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+
+    def load_model():
+        raise RuntimeError("cache miss")
+
+    _install_fake_pocket_module(monkeypatch, load_model)
+    runtime = _PocketRuntime()
+
+    with pytest.raises(RuntimeError, match="authorized online preload"):
+        runtime.ensure_loaded("alba")
+
+    assert __import__("os").environ["HF_HUB_OFFLINE"] == "1"
 
 
 @pytest.mark.asyncio
