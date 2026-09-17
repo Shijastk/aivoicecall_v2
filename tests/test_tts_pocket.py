@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import os
 import threading
 import time
 from pathlib import Path
@@ -29,6 +30,16 @@ class FakeRuntime:
             if cancel_event.is_set():
                 return
             yield np.full(2400, 0.1, dtype=np.float32)
+
+
+class EnvironmentRecordingRuntime(FakeRuntime):
+    def __init__(self):
+        super().__init__()
+        self.hf_hub_offline = None
+
+    def ensure_loaded(self, voice_source):
+        self.hf_hub_offline = os.getenv("HF_HUB_OFFLINE")
+        super().ensure_loaded(voice_source)
 
 
 class CooperativeBlockingRuntime(FakeRuntime):
@@ -63,6 +74,42 @@ def test_pocket_profile_installs_audioop_lts_for_python_313_plus():
         Path(__file__).resolve().parents[1] / "requirements-pocket-tts.txt"
     ).read_text(encoding="utf-8")
     assert 'audioop-lts==0.2.2; python_version >= "3.13"' in profile
+
+
+@pytest.mark.asyncio
+async def test_pocket_defaults_to_cached_hf_resolution(monkeypatch):
+    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+    monkeypatch.delenv("POCKET_TTS_ALLOW_NETWORK", raising=False)
+    runtime = EnvironmentRecordingRuntime()
+    service = PocketTTSService(
+        lambda audio: asyncio.sleep(0),
+        _noop_done,
+        runtime=runtime,
+        voice_source="test-voice",
+    )
+
+    await service.start()
+
+    assert runtime.hf_hub_offline == "1"
+    assert service.is_active
+
+
+@pytest.mark.asyncio
+async def test_pocket_network_resolution_requires_explicit_opt_in(monkeypatch):
+    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+    monkeypatch.setenv("POCKET_TTS_ALLOW_NETWORK", "1")
+    runtime = EnvironmentRecordingRuntime()
+    service = PocketTTSService(
+        lambda audio: asyncio.sleep(0),
+        _noop_done,
+        runtime=runtime,
+        voice_source="test-voice",
+    )
+
+    await service.start()
+
+    assert runtime.hf_hub_offline is None
+    assert service.is_active
 
 
 @pytest.mark.asyncio
