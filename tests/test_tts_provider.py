@@ -1,14 +1,11 @@
 import asyncio
-import io
-import wave
 
 import pytest
 
-from shuo.services.tts_espeak import EspeakTTSService, wav_to_mulaw_8k
 from shuo.services.tts_provider import (
     FallbackTTSService,
     build_tts_service,
-    espeak_requested,
+    pocket_requested,
     tts_required_env_vars,
     validate_tts_provider_config,
 )
@@ -59,7 +56,7 @@ class FakePrimary:
         await self._on_done()
 
 
-class FakeEspeak:
+class FakePocket:
     instances = []
 
     def __init__(self, on_audio, on_done, voice_id=None):
@@ -72,7 +69,7 @@ class FakeEspeak:
         self.sent = []
         self.flushes = 0
         self.cancelled = 0
-        FakeEspeak.instances.append(self)
+        FakePocket.instances.append(self)
 
     def bind(self, on_audio, on_done):
         self._on_audio = on_audio
@@ -102,7 +99,7 @@ def clean_tts_env(monkeypatch):
     monkeypatch.delenv("TTS_FALLBACK_PROVIDER", raising=False)
     monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
     FakePrimary.instances.clear()
-    FakeEspeak.instances.clear()
+    FakePocket.instances.clear()
 
 
 def test_default_provider_preserves_elevenlabs(monkeypatch):
@@ -113,44 +110,44 @@ def test_default_provider_preserves_elevenlabs(monkeypatch):
         lambda: asyncio.sleep(0),
         voice_id="voice-1",
         elevenlabs_cls=FakePrimary,
-        espeak_cls=FakeEspeak,
+        pocket_cls=FakePocket,
     )
 
     assert isinstance(service, FakePrimary)
     assert service.voice_id == "voice-1"
-    assert FakeEspeak.instances == []
+    assert FakePocket.instances == []
 
 
-def test_direct_espeak_never_constructs_elevenlabs(monkeypatch):
-    monkeypatch.setenv("TTS_PROVIDER", "espeak")
+def test_direct_pocket_never_constructs_elevenlabs(monkeypatch):
+    monkeypatch.setenv("TTS_PROVIDER", "pocket")
 
     service = build_tts_service(
         lambda audio: asyncio.sleep(0),
         lambda: asyncio.sleep(0),
         voice_id="ignored",
         elevenlabs_cls=FakePrimary,
-        espeak_cls=FakeEspeak,
+        pocket_cls=FakePocket,
     )
 
-    assert isinstance(service, FakeEspeak)
+    assert isinstance(service, FakePocket)
     assert FakePrimary.instances == []
     assert tts_required_env_vars() == ()
-    assert espeak_requested()
+    assert pocket_requested()
 
 
 def test_configured_fallback_without_key_bypasses_elevenlabs(monkeypatch):
     monkeypatch.setenv("TTS_PROVIDER", "elevenlabs")
-    monkeypatch.setenv("TTS_FALLBACK_PROVIDER", "espeak")
+    monkeypatch.setenv("TTS_FALLBACK_PROVIDER", "pocket")
 
     service = build_tts_service(
         lambda audio: asyncio.sleep(0),
         lambda: asyncio.sleep(0),
         voice_id="voice-1",
         elevenlabs_cls=FakePrimary,
-        espeak_cls=FakeEspeak,
+        pocket_cls=FakePocket,
     )
 
-    assert isinstance(service, FakeEspeak)
+    assert isinstance(service, FakePocket)
     assert FakePrimary.instances == []
     assert tts_required_env_vars() == ()
 
@@ -161,7 +158,7 @@ def test_elevenlabs_without_fallback_still_requires_key(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_zero_audio_primary_failure_replays_only_unheard_text_to_espeak():
+async def test_zero_audio_primary_failure_replays_only_unheard_text_to_pocket():
     heard = []
     done = []
 
@@ -176,7 +173,7 @@ async def test_zero_audio_primary_failure_replays_only_unheard_text_to_espeak():
         on_done,
         voice_id="voice-1",
         primary_cls=FakePrimary,
-        fallback_cls=FakeEspeak,
+        fallback_cls=FakePocket,
     )
     await service.start()
 
@@ -207,7 +204,7 @@ async def test_primary_audio_disables_same_turn_replay():
         on_done,
         voice_id="voice-1",
         primary_cls=FakePrimary,
-        fallback_cls=FakeEspeak,
+        fallback_cls=FakePocket,
     )
     await service.start()
 
@@ -241,7 +238,7 @@ async def test_primary_start_failure_uses_already_validated_fallback():
         on_done,
         voice_id="voice-1",
         primary_cls=StartFailPrimary,
-        fallback_cls=FakeEspeak,
+        fallback_cls=FakePocket,
     )
 
     await service.start()
@@ -257,29 +254,17 @@ def test_invalid_provider_configuration_is_rejected(monkeypatch):
     assert "Unsupported TTS_PROVIDER" in validate_tts_provider_config()
 
 
-def test_wav_conversion_emits_exact_mulaw_8k_geometry():
-    # 20 ms of mono PCM16 at 8 kHz -> exactly 160 mu-law bytes.
-    pcm = b"\x00\x00" * 160
-    buf = io.BytesIO()
-    with wave.open(buf, "wb") as writer:
-        writer.setnchannels(1)
-        writer.setsampwidth(2)
-        writer.setframerate(8_000)
-        writer.writeframes(pcm)
-
-    mulaw = wav_to_mulaw_8k(buf.getvalue())
-
-    assert len(mulaw) == 160
+def test_espeak_is_no_longer_a_supported_provider(monkeypatch):
+    monkeypatch.setenv("TTS_PROVIDER", "espeak")
+    error = validate_tts_provider_config()
+    assert error is not None
+    assert "Unsupported TTS_PROVIDER" in error
 
 
-@pytest.mark.asyncio
-async def test_espeak_missing_binary_fails_before_turn(monkeypatch):
-    monkeypatch.setattr("shuo.services.tts_espeak.find_espeak_executable", lambda: None)
-
-    service = EspeakTTSService(
-        lambda audio: asyncio.sleep(0),
-        lambda: asyncio.sleep(0),
+def test_direct_pocket_rejects_a_second_fallback(monkeypatch):
+    monkeypatch.setenv("TTS_PROVIDER", "pocket")
+    monkeypatch.setenv("TTS_FALLBACK_PROVIDER", "pocket")
+    assert (
+        validate_tts_provider_config()
+        == "TTS_FALLBACK_PROVIDER must be empty when TTS_PROVIDER=pocket"
     )
-
-    with pytest.raises(RuntimeError, match="no 'espeak-ng'"):
-        await service.start()

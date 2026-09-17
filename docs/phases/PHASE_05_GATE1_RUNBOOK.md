@@ -209,18 +209,18 @@ After the original locked Gate 1 authorization above, the task owner explicitly 
 
 This later owner decision supersedes **only** the earlier Gate 1 restrictions that said "current provider path only" and "no dependency addition/provider swap". All other Gate 1 restrictions remain unchanged, including the reference phone/participant scope, EOT `0.8`, no raw audio, content-free diagnostics, local-only transcript-bearing artifacts, manual answer/hangup, no Phase 6 and no caller-heard `<500 ms` claim.
 
-The approved implementation is:
+The approved implementation was:
 
-- ElevenLabs remains the default/production-quality primary TTS;
-- local eSpeak is an explicitly selectable cost-free test provider;
-- eSpeak is an opt-in emergency fallback for ElevenLabs failures **before first audio**;
-- after any ElevenLabs audio has already been emitted, the current answer is never replayed from the beginning in eSpeak;
-- PCM produced by eSpeak is contained inside its provider module and converted to the existing mono mu-law/8 kHz TTS boundary; no PCM/L16 carrier/core route is authorized;
-- `espeak-ng` is an optional system dependency, not a new Python runtime dependency;
-- no raw audio is written by the provider;
-- the state machine and call-control scope are unchanged.
+- ElevenLabs remained the default/production-quality primary TTS;
+- local eSpeak was an explicitly selectable cost-free test provider;
+- eSpeak was an opt-in emergency fallback for ElevenLabs failures **before first audio**;
+- after any ElevenLabs audio had already been emitted, the current answer was never replayed from the beginning in eSpeak;
+- PCM produced by eSpeak was contained inside its provider module and converted to the existing mono mu-law/8 kHz TTS boundary; no PCM/L16 carrier/core route was authorized;
+- `espeak-ng` was an optional system dependency, not a new Python runtime dependency;
+- no raw audio was written by the provider;
+- the state machine and call-control scope were unchanged.
 
-For the remaining **functional** Gate 1 checks, eSpeak may be selected explicitly after the focused and full regression commands in `docs/TTS_PROVIDERS.md` are reviewed:
+For the remaining functional Gate 1 checks, the then-approved eSpeak command was:
 
 ```bash
 TTS_PROVIDER=espeak TTS_FALLBACK_PROVIDER= \
@@ -234,6 +234,46 @@ PYTHONPATH=. \
   2>&1 | tee /tmp/shuo/phase5-gate1-espeak-final.log
 ```
 
-eSpeak-backed evidence may support provider-independent functional observations such as digital routing, turn-taking, interruption mechanics, continuity, manual hangup and bounded cleanup. It **must not** be used to claim ElevenLabs TTS latency/quality, production voice quality, or caller mouth-to-ear performance. Existing ElevenLabs evidence remains separate and final Phase 5 quantitative latency/echo acceptance still requires its own approved methodology, sample size and thresholds.
+eSpeak-backed evidence could support provider-independent functional observations such as digital routing, turn-taking, interruption mechanics, continuity, manual hangup and bounded cleanup. It could **not** support ElevenLabs latency/quality, production voice quality, or caller mouth-to-ear performance. This section remains as historical evidence and is superseded for future functional runs by the later Pocket amendment below.
 
-The original "no new runtime behavior" section above is retained as historical pre-live reasoning from the 2026-09-15 authorization. This 2026-09-16 owner amendment is the later governing decision for the scoped TTS resilience/testing change only.
+## Owner amendment — 2026-09-16: Pocket TTS supersedes eSpeak for remaining functional Gate 1 work
+
+After the eSpeak live attempt, transcript-bearing local diagnostics showed one normal AI response for each distinct caller turn and no new STT turn during the supposedly repeated playback. A direct eSpeak synthesis check also completed normally. The task owner concluded that the perceived "loop" came from eSpeak's poor/generic intelligibility rather than evidence of an actual conversation feedback loop.
+
+Before approving another provider change, Pocket TTS and Supertonic 3 were measured outside the repository on the reference MSI laptop. Pocket produced native-stream first audio around 101–105 ms in the three-sentence comparison and then completed 20/20 warm generations with zero failures and 75.1–88.8 ms TTFA (78.3 ms average). In telephone-band 8 kHz G.711 mu-law blind listening, Pocket was preferred in two of three pairs. Supertonic's comparable short-phrase synthesis completion was about 467–490 ms. These are local reference-machine measurements only, not caller-heard latency evidence.
+
+The task owner then explicitly approved replacing the eSpeak runtime testing/fallback implementation with Pocket TTS while preserving every other Gate 1 restriction. The governing provider rules are now:
+
+- ElevenLabs remains the default/production-quality primary provider;
+- `TTS_PROVIDER=pocket` is the approved cost-free local functional-test path;
+- `TTS_FALLBACK_PROVIDER=pocket` is the optional pre-first-audio ElevenLabs fallback;
+- the validated Pocket path uses the built-in catalog voice `alba`, not gated voice cloning;
+- native Pocket PCM remains inside the provider boundary and only mono G.711 mu-law/8 kHz reaches SHUO's existing player/core boundary;
+- no raw audio is written;
+- manual answer/hangup, EOT `0.8`, local-only transcript artifacts, content-free public diagnostics, maximum five-minute call scope and no Phase 6 remain unchanged.
+
+Install the optional local profile before the Pocket run:
+
+```bash
+cd ~/Projects/aivoicecall_v2
+source .venv/bin/activate
+python -m pip install -r requirements-pocket-tts.txt
+```
+
+After the final repository automated gate is baseline-clean, the approved remaining **functional** Gate 1 command is:
+
+```bash
+TTS_PROVIDER=pocket TTS_FALLBACK_PROVIDER= \
+PYTHONPATH=. \
+.venv/bin/python scripts/run_bluetooth_ai.py \
+  --bluetooth-address 00:C7:11:7B:84:21 \
+  --latency 120ms \
+  --eot-threshold 0.8 \
+  --diagnose-caller-audio \
+  --call-id phase5-gate1-pocket-final \
+  2>&1 | tee /tmp/shuo/phase5-gate1-pocket-final.log
+```
+
+Pocket-backed evidence may support provider-independent functional observations: digital routing, turn-taking, interruption/cancellation mechanics, short-session continuity, manual hangup and bounded cleanup. Because Pocket inference is local CPU work and cancellation is cooperative at the vendor-yield boundary, the reference live run must specifically confirm that barge-in remains prompt while Flux/Groq/Pocket are active together and that no late Pocket audio leaks after interruption.
+
+Pocket evidence must **not** be used to claim ElevenLabs-specific latency/voice quality, production voice quality, caller mouth-to-ear `<500 ms`, or final Phase 5 quantitative latency/echo acceptance. Those remain separate evidence gates. The historical eSpeak amendment above is preserved rather than rewritten; this later Pocket amendment governs future functional Gate 1 runs.
