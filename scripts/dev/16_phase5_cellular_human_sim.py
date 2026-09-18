@@ -15,10 +15,12 @@ import logging
 import os
 import re
 import secrets
+import shutil
 import socket
 import statistics
 import tempfile
 import time
+import sys
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -489,6 +491,18 @@ class Runner:
             return Response(status_code=204)
 
     def preflight(self):
+        if sys.platform != "linux":
+            raise RuntimeError(
+                "Phase 5 Bluetooth human-sim is Linux/PipeWire-only and refuses to place a call on this platform"
+            )
+        missing_bins = [
+            name for name in ("pw-dump", "pw-cat", "pw-link", "pgrep")
+            if shutil.which(name) is None
+        ]
+        if missing_bins:
+            raise RuntimeError(
+                "Missing required local command(s): " + ", ".join(missing_bins)
+            )
         if not self.args.allow_real_call:
             raise RuntimeError("--allow-real-call is required")
         if self.carrier.name != "vobiz":
