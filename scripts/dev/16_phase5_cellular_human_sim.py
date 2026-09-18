@@ -21,6 +21,7 @@ import time
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
+import httpx
 import uvicorn
 from fastapi import FastAPI, Request, WebSocket
 from fastapi.responses import Response
@@ -380,6 +381,12 @@ class Runner:
         )
 
     def _routes(self):
+        @self.app.get("/__shuo_phase5_human_sim/probe")
+        async def probe(request: Request):
+            if request.query_params.get("token") != self.token:
+                return Response(status_code=403)
+            return Response(status_code=204)
+
         @self.app.api_route("/__shuo_phase5_human_sim/answer", methods=["GET", "POST"])
         async def answer(request: Request):
             if request.query_params.get("token") != self.token:
@@ -424,6 +431,11 @@ class Runner:
             )
         if not self.public:
             raise RuntimeError("PUBLIC_URL is required")
+        public_host = (urlsplit(self.public).hostname or "").casefold()
+        if public_host in {"localhost", "127.0.0.1", "::1"}:
+            raise RuntimeError(
+                "PUBLIC_URL must be a public tunnel/host that routes to this local harness"
+            )
         if not pocket_tts_available():
             raise RuntimeError("Pocket TTS is not installed")
         required = (
@@ -481,6 +493,28 @@ class Runner:
                 await self.server_task
             await asyncio.sleep(0.05)
         raise TimeoutError("temporary callback server did not start")
+
+    async def verify_public_route(self):
+        url = _public_url(
+            self.public,
+            f"/__shuo_phase5_human_sim/probe?token={self.token}",
+        )
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(8.0),
+                follow_redirects=True,
+            ) as client:
+                response = await client.get(url)
+        except httpx.HTTPError as exc:
+            raise RuntimeError(
+                "PUBLIC_URL is not reaching the temporary local harness; "
+                "start/point the public tunnel at this machine and port before a billable call"
+            ) from exc
+        if response.status_code != 204:
+            raise RuntimeError(
+                "PUBLIC_URL does not route to the temporary local harness "
+                f"(probe status {response.status_code}); no call was placed"
+            )
 
     async def wait_count(self, seq, count, timeout=5):
         async def wait():
@@ -799,6 +833,7 @@ class Runner:
         audio = await self.synthesize()
         await self.start_server()
         try:
+            await self.verify_public_route()
             answer = _public_url(
                 self.public,
                 f"/__shuo_phase5_human_sim/answer?token={self.token}",
