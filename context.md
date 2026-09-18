@@ -423,3 +423,17 @@ was fixed and the entire relevant gate was rerun rather than bypassed. No live
 provider/device/cellular call was performed. Phase 4 remains open only for
 controlled real-path acceptance evidence; no new default or latency claim and no
 Phase 5 advancement follows from this repository milestone.
+
+### 2026-09-18 — Phase 5 synthetic-human real-call harness development
+
+Owner requested a truthful, repeatable alternative to manually timing the remaining
+Gate 1 conversation checks. Development started on a measurement-only dev harness
+that drives deterministic Pocket caller speech through one real Vobiz/cellular
+call, the reference itel Bluetooth HFP path, real Flux/Groq/Pocket SHUO, and back
+to a carrier-side observer.
+
+Locked boundaries remain: EOT 0.8, pw-cat 120ms reference setting, maximum five
+live minutes, no raw audio, manual handset answer/hangup, no D-Bus or carrier
+automatic hangup, no Phase 6, and no inferred isolated-Bluetooth or human-ear
+latency. Repository regression must be baseline-clean before live use. No Phase 5
+acceptance is recorded by this development entry.
