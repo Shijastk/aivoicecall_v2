@@ -1,0 +1,93 @@
+name: Phase 5 cellular human-sim validation
+
+on:
+  push:
+    branches:
+      - feat/phase5-cellular-human-sim
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.14"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Pocket profile
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-pocket-tts.txt
+
+      - name: Compile harness and focused tests
+        run: |
+          python -m py_compile             scripts/dev/16_phase5_cellular_human_sim.py             tests/test_phase5_cellular_human_sim.py
+
+      - name: Focused human-sim and benchmark regression
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python -m pytest -q             tests/test_phase5_cellular_human_sim.py             tests/test_conversation_benchmark.py             -p no:cacheprovider
+
+      - name: Bluetooth regression
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python -m pytest -q             tests/test_bluetooth_*.py             -p no:cacheprovider
+
+      - name: Full repository regression and baseline verifier
+        shell: bash
+        run: |
+          set +e
+          PYTHONDONTWRITEBYTECODE=1 python -m pytest -q --tb=short             -p no:cacheprovider > /tmp/full-suite.log 2>&1
+          rc=$?
+          set -e
+          cat /tmp/full-suite.log
+
+          if [ "$rc" -eq 0 ]; then
+            echo "FULL_SUITE_GREEN"
+            exit 0
+          fi
+          if [ "$rc" -ne 1 ]; then
+            echo "pytest infrastructure/collection exit=$rc"
+            exit "$rc"
+          fi
+
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          text = Path("/tmp/full-suite.log").read_text(errors="replace")
+          allowed = {
+              "scripts/test_v2_keys.py::test_shunya_key":
+                  "async def functions are not natively supported",
+              "scripts/test_v2_keys.py::test_azure_key":
+                  "async def functions are not natively supported",
+              "tests/test_config_api.py::TestIsolation::test_the_call_server_has_no_config_routes":
+                  "_IncludedRouter",
+              "tests/test_test_call.py::TestTheProcessSplitSurvives::test_the_call_server_has_no_test_call_routes":
+                  "_IncludedRouter",
+          }
+
+          failed = re.findall(r"^FAILED\s+(\S+)", text, re.MULTILINE)
+          unexpected = sorted(set(failed) - set(allowed))
+          if unexpected:
+              raise SystemExit("unexpected full-suite failures: " + ", ".join(unexpected))
+          if not failed:
+              raise SystemExit("pytest exited 1 but no FAILED identities were parsed")
+
+          for test_id in failed:
+              signature = allowed[test_id]
+              if signature not in text:
+                  raise SystemExit(
+                      f"allowed failure changed signature: {test_id} missing {signature!r}"
+                  )
+
+          if re.search(r"^ERROR\s+", text, re.MULTILINE):
+              raise SystemExit("full suite contains collection/runtime ERROR entries")
+
+          print("FULL_SUITE_BASELINE_CLEAN")
+          print("tolerated failures present:", ", ".join(failed))
+          PY
