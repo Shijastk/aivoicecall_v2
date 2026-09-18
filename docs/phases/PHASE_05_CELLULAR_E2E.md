@@ -118,3 +118,24 @@ Approved behavior:
 Detailed provider behavior, installation and regression commands are owned by [TTS_PROVIDERS](../TTS_PROVIDERS.md).
 
 For Phase 5 interpretation, eSpeak-backed live evidence may establish only provider-independent functional observations (digital duplex/routing, turn-taking, interruption mechanics, continuity, manual hangup and bounded cleanup). It cannot establish ElevenLabs TTS latency/quality or caller mouth-to-ear performance. Existing ElevenLabs runs remain separate evidence. Phase 5 remains **not accepted** until all remaining Gate 1 observations are reviewed and the final quantitative latency/echo methodology, sample and thresholds required by this document are separately approved and satisfied.
+
+## 2026-09-18 supplemental automation — status unchanged
+
+The task owner authorized development of a repeatable synthetic-human Phase 5
+measurement harness because manual conversation timing was difficult to judge.
+The harness lives at `scripts/dev/16_phase5_cellular_human_sim.py` and is
+measurement-only; it does not change production carrier/Bluetooth behavior.
+
+It is designed to exercise one real Vobiz -> cellular -> itel -> Bluetooth ->
+SHUO -> Bluetooth -> cellular -> Vobiz loop with deterministic Pocket-generated
+caller speech, real Deepgram Flux at EOT `0.8`, real Groq, and Pocket TTS. It
+automates the thinking-pause, two-barge-in and continuity stimuli while preserving
+manual handset answer/hangup.
+
+Evidence labels are deliberately narrow. Full returned-media round-trip timing may
+include Bluetooth and cellular transport, but isolated Bluetooth one-way latency
+and physical caller-heard latency remain unavailable from the current interfaces
+and must remain `NOT_MEASURED`. No raw audio is persisted.
+
+**Phase status remains unchanged until an actual controlled run is reviewed.**
+This development entry is not a Phase 5 PASS and is not Phase 6 authorization.
