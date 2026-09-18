@@ -610,6 +610,7 @@ class Runner:
         return turn
 
     async def thinking(self, a, b):
+        before_eot = len(self.probe.eot)
         before_agent = len(self.probe.agent)
         before_remote = len(self.remote.sot)
         first, _ = await self.remote.send_audio(a)
@@ -618,7 +619,8 @@ class Runner:
         await asyncio.sleep(self.args.thinking_pause)
         pause_ms = _ms(t0, time.monotonic_ns())
         premature = (
-            len(self.probe.agent) > before_agent
+            len(self.probe.eot) > before_eot
+            or len(self.probe.agent) > before_agent
             or len(self.remote.sot) > before_remote
         )
         if ack is None:
