@@ -126,5 +126,6 @@ def test_harness_source_preserves_phase5_call_control_and_raw_audio_rules():
     assert "time.perf_counter" in source
     assert 'sys.platform != "linux"' in source
     assert 'shutil.which' in source
+    assert "await self.session.checkpoint" not in source
     assert 'record=False' in source
     assert "MAX_LIVE_SECONDS = 300.0" in source
