@@ -176,3 +176,20 @@ Before changing repository code, Pocket TTS 3.1.0 and Supertonic 3 were compared
 Decision: keep ElevenLabs as the unchanged default/production-quality provider; use `TTS_PROVIDER=pocket` for cost-free functional testing and permit `TTS_FALLBACK_PROVIDER=pocket` only for the existing pre-first-audio recovery contract. Pocket is an optional Python dependency profile (`requirements-pocket-tts.txt`) rather than part of the default install. Use the ungated built-in catalog voice `alba`; custom/gated voice cloning is outside this validated path. Native Pocket PCM must remain inside the provider module and be converted to the existing mono G.711 mu-law/8 kHz boundary. Remove eSpeak as a selectable runtime provider while preserving its historical evidence in documentation.
 
 The first real-package CI attempt supplied an `hf://...wav` prompt and failed because Pocket correctly treated it as gated voice cloning. That evidence directly drove the correction to built-in alias `alba`; no speculative workaround or credential was added. The subsequent source validation passed real Pocket synthesis, focused regression, the full Bluetooth suite, and the exact historical full-suite failure baseline. Final merge still requires the same automated gate against the final documentation/source snapshot. Manual reference-hardware validation remains required for caller-heard clarity, simultaneous CPU load, interruption/cancellation and cleanup. This decision does not accept Phase 5 and does not authorize Phase 6.
+
+## 2026-09-18 — Phase 5 may use synthetic-human dialogue automation without automating call control
+
+**Decision:** For the current reference-user Phase 5 work, a dev-only harness may
+automate deterministic caller speech, thinking-pause timing, interruption timing,
+continuity prompts, and content/timing observation across one real cellular +
+Bluetooth call.
+
+**Reason:** The owner reported that manually reproducing and judging the remaining
+conversation checks was not reliable. A deterministic stimulus provides stronger,
+repeatable evidence while still exercising the real Vobiz/cellular/itel/HFP/SHUO
+path.
+
+**Boundary:** This decision does not authorize automated handset answer/hangup,
+D-Bus call control, `Carrier.hangup()`, raw-audio persistence, a live window
+longer than five minutes, isolated Bluetooth latency inference, a caller-heard
+`<500 ms` claim, Phase 5 acceptance by implication, or Phase 6 work.
