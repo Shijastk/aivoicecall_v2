@@ -760,3 +760,46 @@ Limit: this evidence establishes repository correctness only. It does not select
 phrase/history/pre-roll defaults and does not establish provider/server latency,
 Bluetooth XRUN/audio quality, prepared-stream latency gain, or caller mouth-to-ear
 performance. Those remain controlled real-path Phase 4 acceptance evidence.
+
+## Phase 5 synthetic-human real cellular/Bluetooth supplement — 2026-09-18
+
+`scripts/dev/16_phase5_cellular_human_sim.py` is a dev-only measurement harness.
+It is intentionally not part of the default server and is not run in CI against
+live providers/hardware.
+
+Repository-level guardrail tests:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
+  tests/test_phase5_cellular_human_sim.py \
+  tests/test_conversation_benchmark.py \
+  -p no:cacheprovider
+```
+
+Before any live use, the candidate must still pass the normal Bluetooth regression
+and the full repository baseline comparison. The four historical full-suite
+failure identities/signatures remain the only tolerated failures.
+
+The live command is valid only after the branch candidate has passed those
+automated gates and requires an explicitly authorized test number:
+
+```bash
+TTS_PROVIDER=pocket TTS_FALLBACK_PROVIDER= \
+PYTHONPATH=. \
+.venv/bin/python scripts/dev/16_phase5_cellular_human_sim.py \
+  --phone +<AUTHORIZED_TEST_NUMBER> \
+  --bluetooth-address 00:C7:11:7B:84:21 \
+  --latency 120ms \
+  --eot-threshold 0.8 \
+  --duration-seconds 300 \
+  --allow-real-call
+```
+
+The handset answer and hangup remain manual. The test does not write raw audio.
+The sanitized report defaults to `/tmp/shuo/phase5-human-sim.json`; the
+transcript-bearing report defaults to
+`/tmp/shuo/phase5-human-sim-private.json` and stays local.
+
+A live harness result may prove only the explicitly instrumented boundaries.
+Isolated Bluetooth one-way delay and biological caller-heard first-audio latency
+remain `NOT_MEASURED`.

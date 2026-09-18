@@ -201,3 +201,17 @@ live-qualified. In particular:
   jointly validated on a controlled real call.
 
 No sub-500ms or other caller-heard latency claim follows from the offline pass.
+
+## Phase 5 synthetic-human harness evidence boundary — 2026-09-18
+
+The supplemental real-call harness can correlate deterministic remote caller media
+with local Flux/Agent/Bluetooth events and media returned to the carrier. This is
+stronger than an injected provider-only benchmark, but two physical boundaries are
+still unavailable:
+
+- there is no current HFP/handset acknowledgement that isolates Bluetooth-only
+  one-way latency from handset/cellular/provider buffering;
+- digital media returned to Vobiz is not a biological human-ear acknowledgement.
+
+Those metrics must remain `NOT_MEASURED`; do not derive either from local
+`PlaybackFirstWrite`, returned Flux speech detection, or carrier checkpoints.

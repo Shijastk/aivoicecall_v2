@@ -277,3 +277,63 @@ PYTHONPATH=. \
 Pocket-backed evidence may support provider-independent functional observations: digital routing, turn-taking, interruption/cancellation mechanics, short-session continuity, manual hangup and bounded cleanup. Because Pocket inference is local CPU work and cancellation is cooperative at the vendor-yield boundary, the reference live run must specifically confirm that barge-in remains prompt while Flux/Groq/Pocket are active together and that no late Pocket audio leaks after interruption.
 
 Pocket evidence must **not** be used to claim ElevenLabs-specific latency/voice quality, production voice quality, caller mouth-to-ear `<500 ms`, or final Phase 5 quantitative latency/echo acceptance. Those remain separate evidence gates. The historical eSpeak amendment above is preserved rather than rewritten; this later Pocket amendment governs future functional Gate 1 runs.
+
+## Supplemental synthetic-human real-call harness — 2026-09-18
+
+The task owner requested a more repeatable Phase 5 check because manually timing
+thinking pauses and barge-ins was not reliable enough for them to judge. This
+supplement does **not** relax Gate 1 or authorize Phase 6.
+
+The dev-only harness is:
+
+```text
+scripts/dev/16_phase5_cellular_human_sim.py
+```
+
+Its intended measured path is:
+
+```text
+Pocket synthetic caller (mu-law/8 kHz)
+-> Vobiz bidirectional call
+-> cellular network
+-> reference itel P40+
+-> Bluetooth HFP/mSBC boundary
+-> SHUO Bluetooth codec
+-> Deepgram Flux (EOT 0.8)
+-> Groq
+-> Pocket TTS
+-> Bluetooth HFP/mSBC boundary
+-> itel P40+
+-> cellular network
+-> Vobiz returned media
+-> independent Deepgram Flux observer
+```
+
+The harness may automate only the **dialogue stimulus and observation**. The
+handset must still be answered manually and hung up manually. It must not use
+D-Bus call-control methods or `Carrier.hangup()`. This keeps Phase 6 blocked.
+
+The reference harness:
+
+- requires explicit `--allow-real-call` because it places one real billable call;
+- is locked to `--eot-threshold 0.8` and `--latency 120ms`;
+- hard-caps the authorized live window at 300 seconds;
+- pre-synthesizes deterministic Pocket caller utterances before placing the call;
+- uses only generic synthetic content and does not write raw audio;
+- exercises at least ten SHUO agent starts, including a deliberate approximately
+  one-second mid-question pause, two interruptions sent only after returned AI
+  speech has been detected at the carrier side, and a later continuity recall;
+- writes a sanitized JSON report and a separate local-only transcript-bearing
+  JSON report under `/tmp/shuo`;
+- reports missing physical boundaries as `NOT_MEASURED` rather than estimating
+  them.
+
+A real carrier round-trip metric includes cellular and Bluetooth transport, but
+**does not isolate Bluetooth latency**. Likewise, returned digital media is not
+proof of what a biological caller heard at the handset speaker. The harness must
+therefore keep isolated Bluetooth one-way latency and physical caller-heard
+first-audio latency as `NOT_MEASURED`.
+
+The harness is supplemental evidence. A green automated report does not by itself
+mark Phase 5 accepted, does not replace any still-required physical observation,
+and does not authorize Phase 6.
