@@ -159,12 +159,12 @@ class ObservedSession:
     async def write(self, data):
         t = self.probe.turn
         if t and t not in self.probe.first_write:
-            self.probe.first_write[t] = time.monotonic_ns()
+            self.probe.first_write[t] = time.perf_counter_ns()
             self.probe.touch()
         await self.inner.write(data)
 
     async def clear(self):
-        self.probe.clear.append(time.monotonic_ns())
+        self.probe.clear.append(time.perf_counter_ns())
         self.probe.touch()
         await self.inner.clear()
 
@@ -176,7 +176,7 @@ def observed_flux(probe):
     class ObservedFlux(FluxService):
         async def _on_message(self, message, *args, **kwargs):
             if _field(message, "type") == "TurnInfo":
-                event, now = _field(message, "event"), time.monotonic_ns()
+                event, now = _field(message, "event"), time.perf_counter_ns()
                 if event == "StartOfTurn":
                     probe.sot.append(now)
                     probe.touch()
@@ -193,26 +193,26 @@ def observed_agent(probe):
         async def start_turn(self, transcript, prepared_response=None):
             probe.turn += 1
             self._human_sim_turn = probe.turn
-            probe.agent.append(time.monotonic_ns())
+            probe.agent.append(time.perf_counter_ns())
             probe.touch()
             await super().start_turn(transcript, prepared_response)
 
         async def cancel_turn(self):
             active = self.is_turn_active
             if active:
-                probe.cancel_begin.append(time.monotonic_ns())
+                probe.cancel_begin.append(time.perf_counter_ns())
                 probe.touch()
             try:
                 await super().cancel_turn()
             finally:
                 if active:
-                    probe.cancel_end.append(time.monotonic_ns())
+                    probe.cancel_end.append(time.perf_counter_ns())
                     probe.touch()
 
         async def _on_tts_audio(self, payload):
             t = getattr(self, "_human_sim_turn", probe.turn)
             if t and t not in probe.first_audio:
-                probe.first_audio[t] = time.monotonic_ns()
+                probe.first_audio[t] = time.perf_counter_ns()
                 probe.touch()
             await super()._on_tts_audio(payload)
 
@@ -233,13 +233,13 @@ class RemoteSide:
         self.flux = None
 
     async def _sot(self):
-        now = time.monotonic_ns()
+        now = time.perf_counter_ns()
         self.sot.append(now)
         self.pending_sot = now
         self.changed.set()
 
     async def _eot(self, transcript):
-        now = time.monotonic_ns()
+        now = time.perf_counter_ns()
         self.turns.append((self.pending_sot or now, now, transcript))
         self.pending_sot = None
         self.changed.set()
@@ -280,7 +280,7 @@ class RemoteSide:
                     elif isinstance(event, MediaEvent) and event.track == "inbound" and self.flux:
                         await self.flux.send(event.audio_bytes)
                     elif isinstance(event, PlaybackMarkEvent):
-                        self.mark_times[event.name] = time.monotonic_ns()
+                        self.mark_times[event.name] = time.perf_counter_ns()
                         if event.name in self.marks:
                             self.marks[event.name].set()
                     elif isinstance(event, StreamStopEvent):
@@ -322,14 +322,14 @@ class RemoteSide:
         if not self.session or not self.session.started:
             raise RuntimeError("carrier stream is not started")
         first = last = 0
-        deadline = time.monotonic()
+        deadline = time.perf_counter()
         for i, frame in enumerate(_frames(audio)):
-            now = time.monotonic_ns()
+            now = time.perf_counter_ns()
             first = first or now
             last = now
             await self.session.play_audio(self.session.encode_payload(frame))
             deadline += 0.020
-            delay = deadline - time.monotonic()
+            delay = deadline - time.perf_counter()
             if delay > 0:
                 await asyncio.sleep(delay)
         return first, last
@@ -573,8 +573,8 @@ class Runner:
     async def start_bt(self):
         process_runner = AsyncioProcessRunner()
         discovery = PwDumpDiscovery(process_runner)
-        deadline = time.monotonic() + self.args.answer_timeout
-        while time.monotonic() < deadline:
+        deadline = time.perf_counter() + self.args.answer_timeout
+        while time.perf_counter() < deadline:
             try:
                 inner = await build_phase3_ai_only_session(
                     discovery=discovery,
@@ -658,9 +658,9 @@ class Runner:
         before_remote = len(self.remote.sot)
         first, _ = await self.remote.send_audio(a)
         ack = await self.remote.checkpoint("thinking-a")
-        t0 = time.monotonic_ns()
+        t0 = time.perf_counter_ns()
         await asyncio.sleep(self.args.thinking_pause)
-        pause_ms = _ms(t0, time.monotonic_ns())
+        pause_ms = _ms(t0, time.perf_counter_ns())
         premature = (
             len(self.probe.eot) > before_eot
             or len(self.probe.agent) > before_agent
@@ -903,14 +903,14 @@ class Runner:
                 self.remote.stream_started.wait(),
                 self.args.answer_timeout,
             )
-            self.live_start = time.monotonic_ns()
+            self.live_start = time.perf_counter_ns()
             await self.start_bt()
             self.check("carrier_media_stream_started", True)
             self.check("bluetooth_hfp_targets_selected", True)
             self.check("bluetooth_reader_ready", True)
 
             remaining = self.args.duration - (
-                time.monotonic_ns() - self.live_start
+                time.perf_counter_ns() - self.live_start
             ) / 1e9
             await asyncio.wait_for(self.scenario(audio), remaining)
             self.check(
@@ -933,7 +933,7 @@ class Runner:
                 max(
                     0,
                     self.args.duration
-                    - (time.monotonic_ns() - self.live_start) / 1e9,
+                    - (time.perf_counter_ns() - self.live_start) / 1e9,
                 ),
             )
             manual = False
@@ -989,7 +989,7 @@ class Runner:
 
     def report(self):
         duration = (
-            _ms(self.live_start, time.monotonic_ns()) / 1000
+            _ms(self.live_start, time.perf_counter_ns()) / 1000
             if self.live_start
             else None
         )
