@@ -64,6 +64,7 @@ def test_mulaw_frames_are_20ms_and_pad_only_final_frame_with_mulaw_silence():
 def test_semantic_match_is_word_based_and_supports_alternatives():
     assert MOD._has_any("The code was blue seven.", (("blue", "seven"), ("blue", "7")))
     assert MOD._has_any("It is 5.", (("five",), ("5",)))
+    assert MOD._has_any("I don't know that detail.", (("do", "not", "know"),))
     assert not MOD._has_any("I do not remember it.", (("blue", "seven"),))
 
 
