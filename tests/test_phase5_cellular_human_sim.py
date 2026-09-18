@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import importlib.util
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -107,6 +108,10 @@ async def test_reference_knobs_fail_before_runner_or_live_side_effects(monkeypat
         await MOD._run(bad_latency)
 
 
+def test_output_directory_uses_platform_tempdir():
+    assert MOD.DEFAULT_OUT_DIR == Path(tempfile.gettempdir()) / "shuo"
+
+
 def test_harness_source_preserves_phase5_call_control_and_raw_audio_rules():
     source = SCRIPT.read_text(encoding="utf-8")
     assert "carrier.hangup(" not in source
@@ -115,5 +120,6 @@ def test_harness_source_preserves_phase5_call_control_and_raw_audio_rules():
     assert "org.ofono" not in source
     assert "busctl" not in source
     assert "write_bytes(" not in source
+    assert 'Path("/tmp' not in source
     assert 'record=False' in source
     assert "MAX_LIVE_SECONDS = 300.0" in source
