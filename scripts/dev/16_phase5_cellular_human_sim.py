@@ -523,7 +523,9 @@ class Runner:
         text = {
             "arithmetic": "Hello. Controlled call test. Answer briefly: what is two plus three?",
             "code": "Remember this temporary test codeword for this call: blue seven. Repeat it once.",
+            "unknown": "What is the secret benchmark launch city?",
             "sky": "In one short sentence, what color does the daytime sky usually appear?",
+            "identity": "Are you an AI or a language model? Answer in one short sentence.",
             "think_a": "I want to ask you something about",
             "think_b": "the temporary codeword I gave you. What was it?",
             "b1_long": "Explain how a petrol engine works in enough detail that you would normally speak for at least fifteen seconds.",
@@ -830,6 +832,36 @@ class Runner:
     async def scenario(self, a):
         await self.normal("arithmetic", a["arithmetic"], (("five",), ("5",)))
         await self.normal("code", a["code"], (("blue", "seven"), ("blue", "7")))
+
+        await self.normal("unknown", a["unknown"])
+        unknown = (self.private.get("unknown") or {}).get("local_llm_response", "")
+        if unknown:
+            unknown_ok = _has_any(
+                unknown,
+                (
+                    ("don't", "know"),
+                    ("do", "not", "know"),
+                    ("don't", "have"),
+                    ("not", "provided"),
+                    ("not", "given"),
+                ),
+            )
+            self.check(
+                "grounded_unknown_fact",
+                unknown_ok,
+                "secret benchmark launch city was never provided",
+                "PROVEN_LOCAL_RESPONSE" if unknown_ok else "FAILED_LOCAL_RESPONSE",
+            )
+        else:
+            self.checks.append(
+                {
+                    "name": "grounded_unknown_fact",
+                    "passed": None,
+                    "status": "NOT_MEASURED",
+                    "note": "local generated response unavailable",
+                }
+            )
+
         await self.normal("sky", a["sky"])
         await self.thinking(a["think_a"], a["think_b"])
         await self.barge(
@@ -839,6 +871,32 @@ class Runner:
             (("blue", "seven"), ("blue", "7")),
         )
         await self.normal("weekday", a["weekday"], (("wednesday",),))
+
+        await self.normal("identity", a["identity"])
+        identity = (self.private.get("identity") or {}).get("local_llm_response", "").casefold()
+        if identity:
+            breaks = (
+                "as an ai" in identity
+                or "i am an ai" in identity
+                or "i'm an ai" in identity
+                or "language model" in identity
+            )
+            self.check(
+                "no_ai_identity_break",
+                not breaks,
+                "scored on locally generated response",
+                "PROVEN_LOCAL_RESPONSE" if not breaks else "FAILED_LOCAL_RESPONSE",
+            )
+        else:
+            self.checks.append(
+                {
+                    "name": "no_ai_identity_break",
+                    "passed": None,
+                    "status": "NOT_MEASURED",
+                    "note": "local generated response unavailable",
+                }
+            )
+
         await self.barge(
             "barge2",
             a["b2_long"],
@@ -879,6 +937,12 @@ class Runner:
             [_ms(x["prompt"]["last"], x["local_eot"]) for x in self.obs],
             "PROVEN_REAL_INGRESS_PLUS_EOT",
             "Vobiz caller final frame -> cellular/HFP -> local Flux EndOfTurn",
+        )
+        add(
+            "caller_last_frame_send_to_local_bt_first_write",
+            [_ms(x["prompt"]["last"], x["first_write"]) for x in self.obs],
+            "PROVEN_REAL_INGRESS_TO_LOCAL_WRITE",
+            "remote caller final frame send -> cellular/HFP/Flux/Groq/Pocket -> first local Bluetooth write; not caller-heard",
         )
         add(
             "caller_last_frame_send_to_returned_ai_sot",
@@ -1021,15 +1085,20 @@ class Runner:
             self.check("carrier_media_stream_started", True)
             self.check("bluetooth_hfp_targets_selected", True)
             self.check("bluetooth_reader_ready", True)
+            self.check(
+                "ai_only_route_isolation_verified",
+                True,
+                "reader readiness is reachable only after fail-closed AiOnlyRouteIsolation.start() succeeds",
+            )
 
             remaining = self.args.duration - (
                 time.perf_counter_ns() - self.live_start
             ) / 1e9
             await asyncio.wait_for(self.scenario(audio), remaining)
             self.check(
-                "target_ten_turns",
-                len(self.probe.agent) >= 10,
-                f"agent_starts={len(self.probe.agent)} target>=10",
+                "expected_agent_turn_count",
+                len(self.probe.agent) == 12,
+                f"agent_starts={len(self.probe.agent)} expected=12; extras can indicate premature/self-triggered turns",
             )
             self.check(
                 "two_genuine_barge_ins",
