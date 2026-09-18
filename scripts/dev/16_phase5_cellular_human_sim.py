@@ -56,7 +56,21 @@ def _ms(a, b):
 
 
 def _words(text):
-    return set(re.findall(r"[a-z0-9]+", (text or "").casefold()))
+    value = (text or "").casefold().replace("’", "'")
+    contractions = {
+        "don't": "do not",
+        "doesn't": "does not",
+        "didn't": "did not",
+        "can't": "cannot",
+        "haven't": "have not",
+        "hasn't": "has not",
+        "wasn't": "was not",
+        "weren't": "were not",
+        "i'm": "i am",
+    }
+    for source, target in contractions.items():
+        value = value.replace(source, target)
+    return set(re.findall(r"[a-z0-9]+", value))
 
 
 def _has(text, *required):
@@ -839,11 +853,12 @@ class Runner:
             unknown_ok = _has_any(
                 unknown,
                 (
-                    ("don't", "know"),
                     ("do", "not", "know"),
-                    ("don't", "have"),
+                    ("do", "not", "have"),
                     ("not", "provided"),
                     ("not", "given"),
+                    ("have", "not", "been", "given"),
+                    ("have", "not", "been", "provided"),
                 ),
             )
             self.check(
