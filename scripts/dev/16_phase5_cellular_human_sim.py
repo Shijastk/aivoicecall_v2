@@ -17,6 +17,7 @@ import re
 import secrets
 import socket
 import statistics
+import tempfile
 import time
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
@@ -43,6 +44,7 @@ from shuo.types import CallContext, CallDirection, MediaEvent, PlaybackMarkEvent
 log = logging.getLogger("shuo.phase5_human_sim")
 FRAME_BYTES = 160
 MAX_LIVE_SECONDS = 300.0
+DEFAULT_OUT_DIR = Path(tempfile.gettempdir()) / "shuo"
 
 
 def _field(obj, name, default=None):
@@ -1061,12 +1063,12 @@ def parser():
     p.add_argument(
         "--json-out",
         type=Path,
-        default=Path("/tmp/shuo/phase5-human-sim.json"),
+        default=DEFAULT_OUT_DIR / "phase5-human-sim.json",
     )
     p.add_argument(
         "--private-json-out",
         type=Path,
-        default=Path("/tmp/shuo/phase5-human-sim-private.json"),
+        default=DEFAULT_OUT_DIR / "phase5-human-sim-private.json",
     )
     return p
 
