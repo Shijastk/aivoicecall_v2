@@ -41,7 +41,7 @@ from shuo.bluetooth.production import BluetoothProductionDeps, run_production_bl
 from shuo.carrier import get_carrier
 from shuo.services.flux import FluxService
 from shuo.services.tts_pocket import PocketTTSService, pocket_tts_available
-from shuo.types import CallContext, CallDirection, MediaEvent, PlaybackMarkEvent, StreamStartEvent, StreamStopEvent
+from shuo.types import CallContext, CallDirection, MediaEvent, StreamStartEvent, StreamStopEvent
 
 log = logging.getLogger("shuo.phase5_human_sim")
 FRAME_BYTES = 160
@@ -263,7 +263,6 @@ class RemoteSide:
         self.sot, self.turns = [], []
         self.pending_sot = None
         self.changed = asyncio.Event()
-        self.marks, self.mark_times = {}, {}
         self.flux = None
 
     async def _sot(self):
@@ -313,10 +312,6 @@ class RemoteSide:
                         self.changed.set()
                     elif isinstance(event, MediaEvent) and event.track == "inbound" and self.flux:
                         await self.flux.send(event.audio_bytes)
-                    elif isinstance(event, PlaybackMarkEvent):
-                        self.mark_times[event.name] = time.perf_counter_ns()
-                        if event.name in self.marks:
-                            self.marks[event.name].set()
                     elif isinstance(event, StreamStopEvent):
                         return
         except WebSocketDisconnect as exc:
@@ -368,26 +363,12 @@ class RemoteSide:
                 await asyncio.sleep(delay)
         return first, last
 
-    async def checkpoint(self, label):
-        name = f"human-sim-{label}-{secrets.token_hex(3)}"
-        ev = asyncio.Event()
-        self.marks[name] = ev
-        try:
-            await self.session.checkpoint(name)
-            await asyncio.wait_for(ev.wait(), 5)
-            return self.mark_times.get(name)
-        except asyncio.TimeoutError:
-            return None
-        finally:
-            self.marks.pop(name, None)
-
     async def prompt(self, label, audio):
         first, last = await self.send_audio(audio)
         return {
             "label": label,
             "first": first,
             "last": last,
-            "checkpoint": await self.checkpoint(label),
         }
 
 
@@ -718,38 +699,35 @@ class Runner:
         before_eot = len(self.probe.eot)
         before_agent = len(self.probe.agent)
         before_remote = len(self.remote.sot)
+
         first, _ = await self.remote.send_audio(a)
-        ack = await self.remote.checkpoint("thinking-a")
-        t0 = time.perf_counter_ns()
-        await asyncio.sleep(self.args.thinking_pause)
-        pause_ms = _ms(t0, time.perf_counter_ns())
-        premature = (
+
+        # One exact second (or the explicitly approved test value) of G.711
+        # mu-law silence is part of the caller media itself. We do not wait on
+        # Vobiz playedStream: rule V18 says checkpoints are conditional and
+        # must never gate a turn.
+        silence_bytes = round(self.args.thinking_pause * 8000)
+        silence = bytes([0xFF]) * silence_bytes
+        await self.remote.send_audio(silence)
+
+        premature_during_source_pause = (
             len(self.probe.eot) > before_eot
             or len(self.probe.agent) > before_agent
             or len(self.remote.sot) > before_remote
         )
-        if ack is None:
-            self.checks.append(
-                {
-                    "name": "thinking_pause_no_premature_answer",
-                    "passed": None,
-                    "status": "NOT_MEASURED",
-                    "note": "carrier checkpoint not acknowledged",
-                }
-            )
-        else:
-            self.check(
-                "thinking_pause_no_premature_answer",
-                not premature,
-                f"pause_ms={pause_ms:.1f}",
-            )
 
         rs = len(self.remote.sot)
         rt = len(self.remote.turns)
         _, last = await self.remote.send_audio(b)
-        ack2 = await self.remote.checkpoint("thinking-b")
         await self.remote.wait_sot(rs + 1, self.args.response_timeout)
         turn = await self.remote.wait_turn(rt + 1, self.args.response_timeout)
+
+        self.check(
+            "thinking_pause_no_premature_answer",
+            not premature_during_source_pause,
+            f"source_silence_ms={silence_bytes / 8.0:.1f}; no playedStream inference",
+        )
+
         local_response = (self.probe.responses.get(self.probe.turn) or {}).get("text", "")
         self.private["thinking"] = {
             "local_llm_response": local_response,
@@ -775,7 +753,11 @@ class Runner:
         self.obs.append(
             {
                 "label": "thinking",
-                "prompt": {"first": first, "last": last, "checkpoint": ack2},
+                "prompt": {
+                    "first": first,
+                    "last": last,
+                    "source_silence_ms": silence_bytes / 8.0,
+                },
                 "remote_sot": turn[0],
                 "local_sot": self.probe.sot[-1] if self.probe.sot else None,
                 "local_eot": self.probe.eot[-1] if self.probe.eot else None,
