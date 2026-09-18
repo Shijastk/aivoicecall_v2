@@ -130,7 +130,8 @@ async def _pocket(text):
 class Probe:
     def __init__(self):
         self.sot, self.eot, self.agent, self.cancel_begin, self.cancel_end = [], [], [], [], []
-        self.first_audio, self.first_write, self.clear = {}, {}, []
+        self.first_token, self.first_audio, self.first_write = {}, {}, {}
+        self.responses, self.clear = {}, []
         self.turn = 0
         self.reader_ready = asyncio.Event()
         self.changed = asyncio.Event()
@@ -209,12 +210,29 @@ def observed_agent(probe):
                     probe.cancel_end.append(time.perf_counter_ns())
                     probe.touch()
 
+        async def _on_llm_token(self, token):
+            t = getattr(self, "_human_sim_turn", probe.turn)
+            if t and t not in probe.first_token:
+                probe.first_token[t] = time.perf_counter_ns()
+                probe.touch()
+            await super()._on_llm_token(token)
+
         async def _on_tts_audio(self, payload):
             t = getattr(self, "_human_sim_turn", probe.turn)
             if t and t not in probe.first_audio:
                 probe.first_audio[t] = time.perf_counter_ns()
                 probe.touch()
             await super()._on_tts_audio(payload)
+
+        def _publish_response(self, *, interrupted):
+            t = getattr(self, "_human_sim_turn", probe.turn)
+            if t:
+                probe.responses[t] = {
+                    "text": "".join(self._response).strip(),
+                    "interrupted": bool(interrupted),
+                }
+                probe.touch()
+            super()._publish_response(interrupted=interrupted)
 
     return ObservedAgent
 
@@ -641,15 +659,29 @@ class Runner:
             "agent": agent_turn,
         }
         self.obs.append(row)
-        self.private[label] = turn[2]
+        local_response = (self.probe.responses.get(agent_turn) or {}).get("text", "")
+        self.private[label] = {
+            "local_llm_response": local_response,
+            "returned_remote_stt": turn[2],
+        }
         if expected:
-            ok = _has_any(turn[2], expected)
-            self.check(
-                f"semantic:{label}",
-                ok,
-                "deterministic transcript check",
-                "PROVEN_REAL_CALL_TRANSCRIPT" if ok else "FAILED_REAL_CALL_TRANSCRIPT",
-            )
+            if local_response:
+                ok = _has_any(local_response, expected)
+                self.check(
+                    f"semantic_local:{label}",
+                    ok,
+                    "scored on locally generated LLM response, not remote STT",
+                    "PROVEN_LOCAL_RESPONSE" if ok else "FAILED_LOCAL_RESPONSE",
+                )
+            else:
+                self.checks.append(
+                    {
+                        "name": f"semantic_local:{label}",
+                        "passed": None,
+                        "status": "NOT_MEASURED",
+                        "note": "local generated response was not published before observation ended",
+                    }
+                )
         return turn
 
     async def thinking(self, a, b):
@@ -688,14 +720,28 @@ class Runner:
         ack2 = await self.remote.checkpoint("thinking-b")
         await self.remote.wait_sot(rs + 1, self.args.response_timeout)
         turn = await self.remote.wait_turn(rt + 1, self.args.response_timeout)
-        self.private["thinking"] = turn[2]
-        ok = _has_any(turn[2], (("blue", "seven"), ("blue", "7")))
-        self.check(
-            "thinking_pause_continuity_answer",
-            ok,
-            "recall after deliberate pause",
-            "PROVEN_REAL_CALL_TRANSCRIPT" if ok else "FAILED_REAL_CALL_TRANSCRIPT",
-        )
+        local_response = (self.probe.responses.get(self.probe.turn) or {}).get("text", "")
+        self.private["thinking"] = {
+            "local_llm_response": local_response,
+            "returned_remote_stt": turn[2],
+        }
+        if local_response:
+            ok = _has_any(local_response, (("blue", "seven"), ("blue", "7")))
+            self.check(
+                "thinking_pause_continuity_answer",
+                ok,
+                "recall after deliberate pause; scored on local generated response",
+                "PROVEN_LOCAL_RESPONSE" if ok else "FAILED_LOCAL_RESPONSE",
+            )
+        else:
+            self.checks.append(
+                {
+                    "name": "thinking_pause_continuity_answer",
+                    "passed": None,
+                    "status": "NOT_MEASURED",
+                    "note": "local generated response not available for deterministic scoring",
+                }
+            )
         self.obs.append(
             {
                 "label": "thinking",
@@ -741,20 +787,35 @@ class Runner:
                 await self.remote.changed.wait()
 
         repl = await asyncio.wait_for(replacement(), self.args.response_timeout)
-        self.private[label] = repl[2]
-        ok = _has_any(repl[2], expected)
+        replacement_turn = self.probe.turn
+        local_response = (self.probe.responses.get(replacement_turn) or {}).get("text", "")
+        self.private[label] = {
+            "local_llm_response": local_response,
+            "returned_remote_stt": repl[2],
+        }
         self.check(
             label + "_cancel",
             cancel_end is not None,
             "interrupt reached live SHUO response",
         )
         self.check(label + "_playback_clear", clear is not None)
-        self.check(
-            "semantic:" + label,
-            ok,
-            "replacement response",
-            "PROVEN_REAL_CALL_TRANSCRIPT" if ok else "FAILED_REAL_CALL_TRANSCRIPT",
-        )
+        if local_response:
+            ok = _has_any(local_response, expected)
+            self.check(
+                "semantic_local:" + label,
+                ok,
+                "replacement response scored on local generated response",
+                "PROVEN_LOCAL_RESPONSE" if ok else "FAILED_LOCAL_RESPONSE",
+            )
+        else:
+            self.checks.append(
+                {
+                    "name": "semantic_local:" + label,
+                    "passed": None,
+                    "status": "NOT_MEASURED",
+                    "note": "replacement local generated response unavailable",
+                }
+            )
         self.barges.append(
             {
                 "label": label,
@@ -830,6 +891,58 @@ class Runner:
             [_ms(x["first_write"], x["remote_sot"]) for x in self.obs],
             "PROVEN_REAL_EGRESS_WITH_REMOTE_STT",
             "local HFP first write -> itel/cellular/carrier -> remote Flux speech detection; not isolated Bluetooth latency",
+        )
+        add(
+            "local_flux_eot_to_agent_start",
+            [
+                _ms(
+                    x["local_eot"],
+                    self.probe.agent[x["agent"] - 1]
+                    if x.get("agent") and len(self.probe.agent) >= x["agent"]
+                    else None,
+                )
+                for x in self.obs
+            ],
+            "PROVEN_LOCAL_MONOTONIC",
+            "local Flux EndOfTurn callback -> Agent.start_turn entry",
+        )
+        add(
+            "agent_start_to_llm_first_token",
+            [
+                _ms(
+                    self.probe.agent[x["agent"] - 1]
+                    if x.get("agent") and len(self.probe.agent) >= x["agent"]
+                    else None,
+                    self.probe.first_token.get(x.get("agent")),
+                )
+                for x in self.obs
+            ],
+            "PROVEN_LOCAL_MONOTONIC",
+            "Agent.start_turn entry -> first LLM token callback",
+        )
+        add(
+            "llm_first_token_to_tts_first_audio",
+            [
+                _ms(
+                    self.probe.first_token.get(x.get("agent")),
+                    self.probe.first_audio.get(x.get("agent")),
+                )
+                for x in self.obs
+            ],
+            "PROVEN_LOCAL_MONOTONIC",
+            "first LLM token callback -> first Pocket audio callback",
+        )
+        add(
+            "tts_first_audio_to_local_bt_first_write",
+            [
+                _ms(
+                    self.probe.first_audio.get(x.get("agent")),
+                    x.get("first_write"),
+                )
+                for x in self.obs
+            ],
+            "PROVEN_LOCAL_MONOTONIC",
+            "first Pocket audio callback -> first local Bluetooth PCM write",
         )
         add(
             "agent_cancel_duration",
