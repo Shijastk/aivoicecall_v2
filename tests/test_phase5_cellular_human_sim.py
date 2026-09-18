@@ -110,6 +110,8 @@ async def test_reference_knobs_fail_before_runner_or_live_side_effects(monkeypat
 def test_harness_source_preserves_phase5_call_control_and_raw_audio_rules():
     source = SCRIPT.read_text(encoding="utf-8")
     assert "carrier.hangup(" not in source
+    assert "validate_signature(" in source
+    assert "_authenticate_carrier" in source
     assert "org.ofono" not in source
     assert "busctl" not in source
     assert "write_bytes(" not in source
