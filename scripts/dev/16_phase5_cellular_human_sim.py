@@ -449,7 +449,7 @@ class Runner:
     async def synthesize(self):
         text = {
             "arithmetic": "Hello. Controlled call test. Answer briefly: what is two plus three?",
-            "code": "Remember this temporary test codeword for this call: cobalt nine. Repeat it once.",
+            "code": "Remember this temporary test codeword for this call: blue seven. Repeat it once.",
             "sky": "In one short sentence, what color does the daytime sky usually appear?",
             "think_a": "I want to ask you something about",
             "think_b": "the temporary codeword I gave you. What was it?",
@@ -610,7 +610,7 @@ class Runner:
         await self.remote.wait_sot(rs + 1, self.args.response_timeout)
         turn = await self.remote.wait_turn(rt + 1, self.args.response_timeout)
         self.private["thinking"] = turn[2]
-        ok = _has_any(turn[2], (("cobalt", "nine"), ("cobalt", "9")))
+        ok = _has_any(turn[2], (("blue", "seven"), ("blue", "7")))
         self.check(
             "thinking_pause_continuity_answer",
             ok,
@@ -689,14 +689,14 @@ class Runner:
 
     async def scenario(self, a):
         await self.normal("arithmetic", a["arithmetic"], (("five",), ("5",)))
-        await self.normal("code", a["code"], (("cobalt", "nine"), ("cobalt", "9")))
+        await self.normal("code", a["code"], (("blue", "seven"), ("blue", "7")))
         await self.normal("sky", a["sky"])
         await self.thinking(a["think_a"], a["think_b"])
         await self.barge(
             "barge1",
             a["b1_long"],
             a["b1_stop"],
-            (("cobalt", "nine"), ("cobalt", "9")),
+            (("blue", "seven"), ("blue", "7")),
         )
         await self.normal("weekday", a["weekday"], (("wednesday",),))
         await self.barge(
@@ -705,7 +705,7 @@ class Runner:
             a["b2_stop"],
             (("interruption", "received"),),
         )
-        await self.normal("final", a["final"], (("cobalt", "nine"), ("cobalt", "9")))
+        await self.normal("final", a["final"], (("blue", "seven"), ("blue", "7")))
 
     def collect_metrics(self):
         def add(name, values, status, scope):
