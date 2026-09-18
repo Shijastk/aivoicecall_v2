@@ -283,8 +283,8 @@ class RemoteSide:
                             self.marks[event.name].set()
                     elif isinstance(event, StreamStopEvent):
                         return
-        except WebSocketDisconnect:
-            pass
+        except WebSocketDisconnect as exc:
+            log.info("Vobiz media WebSocket closed code=%s", exc.code)
         finally:
             self.call_ended.set()
             self.changed.set()
@@ -380,6 +380,28 @@ class Runner:
             }
         )
 
+    async def _authenticate_carrier(self, request: Request):
+        """Validate every carrier HTTP callback using the repository Vobiz rule."""
+        body = await request.body()
+        try:
+            form = dict(await request.form()) if body else {}
+        except Exception:
+            form = {}
+
+        public_url = _public_url(self.public, request.url.path)
+        if request.url.query:
+            public_url = f"{public_url}?{request.url.query}"
+
+        ok = self.carrier.validate_signature(
+            url=public_url,
+            headers=dict(request.headers),
+            body=body,
+            form=form,
+        )
+        if not ok:
+            return None, Response(status_code=403)
+        return form, None
+
     def _routes(self):
         @self.app.get("/__shuo_phase5_human_sim/probe")
         async def probe(request: Request):
@@ -389,6 +411,9 @@ class Runner:
 
         @self.app.api_route("/__shuo_phase5_human_sim/answer", methods=["GET", "POST"])
         async def answer(request: Request):
+            _, denied = await self._authenticate_carrier(request)
+            if denied is not None:
+                return denied
             if request.query_params.get("token") != self.token:
                 return Response(status_code=403)
             ws = _public_url(
@@ -408,8 +433,24 @@ class Runner:
 
         @self.app.api_route("/__shuo_phase5_human_sim/hangup", methods=["GET", "POST"])
         async def hangup(request: Request):
+            form, denied = await self._authenticate_carrier(request)
+            if denied is not None:
+                return denied
             if request.query_params.get("token") != self.token:
                 return Response(status_code=403)
+
+            expected = (
+                self.remote.session.call_id
+                if self.remote.session is not None
+                else None
+            )
+            received = str((form or {}).get("CallUUID") or "")
+            if expected and received != expected:
+                log.warning(
+                    "Rejected signed hangup callback with unexpected CallUUID"
+                )
+                return Response(status_code=403)
+
             self.remote.call_ended.set()
             return Response(status_code=204)
 
