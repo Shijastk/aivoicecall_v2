@@ -323,3 +323,23 @@ bytes to SHUO mu-law in memory. No raw audio or caller content was persisted.
 This closes the receive-transport validation item for the reference device. It
 does not replace the historical Gate-1 acceptance requirements or authorize
 automatic call control.
+## Optional closed-loop synthetic caller run — 2026-09-23
+
+After both Android caller-side media directions were independently qualified,
+the owner authorized a deterministic real-cellular caller controller for
+supplemental Gate-1 evidence.
+
+The controller is started only after the itel <-> Galaxy cellular call is
+manually established/answered and the Galaxy-side SHUO Bluetooth pipeline is
+already running. It may:
+
+- keep one caller-side RX and one TX helper alive;
+- contact Deepgram for content-private turn observation;
+- send prepared Pocket caller utterances;
+- exercise a 650 ms thinking pause and two interruption attempts;
+- keep response text in memory only for boolean continuity checks.
+
+It may not dial, answer, hang up, save raw audio, serialize response transcripts,
+or turn local timings into caller-heard latency. Maximum scenario duration
+remains 300 seconds. Any timeout/provider/device error is a failed supplemental
+run, not permission to weaken a gate.
