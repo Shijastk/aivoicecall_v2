@@ -111,3 +111,14 @@ bidirectional audio is not part of this supported reference path.
 
 Receive/downlink capture on the itel remains unvalidated and must not be inferred
 from the transmit result.
+## itel P683L cellular downlink capture evidence — 2026-09-23
+
+On the reference itel P683L / Android 13, upstream scrcpy 4.1 successfully
+started `voice-call-downlink` capture while Android reported `MODE_IN_CALL`.
+The remote Galaxy A10 caller was heard clearly on Ubuntu. With Ubuntu playback
+moved to headphones, the reported result was **clear, no echo**.
+
+This validates the phone/runtime capability needed for caller-side receive over
+ADB. The repository-owned `TelephonyRxBridge` remains a separate compatibility
+gate until its own bounded probe passes on the same reference call. No other
+Android model is qualified from this result.
