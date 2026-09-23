@@ -444,3 +444,17 @@ Repository verification for the Android ADB TX milestone: GitHub Actions run
 tests, 162 Bluetooth tests, full-suite `1016 passed / 4 expected failed` exact
 baseline verification, and full branch diff validation. The verified source tree
 still makes no reverse/downlink or caller-heard latency claim.
+## 2026-09-23 — reference cellular downlink capability proven
+
+Upstream scrcpy 4.1 was run against the itel P683L during a manually answered
+real cellular `MODE_IN_CALL` session with
+`voice-call-downlink --require-audio`. Galaxy A10 speech reached Ubuntu
+clearly; after Ubuntu playback was moved to headphones, the owner reported
+**clear, no echo**.
+
+This proves the reference Android runtime can expose real cellular downlink
+through shell-UID `VOICE_DOWNLINK` capture. A SHUO-owned no-file receive bridge
+candidate is now implemented on a feature branch using the same proven
+PCM16/48k/stereo capture shape and an in-memory conversion to the unchanged SHUO
+mu-law/8k boundary. Its own reference probe remains the explicit promotion gate;
+no caller-heard latency or automatic call-control claim follows.
