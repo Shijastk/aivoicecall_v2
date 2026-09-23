@@ -35,8 +35,8 @@ jobs:
 
       - name: CLI smoke
         run: |
-          python scripts/dev/15_conversation_benchmark.py human-sim --help
-          python scripts/dev/15_conversation_benchmark.py providers --help
+          PYTHONPATH=. python scripts/dev/15_conversation_benchmark.py human-sim --help
+          PYTHONPATH=. python scripts/dev/15_conversation_benchmark.py providers --help
 
       - name: Focused benchmark regression
         run: |
