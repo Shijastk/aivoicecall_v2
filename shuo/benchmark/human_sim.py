@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import os
-import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Optional
@@ -539,6 +538,8 @@ async def run_human_sim_benchmark(
     )
 
     status = "PROVEN_PROVIDER_PIPELINE_NO_DEVICE"
+    flux_turns = holder["flux"].turns if holder.get("flux") else []
+    paired_turns = min(len(flux_turns), len(capture.turns))
     scope = (
         "Pocket-generated synthetic caller S16LE16k at 20ms cadence -> isolated "
         "Bluetooth inbound codec -> real Deepgram Flux eot_threshold=0.8 -> "
@@ -546,6 +547,53 @@ async def run_human_sim_benchmark(
         "Bluetooth outbound adapter; no PipeWire/BlueZ/cellular/handset"
     )
     metrics = [
+        Metric(
+            name="flux_eot_to_agent_start",
+            samples_ms=_present(
+                _ms_between(
+                    flux_turns[i].end_of_turn_ns,
+                    capture.turns[i].agent_start_enter_ns,
+                )
+                for i in range(paired_turns)
+            ),
+            status=status if paired_turns else "NOT_MEASURED",
+            scope=scope,
+            start_boundary="Deepgram Flux EndOfTurn callback receipt",
+            end_boundary="Agent.start_turn entry",
+        ),
+        Metric(
+            name="agent_start_to_llm_first_token",
+            samples_ms=_present(
+                _ms_between(turn.agent_start_enter_ns, turn.first_token_ns)
+                for turn in capture.turns
+            ),
+            status=status if capture.turns else "NOT_MEASURED",
+            scope=scope,
+            start_boundary="Agent.start_turn entry",
+            end_boundary="Agent._on_llm_token first callback",
+        ),
+        Metric(
+            name="llm_first_token_to_tts_first_audio",
+            samples_ms=_present(
+                _ms_between(turn.first_token_ns, turn.first_audio_ns)
+                for turn in capture.turns
+            ),
+            status=status if capture.turns else "NOT_MEASURED",
+            scope=scope,
+            start_boundary="Agent._on_llm_token first callback",
+            end_boundary="Agent._on_tts_audio first callback",
+        ),
+        Metric(
+            name="agent_start_to_tts_first_audio",
+            samples_ms=_present(
+                _ms_between(turn.agent_start_enter_ns, turn.first_audio_ns)
+                for turn in capture.turns
+            ),
+            status=status if capture.turns else "NOT_MEASURED",
+            scope=scope,
+            start_boundary="Agent.start_turn entry",
+            end_boundary="Agent._on_tts_audio first callback",
+        ),
         Metric(
             name="barge_start_to_agent_cancel_return",
             samples_ms=_present(barge_latencies),
