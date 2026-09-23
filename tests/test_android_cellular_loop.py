@@ -121,7 +121,7 @@ def test_report_never_contains_response_transcripts():
         checks=[LoopCheck("continuity", True, "boolean only")],
         metrics=[LoopMetric("local_ms", 12.5, "ms")],
         metadata={"raw_audio_written": False},
-        limitations=["transcripts remain in memory only"],
+        limitations=["response text remains in memory only"],
     )
 
     payload = report.to_json()
