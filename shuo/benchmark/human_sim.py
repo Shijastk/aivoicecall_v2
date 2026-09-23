@@ -248,6 +248,7 @@ async def run_human_sim_benchmark(
     scenario_results: list[_HumanSimResult] = []
     barge_latencies: list[float] = []
     barge_clear_latencies: list[float] = []
+    barge_late_local_writes: list[int] = []
     scenario_started_ns: Optional[int] = None
     scenario_ended_ns: Optional[int] = None
     error: Optional[str] = None
@@ -276,7 +277,7 @@ async def run_human_sim_benchmark(
         await wait_for_response(before_capture)
         return before_capture
 
-    async def barge_turn(setup_name: str, barge_name: str) -> tuple[int, int]:
+    async def barge_turn(setup_name: str, barge_name: str) -> tuple[int, int, int]:
         flux: _MeasuredFlux = holder["flux"]
         before_flux = len(flux.turns)
         before_capture = len(capture.turns)
@@ -322,7 +323,17 @@ async def run_human_sim_benchmark(
             if value is not None:
                 barge_clear_latencies.append(value)
 
-        return before_capture, before_capture + 1
+        replacement_first_audio_ns = capture.turns[before_capture + 1].first_audio_ns
+        late_local_writes = 0
+        if replacement_first_audio_ns is not None:
+            late_local_writes = sum(
+                1
+                for write_ns in session.write_times_ns
+                if clear_ns < write_ns < replacement_first_audio_ns
+            )
+        barge_late_local_writes.append(late_local_writes)
+
+        return before_capture, before_capture + 1, late_local_writes
 
     try:
         task = asyncio.create_task(
@@ -380,7 +391,7 @@ async def run_human_sim_benchmark(
         await normal_turn("normal_two")
         await asyncio.sleep(0.45)
 
-        first_cancel, first_replacement = await barge_turn(
+        first_cancel, first_replacement, first_late_writes = await barge_turn(
             "barge_one_setup",
             "barge_one",
         )
@@ -391,6 +402,13 @@ async def run_human_sim_benchmark(
                 "barge_in_1_cancel_and_clear",
                 first_cancelled and first_cleared,
                 "real Deepgram StartOfTurn while SHUO was responding",
+            )
+        )
+        scenario_results.append(
+            _HumanSimResult(
+                "barge_in_1_no_late_local_audio_before_replacement",
+                first_late_writes == 0,
+                f"writes_after_clear_before_replacement_first_audio={first_late_writes}",
             )
         )
         first_answer = capture.turns[first_replacement].response_text
@@ -414,7 +432,7 @@ async def run_human_sim_benchmark(
         )
 
         await asyncio.sleep(0.45)
-        second_cancel, second_replacement = await barge_turn(
+        second_cancel, second_replacement, second_late_writes = await barge_turn(
             "barge_two_setup",
             "barge_two",
         )
@@ -425,6 +443,13 @@ async def run_human_sim_benchmark(
                 "barge_in_2_cancel_and_clear",
                 second_cancelled and second_cleared,
                 "second independent real Deepgram StartOfTurn during response",
+            )
+        )
+        scenario_results.append(
+            _HumanSimResult(
+                "barge_in_2_no_late_local_audio_before_replacement",
+                second_late_writes == 0,
+                f"writes_after_clear_before_replacement_first_audio={second_late_writes}",
             )
         )
         second_answer = capture.turns[second_replacement].response_text.casefold()
@@ -691,6 +716,7 @@ async def run_human_sim_benchmark(
             "scenario_results": [asdict(item) for item in scenario_results],
             "session_write_count": len(session.writes),
             "session_clear_count": len(session.clear_times_ns),
+            "barge_late_local_writes": list(barge_late_local_writes),
             "source_read_count": session.read_count,
             "source_max_lateness_ms": session.max_source_lateness_ms,
             "error": error,
