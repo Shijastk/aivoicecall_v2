@@ -236,3 +236,17 @@ Phase-5 development/benchmark transport, subject to final repository regression
 after the evidence/docs commit. This qualifies only the receive transport
 boundary; it does not automate call control, accept Phase 5, authorize Phase 6,
 or establish caller-heard latency.
+## BT-D32 — compose validated Android RX/TX only behind a live-gated controller — 2026-09-23
+
+The owner authorized direct implementation of the next synthetic-caller layer
+after both Android cellular media directions passed independently.
+
+Decision: compose the existing RX/TX boundaries in a deterministic Phase-5
+dev/benchmark controller, not in production call-control code. Keep call
+establishment/hangup manual, pre-synthesize caller stimuli only in memory, use a
+separate Flux observer at the approved 0.8 threshold, serialize no response
+transcript, and make no caller-heard latency claim.
+
+Repository validation is necessary but not sufficient. The branch must remain
+unmerged until simultaneous real-cellular RX/TX and the scripted pause/barge-in/
+continuity scenario pass on the reference itel/Galaxy/SHUO path.
