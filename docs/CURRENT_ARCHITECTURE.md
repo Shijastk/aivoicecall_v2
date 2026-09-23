@@ -355,3 +355,19 @@ real cellular call. This is supplemental test tooling, not a new carrier PCM
 contract, automatic call-control implementation, universal Android support claim,
 or caller-heard latency measurement. The reverse cellular downlink-to-ADB path is
 not yet reference-runtime validated.
+## Candidate Android ADB cellular RX boundary — 2026-09-23
+
+Reference-device capability is now proven independently with scrcpy 4.1:
+`VOICE_DOWNLINK` capture from the itel P683L during a real `MODE_IN_CALL`
+session reached Ubuntu clearly; with headphones the owner observed clear audio
+and no echo.
+
+A SHUO-owned receive candidate now mirrors only the proven direct-capture shape:
+Android `MediaRecorder.AudioSource.VOICE_DOWNLINK` -> PCM16/48 kHz/stereo ->
+binary `adb shell -T` stdout. The host boundary lives under
+`shuo/benchmark/android_cellular_rx.py`, converts in memory to the unchanged
+SHUO mono mu-law/8 kHz contract, persists no raw audio, performs no call control,
+and is not imported by default production entrypoints.
+
+The candidate remains pending its own reference-runtime probe. scrcpy capability
+proof is not silently substituted for SHUO-helper runtime proof.
