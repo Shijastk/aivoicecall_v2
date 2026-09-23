@@ -311,3 +311,13 @@ itel caller phone, but its reverse/downlink receive path is not yet validated.
 
 Neither surface alone is a fully automated real-cellular conversation benchmark,
 and neither may be used to manufacture a caller-heard latency measurement.
+## Android caller-side receive evidence — 2026-09-23
+
+The real-cellular caller-side receive capability is no longer hypothetical:
+upstream scrcpy 4.1 captured the itel P683L's `VOICE_DOWNLINK` during a real
+manual cellular call and delivered clear Galaxy A10 speech to Ubuntu. With
+headphone monitoring, the owner reported no echo.
+
+The SHUO-owned receive bridge remains a separate candidate until its own bounded
+reference probe passes. The provider-only `human-sim` still has no cellular
+transport, and no surface may be used to infer caller-heard latency.
