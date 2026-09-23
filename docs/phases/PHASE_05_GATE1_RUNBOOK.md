@@ -303,3 +303,13 @@ only in memory and print content-free byte/RMS/conversion metrics. It must not
 write a raw-audio file, automate call control, or be interpreted as a latency
 measurement. Failure to reach `STREAM_READY` or capture sustained non-silent
 data is a stop condition, not a reason to bypass the route/permission checks.
+## Supplemental receive probe result — 2026-09-23
+
+The repository-owned caller-side receive probe passed on the reference itel
+P683L. The bounded 8-second run captured 1,519,616 PCM bytes over 371 chunks,
+with non-zero content-free RMS (peak 4300, average 1541.0), and converted 63,318
+bytes to SHUO mu-law in memory. No raw audio or caller content was persisted.
+
+This closes the receive-transport validation item for the reference device. It
+does not replace the historical Gate-1 acceptance requirements or authorize
+automatic call control.
