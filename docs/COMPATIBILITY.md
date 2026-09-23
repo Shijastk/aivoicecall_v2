@@ -122,3 +122,20 @@ This validates the phone/runtime capability needed for caller-side receive over
 ADB. The repository-owned `TelephonyRxBridge` remains a separate compatibility
 gate until its own bounded probe passes on the same reference call. No other
 Android model is qualified from this result.
+## itel P683L SHUO receive qualification — 2026-09-23
+
+The repository-owned `TelephonyRxBridge` has now passed on the same reference
+itel P683L / Android 13 runtime previously qualified with scrcpy.
+
+Bounded probe evidence:
+
+- PCM bytes: 1,519,616;
+- observed PCM duration: 7.915 s in an 8-second probe;
+- chunks: 371;
+- peak RMS: 4300;
+- average RMS: 1541.0;
+- in-memory SHUO mu-law bytes: 63,318;
+- raw-audio persistence: none.
+
+This qualifies the reference phone/runtime for the SHUO-owned caller-side
+downlink bridge. It does not qualify arbitrary Android devices.
