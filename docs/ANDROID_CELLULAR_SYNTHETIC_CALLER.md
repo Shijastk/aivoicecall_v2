@@ -89,3 +89,45 @@ CI proves repository/build/regression correctness only. Actual Telephony Tx
 routing and remote audibility are supported by the separate reference-device
 evidence above; caller-heard latency and reverse/downlink capture remain
 unmeasured/unvalidated respectively.
+## Reference receive/downlink evidence — 2026-09-23
+
+The previously-unvalidated receive half now has direct reference-device evidence
+through upstream scrcpy 4.1 before SHUO-owned receive code is promoted.
+
+With the itel P683L connected over USB ADB and a manually answered real cellular
+call active, Android reported `MODE_IN_CALL`. The owner ran scrcpy 4.1 with
+`--audio-source=voice-call-downlink --require-audio`. scrcpy's current source
+maps that option to `MediaRecorder.AudioSource.VOICE_DOWNLINK` and uses direct
+`AudioRecord` capture. Galaxy A10 speech was heard clearly on Ubuntu. After
+moving Ubuntu playback to headphones, the owner reported **clear, no echo**.
+
+This proves that the reference itel/Android 13 runtime can expose the real
+cellular downlink to a shell-UID Android audio capture path over ADB. It does not
+by itself prove SHUO's new `TelephonyRxBridge` implementation or establish any
+latency figure.
+
+## Repository receive candidate
+
+The owner explicitly authorized implementing the next bounded receive candidate
+without changing the manual-call-control/privacy constraints.
+
+Candidate files:
+
+- `tools/android/TelephonyRxBridge.java`: direct
+  `VOICE_DOWNLINK` -> PCM16/48 kHz/stereo -> binary stdout, with content-free
+  stderr diagnostics only;
+- `shuo/benchmark/android_cellular_rx.py`: fail-closed ADB/capture preflight,
+  long-lived binary stdout bridge, in-memory PCM -> existing SHUO mu-law/8 kHz
+  conversion, and bounded content-free probe metrics;
+- `scripts/dev/17_android_cellular_rx.py`: `doctor`, `build`, and bounded
+  in-memory `probe` commands;
+- `tests/test_android_cellular_rx.py`: hardware-free contract and regression
+  coverage.
+
+The receive format intentionally matches the upstream scrcpy path already proven
+on this phone: PCM16, 48 kHz, stereo. Raw audio is streamed only in memory; no
+capture file is written.
+
+Promotion gate: the SHUO-owned helper itself must reach `STREAM_READY` and
+produce non-silent content-free metrics on the reference call before this
+candidate is merged as validated receive support.
