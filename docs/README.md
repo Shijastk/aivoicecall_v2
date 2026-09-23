@@ -117,3 +117,10 @@ reference-device probe. TX and RX transport directions are both
 reference-validated; see
 [ANDROID_CELLULAR_SYNTHETIC_CALLER](ANDROID_CELLULAR_SYNTHETIC_CALLER.md) for
 the exact evidence and remaining closed-loop/controller limits.
+### Real-cellular closed-loop synthetic caller candidate — 2026-09-23
+
+The reference-qualified Android cellular RX/TX transports now have an isolated
+deterministic composition candidate for real-cellular multi-turn testing. Its
+repository gate is clean, but live simultaneous RX/TX qualification remains
+required before merge. See
+[ANDROID_CELLULAR_SYNTHETIC_CALLER](ANDROID_CELLULAR_SYNTHETIC_CALLER.md).
