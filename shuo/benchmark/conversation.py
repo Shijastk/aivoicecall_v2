@@ -21,6 +21,12 @@ from shuo.bluetooth.conversation import run_bluetooth_conversation
 from shuo.runtime_config import CallSettings
 from shuo.services.flux import FluxService
 from shuo.services.tts_pool import TTSPool
+from shuo.services.tts_provider import (
+    tts_fallback_provider_name,
+    tts_provider_name,
+    tts_required_env_vars,
+    validate_tts_provider_config,
+)
 
 
 REPORT_SCHEMA = "shuo.conversation-benchmark/v1"
@@ -699,10 +705,10 @@ async def run_provider_benchmark(
     repo_root: Optional[Path] = None,
     timeout_seconds: float = 45.0,
 ) -> BenchmarkReport:
-    """Exercise real Groq+ElevenLabs over the real Agent/Player, without STT/hardware.
+    """Exercise real Groq + configured TTS over the real Agent/Player.
 
     The caller transcript is injected as a Flux TurnInfo event. Therefore the
-    measurement includes LLM/TTS network time but explicitly excludes Deepgram
+    measurement includes real LLM/TTS work but explicitly excludes Deepgram
     turn detection, PipeWire, Bluetooth transport, cellular network and handset.
     """
 
@@ -710,13 +716,25 @@ async def run_provider_benchmark(
         raise PermissionError(
             "Provider benchmark is opt-in. Pass --allow-provider-network explicitly."
         )
+    provider_error = validate_tts_provider_config()
+    if provider_error:
+        raise ValueError(provider_error)
+
     missing = [
         name
-        for name in ("GROQ_API_KEY", "ELEVENLABS_API_KEY")
+        for name in ("GROQ_API_KEY", *tts_required_env_vars())
         if not os.getenv(name, "").strip()
     ]
     if missing:
         raise RuntimeError("Missing required environment variable(s): " + ", ".join(missing))
+
+    primary_tts = tts_provider_name()
+    fallback_tts = tts_fallback_provider_name()
+    tts_label = (
+        f"{primary_tts}+fallback:{fallback_tts}"
+        if fallback_tts
+        else primary_tts
+    )
 
     capture = _Capture()
     recorder = _Recorder(capture)
@@ -829,7 +847,10 @@ async def run_provider_benchmark(
             name="provider_scenario_completed",
             passed=error is None,
             status="PROVEN_PROVIDER_NO_STT_HARDWARE" if error is None else "FAILED",
-            note=error or "Groq+ElevenLabs were contacted; Deepgram/Bluetooth/cellular were not.",
+            note=error or (
+                f"Groq + configured TTS ({tts_label}) were exercised; "
+                "Deepgram/Bluetooth/cellular were not."
+            ),
         ),
         CheckResult(
             name="barge_in_cancelled_old_turn",
@@ -870,7 +891,10 @@ async def run_provider_benchmark(
         holder.get("flux").receipts if holder.get("flux") is not None else [],
         session,
         status="PROVEN_PROVIDER_NO_STT_HARDWARE",
-        scope="real Groq+ElevenLabs + Agent/AudioPlayer; injected Flux events; no STT/device/cellular/handset",
+        scope=(
+            f"real Groq + configured TTS ({tts_label}) + Agent/AudioPlayer; "
+            "injected Flux events; no STT/device/cellular/handset"
+        ),
     )
 
     return BenchmarkReport(
@@ -880,7 +904,7 @@ async def run_provider_benchmark(
         metadata={
             **_base_metadata(repo_root),
             "network_used": True,
-            "providers": ["Groq", "ElevenLabs"],
+            "providers": {"llm": "Groq", "tts": tts_label},
             "llm_model_env": os.getenv("LLM_MODEL") or None,
             "deepgram_used": False,
             "bluetooth_hardware_used": False,
@@ -890,6 +914,7 @@ async def run_provider_benchmark(
             "Bluetooth/PipeWire/cellular/handset latency is not measured.",
             "Local adapter write proves process dispatch only, not audible playback.",
             "Quality checks are deterministic checks against a synthetic prompt; they are not a general naturalness score.",
+            "TTS metadata reflects the configured provider route instead of assuming ElevenLabs.",
             "Provider results vary by network/provider load; report raw samples and provenance rather than causal claims.",
         ],
         raw={
