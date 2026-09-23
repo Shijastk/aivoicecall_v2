@@ -465,3 +465,15 @@ permission classification because it expected dangerous/runtime
 classes. The branch now checks the privileged allowlist and the explicit runtime
 package grant separately, still fail-closed. The SHUO helper itself has not yet
 run on the reference phone, so its live gate remains pending.
+## 2026-09-23 — SHUO-owned cellular RX reference PASS
+
+The repository-owned `TelephonyRxBridge` has passed its independent itel
+P683L live gate during a manually controlled real cellular call:
+1,519,616 PCM bytes / 371 chunks / 7.915 s, peak RMS 4300, average RMS 1541.0,
+and 63,318 bytes converted in memory to the existing SHUO mu-law/8k boundary.
+The probe explicitly persisted no raw audio and logged no caller speech content.
+
+Caller-side Android cellular TX and RX transports are now both independently
+reference-validated. The next missing product/test layer is a closed-loop
+synthetic-human controller that listens via RX and replies via TX; automatic
+dial/answer/hangup is still out of scope and Phase 5 remains not accepted.
