@@ -328,3 +328,18 @@ rerun repository validation, and merge.
 This work remains Phase 5 supplemental test infrastructure. It does not accept
 Phase 5, authorize Phase 6, automate answer/hangup, or establish caller-heard
 latency.
+## Phase 5 supplemental Android cellular RX milestone complete — 2026-09-23
+
+The SHUO-owned caller-side receive transport has passed its independent
+reference-device gate. A bounded 8-second itel P683L probe sustained 7.915 s of
+PCM capture with non-zero content-free energy and successfully converted the
+stream into the existing SHUO mu-law/8 kHz boundary, with no raw-audio
+persistence.
+
+The immediate transport milestone is therefore complete for the reference
+device: Android cellular TX and RX are both independently proven. The next
+implementation gate is the higher-level closed-loop synthetic-human controller
+that consumes RX turns and emits TX turns while keeping manual call
+answer/hangup and all existing Phase-5 privacy/acceptance restrictions.
+
+This transport milestone does not accept Phase 5 or authorize Phase 6.
