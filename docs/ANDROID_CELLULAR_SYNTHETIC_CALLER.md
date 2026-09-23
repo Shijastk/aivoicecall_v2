@@ -131,3 +131,20 @@ capture file is written.
 Promotion gate: the SHUO-owned helper itself must reach `STREAM_READY` and
 produce non-silent content-free metrics on the reference call before this
 candidate is merged as validated receive support.
+### RX preflight permission correction — 2026-09-23
+
+The first SHUO-owned `doctor` run stopped before helper launch with
+`RECORD_AUDIO` reported missing from the **privapp allowlist**. That check was
+too strict in the wrong permission class; it was not evidence that the device
+lacked recording permission.
+
+AOSP declares `RECORD_AUDIO` as a dangerous/runtime permission, while
+`CAPTURE_AUDIO_OUTPUT` is signature/privileged/role. The fail-closed preflight
+has therefore been corrected to require:
+
+- `CAPTURE_AUDIO_OUTPUT` in the shell privapp allowlist; and
+- an explicit `android.permission.RECORD_AUDIO: granted=true` row from
+  `dumpsys package com.android.shell`.
+
+A mere requested-permission mention is rejected. This correction does not bypass
+either permission and does not change the audio/call/privacy scope.
