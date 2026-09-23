@@ -385,3 +385,16 @@ audio, performs no call control, and is not imported by default production
 entrypoints. TX and RX are now both reference-validated independently; a higher
 level closed-loop synthetic-human controller is a separate implementation/
 behavior gate.
+## Validated Android ADB cellular RX boundary — 2026-09-23
+
+The SHUO-owned receive candidate has passed its reference-device gate. On the
+itel P683L during a real manually controlled cellular call,
+`TelephonyRxBridge` sustained `VOICE_DOWNLINK` capture and streamed
+PCM16/48 kHz/stereo over binary ADB stdout. The bounded probe consumed
+1,519,616 PCM bytes, peak RMS 4300 / average RMS 1541.0, and converted 63,318
+bytes in memory to the unchanged SHUO mono mu-law/8 kHz boundary.
+
+The receive bridge remains a dev/benchmark transport boundary. It persists no raw
+audio, performs no call control, and is not imported by default production
+entrypoints. TX and RX are now both reference-validated independently; a higher
+level closed-loop synthetic-human controller is a separate gate.
