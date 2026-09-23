@@ -103,3 +103,10 @@ The harness is not imported by production entrypoints, keeps the shared/carrier
 audio contract at G.711 mu-law/8 kHz, performs no automatic call control, writes
 no raw audio, and does not create a caller-heard latency claim. Its Android edge
 is S16LE/16 kHz/mono, matching the already-validated Bluetooth boundary.
+### Android caller-side RX follow-up — 2026-09-23
+
+Reference `VOICE_DOWNLINK` capability is now proven on the itel P683L with
+upstream scrcpy 4.1. A SHUO-owned no-file receive bridge candidate is under the
+same [ANDROID_CELLULAR_SYNTHETIC_CALLER](ANDROID_CELLULAR_SYNTHETIC_CALLER.md)
+evidence record and remains gated by its own live reference probe before
+qualification.
