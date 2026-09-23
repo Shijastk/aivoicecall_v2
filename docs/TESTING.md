@@ -923,3 +923,30 @@ Warnings were 3 on Python 3.12 and 12 on Python 3.14 in the full suite. No new
 failure identity/signature was introduced. This gate used no phone, provider
 secret or raw-audio artifact; the separate itel live probe above is the
 reference-device runtime evidence.
+## Phase 5 real-cellular closed-loop synthetic caller candidate — 2026-09-23
+
+The new `scripts/dev/18_android_cellular_closed_loop.py` composes the already
+reference-qualified Android ADB RX/TX boundaries without adding call control.
+It uses Pocket caller speech prepared entirely in memory and a separate Deepgram
+Flux observer on the real downlink. Response transcripts exist only in memory
+for narrow continuity booleans and are not serialized.
+
+Automated validation run `35853641593` at revision
+`5d40f1817499f4cb117a3054cce75dfb390dbc0e` passed on Python 3.12/3.14:
+
+- CLI smoke: PASS;
+- focused closed-loop + Android RX/TX + codec: **36 passed**;
+- Bluetooth regression: **162 passed**;
+- full root: **1035 passed / exact 4 historical failures**;
+- baseline verifier: `FULL_SUITE_BASELINE_CLEAN`;
+- full branch `git diff --check`: PASS.
+
+The first automated run had exactly one new failure in a test assertion: the
+test report fixture itself contained the word `transcript` in a limitation
+sentence while asserting that word was absent. No runtime code failed. The
+fixture wording was corrected and the full automated gate rerun successfully.
+
+Not yet proven by CI: simultaneous ADB RX + TX on the live reference call,
+real observer-Flux progression, two cellular interruption attempts, real
+thinking-pause behavior, or continuity through the actual SHUO endpoint. Those
+are the required reference runtime gate before merge.
