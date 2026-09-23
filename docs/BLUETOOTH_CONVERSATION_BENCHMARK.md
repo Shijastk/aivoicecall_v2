@@ -42,14 +42,39 @@ STT, Bluetooth or mouth-to-ear latency.
 
 ### `providers`
 
-Requires `--allow-provider-network`. It uses real Groq and ElevenLabs through the
-current `Agent`/`TTSPool`, but injects Flux turn events and uses an in-memory
-Bluetooth session. It can therefore measure LLM/TTS/network behavior without a
-phone call, while explicitly excluding Deepgram turn detection, PipeWire,
-Bluetooth radio, cellular network and handset playback.
+Requires `--allow-provider-network`. It uses real Groq and the **currently configured
+TTS route** through the current `Agent`/`TTSPool`, but injects Flux turn events and
+uses an in-memory Bluetooth session. With `TTS_PROVIDER=pocket`, the measured TTS
+path is Pocket and the report says so; with the default route it remains ElevenLabs.
+It can therefore measure LLM/TTS behavior without a phone call, while explicitly
+excluding Deepgram turn detection, PipeWire, Bluetooth radio, cellular network and
+handset playback.
 
 It uses a synthetic benchmark prompt and synthetic facts. Quality checks are
 boolean instruction/grounding checks; there is no invented 0–10 "quality score".
+
+### `human-sim`
+
+Requires `--allow-provider-network` and is deliberately locked to
+`TTS_PROVIDER=pocket` with an empty fallback so the measured agent TTS path is
+unambiguous. It pre-synthesizes all caller utterances **in memory** with Pocket,
+converts them through the repository-owned Bluetooth codec to S16LE/16k and replays
+them at the validated 20 ms boundary cadence through real Deepgram Flux, the real
+SHUO state/action loop, real Groq, real Pocket Agent TTS and real AudioPlayer.
+
+The deterministic scenario exercises more than ten Agent turns, a deliberate
+mid-question pause at final EOT threshold `0.8`, two independent barge-ins after
+outbound audio has begun, a caller-provided continuity fact, a grounded unknown-fact
+fallback and identity-break checks. No raw caller/agent audio is written to disk.
+The scenario is capped at 300 seconds because the Phase-5 controlled-live contract
+has a five-minute maximum, not a five-minute minimum.
+
+This is **provider-pipeline evidence, not device evidence**. It does not open
+PipeWire/BlueZ, traverse a cellular network, receive a handset playback
+acknowledgement or measure a remote ear. Accordingly the report explicitly leaves
+`bluetooth_hfp_transport_delay`, `caller_heard_first_audio` and real
+phone/network echo as `NOT_MEASURED`. It must never be used to replace the Phase-5
+manual Bluetooth/cellular gate or to claim caller-heard `<500 ms`.
 
 ### `log`
 
@@ -91,6 +116,18 @@ PYTHON_DOTENV_DISABLED=1 LLM_MODEL=qwen/qwen3.8-27b PYTHONPATH=. \
   .venv/bin/python scripts/dev/15_conversation_benchmark.py providers \
   --allow-provider-network \
   --json-out /tmp/shuo-bench-providers.json
+```
+
+Human-like synthetic caller through real Flux/Groq/Pocket, still no device/cellular:
+
+```bash
+TTS_PROVIDER=pocket TTS_FALLBACK_PROVIDER= \\
+PYTHONPATH=. \\
+.venv/bin/python scripts/dev/15_conversation_benchmark.py human-sim \\
+  --allow-provider-network \\
+  --thinking-pause-ms 650 \\
+  --max-scenario-seconds 300 \\
+  --json-out /tmp/shuo/human-sim-pocket.json
 ```
 
 Analyze a separately authorized live run:
