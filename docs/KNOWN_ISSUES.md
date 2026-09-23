@@ -256,3 +256,13 @@ Remaining limitations are narrower:
 - a full closed-loop synthetic-human controller using RX + TX together is not
   yet promoted by this evidence alone;
 - call establishment and hangup remain manual.
+### Android RX live gate closed on reference device — 2026-09-23
+
+The earlier issue that the SHUO-owned `TelephonyRxBridge` still required its
+own live reference probe is now closed for the itel P683L runtime. The bounded
+probe sustained 7.915 s of PCM, produced non-zero content-free energy metrics
+and converted into the SHUO mu-law boundary without raw-audio persistence.
+
+Remaining limits: other Android devices are unqualified; no caller-heard RX
+latency has been measured; a complete closed-loop synthetic-human controller is
+a separate gate; and call establishment/hangup remain manual.
