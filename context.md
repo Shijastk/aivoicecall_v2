@@ -477,3 +477,18 @@ Caller-side Android cellular TX and RX transports are now both independently
 reference-validated. The next missing product/test layer is a closed-loop
 synthetic-human controller that listens via RX and replies via TX; automatic
 dial/answer/hangup is still out of scope and Phase 5 remains not accepted.
+## 2026-09-23 — closed-loop real-cellular caller candidate prepared
+
+After independent itel ADB TX and RX PASS evidence, an isolated Phase-5
+controller was implemented to listen to real SHUO cellular downlink through RX,
+advance a deterministic script with a private Deepgram Flux observer, and reply
+through the existing TX bridge using pre-synthesized Pocket audio.
+
+The scenario includes normal turns, a 650 ms prepared thinking pause, two
+barge-in attempts and continuity facts, with a 300-second cap. Response text is
+never serialized and raw audio is never persisted. GitHub Actions run
+`35853641593` passed 36 focused tests, 162 Bluetooth tests and full-root
+`1035 passed / exact 4 historical failures` on Python 3.12/3.14.
+
+This is not yet merged or reference-qualified. One combined itel/Galaxy/SHUO
+live run is the explicit next gate. Call answer/hangup remain manual.
