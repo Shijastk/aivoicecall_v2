@@ -313,3 +313,13 @@ bytes to SHUO mu-law in memory. No raw audio or caller content was persisted.
 This closes the receive-transport validation item for the reference device. It
 does not replace the historical Gate-1 acceptance requirements or authorize
 automatic call control.
+## Supplemental receive probe result — 2026-09-23
+
+The repository-owned caller-side receive probe passed on the reference itel
+P683L. The bounded 8-second run captured 1,519,616 PCM bytes over 371 chunks,
+with non-zero content-free RMS (peak 4300, average 1541.0), and converted 63,318
+bytes to SHUO mu-law in memory. No raw audio or caller content was persisted.
+
+This closes the receive-transport validation item for the reference device. It
+does not replace the historical Gate-1 acceptance requirements or authorize
+automatic call control.
