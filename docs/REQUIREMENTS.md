@@ -116,3 +116,35 @@ edge; no raw audio is persisted; manual call control remains in force for this
 harness; route selection is explicit/fail-closed; and documentation/tests ship
 with the implementation. This amendment does not by itself authorize Phase-6
 automatic call control or a caller-heard latency claim.
+## Current owner amendment: supplemental Android cellular receive candidate — 2026-09-23
+
+After direct reference-device proof that the itel P683L can expose real cellular
+`VOICE_DOWNLINK` audio to Ubuntu through shell-UID ADB capture, the owner
+explicitly authorized implementation/test/documentation/merge work for the
+isolated receive half of the Phase-5 synthetic-caller harness.
+
+Permanent restrictions are unchanged: shared/core audio remains mono G.711
+mu-law/8 kHz; raw audio is not persisted; manual call control remains in force;
+the Android capture edge is explicit and fail-closed; local/content-free probe
+metrics are not caller-heard latency evidence; and Phase 6 is not authorized by
+this amendment.
+## Android cellular receive amendment status — 2026-09-23
+
+The owner-authorized receive amendment has now satisfied its reference-device
+runtime gate. The SHUO-owned `VOICE_DOWNLINK` helper sustained a bounded real
+cellular capture and converted it in memory to the unchanged SHUO mu-law/8 kHz
+contract with no raw-audio persistence.
+
+The authorization remains scoped to the isolated Phase-5 development/benchmark
+transport. Manual call control, privacy restrictions, core codec invariants and
+the Phase-6 boundary remain unchanged.
+## Android cellular receive amendment status — 2026-09-23
+
+The owner-authorized receive amendment has now satisfied its reference-device
+runtime gate. The SHUO-owned `VOICE_DOWNLINK` helper sustained a bounded real
+cellular capture and converted it in memory to the unchanged SHUO mu-law/8 kHz
+contract with no raw-audio persistence.
+
+The authorization remains scoped to the isolated Phase-5 development/benchmark
+transport. Manual call control, privacy restrictions, core codec invariants and
+the Phase-6 boundary remain unchanged.

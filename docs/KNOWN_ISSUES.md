@@ -218,3 +218,51 @@ No sub-500ms or other caller-heard latency claim follows from the offline pass.
   remains a later evidence gate.
 - The local Pocket timing markers do not establish caller-heard or mouth-to-ear
   latency.
+## Android ADB synthetic-caller RX candidate — 2026-09-23
+
+- The reference itel downlink capability is proven with upstream scrcpy 4.1,
+  but the SHUO-owned `TelephonyRxBridge` still requires its own live reference
+  probe before merge/qualification.
+- The candidate deliberately captures the same proven PCM16/48 kHz/stereo shape
+  as scrcpy, then converts in memory to SHUO mu-law/8 kHz. Do not assume a
+  lower-rate Android capture configuration is supported without evidence.
+- Laptop-speaker monitoring can create an acoustic echo path back into the
+  handset microphone. The reference verification used headphones and then
+  reported clear audio with no echo. This is a test-monitoring issue, not a
+  reason to enable any acoustic production route.
+- No receive-side latency value has been measured.
+### RX doctor false negative on RECORD_AUDIO — corrected 2026-09-23
+
+The first repository-owned RX doctor treated both `CAPTURE_AUDIO_OUTPUT` and
+`RECORD_AUDIO` as privapp-allowlist permissions. On the reference itel this
+caused a false-negative stop at `RECORD_AUDIO`.
+
+AOSP permission definitions show the distinction: `RECORD_AUDIO` is
+dangerous/runtime, whereas `CAPTURE_AUDIO_OUTPUT` is privileged. The preflight
+now verifies the privileged capture permission in the privapp allowlist and
+separately requires a concrete package grant for `RECORD_AUDIO`. The live
+helper remains unqualified until the corrected doctor and bounded probe pass.
+### Android RX live gate closed on reference device — 2026-09-23
+
+The earlier issue "SHUO-owned TelephonyRxBridge still requires its own live
+reference probe" is now closed for the itel P683L reference runtime. The bounded
+probe sustained 7.915 s of PCM, produced non-zero content-free energy metrics
+and converted into the SHUO mu-law boundary without raw-audio persistence.
+
+Remaining limitations are narrower:
+
+- other Android devices remain unqualified;
+- no caller-heard RX latency has been measured;
+- a full closed-loop synthetic-human controller using RX + TX together is not
+  yet promoted by this evidence alone;
+- call establishment and hangup remain manual.
+### Android RX live gate closed on reference device — 2026-09-23
+
+The earlier issue that the SHUO-owned `TelephonyRxBridge` still required its
+own live reference probe is now closed for the itel P683L runtime. The bounded
+probe sustained 7.915 s of PCM, produced non-zero content-free energy metrics
+and converted into the SHUO mu-law boundary without raw-audio persistence.
+
+Remaining limits: other Android devices are unqualified; no caller-heard RX
+latency has been measured; a complete closed-loop synthetic-human controller is
+a separate gate; and call establishment/hangup remain manual.

@@ -444,3 +444,36 @@ Repository verification for the Android ADB TX milestone: GitHub Actions run
 tests, 162 Bluetooth tests, full-suite `1016 passed / 4 expected failed` exact
 baseline verification, and full branch diff validation. The verified source tree
 still makes no reverse/downlink or caller-heard latency claim.
+## 2026-09-23 — reference cellular downlink capability proven
+
+Upstream scrcpy 4.1 was run against the itel P683L during a manually answered
+real cellular `MODE_IN_CALL` session with
+`voice-call-downlink --require-audio`. Galaxy A10 speech reached Ubuntu
+clearly; after Ubuntu playback was moved to headphones, the owner reported
+**clear, no echo**.
+
+This proves the reference Android runtime can expose real cellular downlink
+through shell-UID `VOICE_DOWNLINK` capture. A SHUO-owned no-file receive bridge
+candidate is now implemented on a feature branch using the same proven
+PCM16/48k/stereo capture shape and an in-memory conversion to the unchanged SHUO
+mu-law/8k boundary. Its own reference probe remains the explicit promotion gate;
+no caller-heard latency or automatic call-control claim follows.
+RX candidate correction: the first SHUO `doctor` stopped on a false-negative
+permission classification because it expected dangerous/runtime
+`RECORD_AUDIO` in the privapp allowlist. AOSP source confirms
+`RECORD_AUDIO` and privileged `CAPTURE_AUDIO_OUTPUT` have different grant
+classes. The branch now checks the privileged allowlist and the explicit runtime
+package grant separately, still fail-closed. The SHUO helper itself has not yet
+run on the reference phone, so its live gate remains pending.
+## 2026-09-23 — SHUO-owned cellular RX reference PASS
+
+The repository-owned `TelephonyRxBridge` has passed its independent itel
+P683L live gate during a manually controlled real cellular call:
+1,519,616 PCM bytes / 371 chunks / 7.915 s, peak RMS 4300, average RMS 1541.0,
+and 63,318 bytes converted in memory to the existing SHUO mu-law/8k boundary.
+The probe explicitly persisted no raw audio and logged no caller speech content.
+
+Caller-side Android cellular TX and RX transports are now both independently
+reference-validated. The next missing product/test layer is a closed-loop
+synthetic-human controller that listens via RX and replies via TX; automatic
+dial/answer/hangup is still out of scope and Phase 5 remains not accepted.

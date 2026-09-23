@@ -803,3 +803,123 @@ printed `FULL_SUITE_BASELINE_CLEAN` in both jobs. No provider secret, Android
 device, cellular call or raw-audio artifact was used by CI. Reference-device
 runtime evidence remains the separate external proof for actual Telephony Tx
 routing and remote audibility.
+## Android cellular RX capability and candidate gate — 2026-09-23
+
+Reference external capability proof:
+
+- itel P683L / Android 13 connected over USB ADB;
+- active call reported `MODE_IN_CALL`;
+- upstream scrcpy 4.1 started with
+  `--audio-source=voice-call-downlink --require-audio`;
+- current scrcpy source maps that option to
+  `MediaRecorder.AudioSource.VOICE_DOWNLINK` and direct `AudioRecord`;
+- Galaxy A10 call speech was heard clearly on Ubuntu;
+- after Ubuntu monitoring moved to headphones, the owner reported
+  **clear, no echo**.
+
+The repository candidate is intentionally tested separately. Automated tests
+cover RX preflight permission/call-mode failure paths, fragmented stereo PCM
+conversion into the unchanged SHUO mu-law/8 kHz boundary, long-lived binary
+stdout transport without TTY/stdin, content-free bounded probe metrics, and
+source invariants forbidding an audio-file path. Java compilation/DEX creation,
+Bluetooth regression and exact historical full-suite baseline verification are
+required before the live SHUO-helper probe.
+
+No raw audio artifact is retained by the probe.
+### Android RX first doctor result and correction — 2026-09-23
+
+The first reference run of the SHUO-owned RX `doctor` failed closed before
+starting `TelephonyRxBridge`:
+
+`shell privapp allowlist is missing required receive permission(s): android.permission.RECORD_AUDIO`.
+
+Source review against AOSP showed this was a harness-check defect rather than a
+validated device denial. `RECORD_AUDIO` is a dangerous/runtime permission;
+`CAPTURE_AUDIO_OUTPUT` is signature/privileged/role. The preflight was updated
+without weakening the gate: it still requires `CAPTURE_AUDIO_OUTPUT` in the
+privapp allowlist and now additionally requires an explicit
+`RECORD_AUDIO: granted=true` package row. Tests reject requested-only and
+`granted=false` evidence.
+
+No AudioRecord helper was launched by the failed doctor, so it provides no
+positive or negative evidence about the SHUO receive bridge itself.
+### Android RX SHUO-owned live reference PASS — 2026-09-23
+
+After correcting the RECORD_AUDIO permission-classification bug, the owner ran
+the repository-owned bounded receive probe during a real manually controlled
+cellular call on the itel P683L. Result:
+
+```text
+ANDROID_TELEPHONY_RX_PROBE=COMPLETE
+PCM_BYTES=1519616
+PCM_DURATION_SEC=7.915
+CHUNKS=371
+PEAK_RMS=4300
+AVERAGE_RMS=1541.0
+SHUO_MULAW_BYTES=63318
+RAW_AUDIO_PERSISTED=NO
+CALLER_AUDIO_CONTENT_LOGGED=NO
+CALLER_HEARD_LATENCY=NOT_MEASURED
+```
+
+This is the required independent proof that the SHUO helper itself, not only
+scrcpy, can consume real cellular downlink from the reference phone. The
+non-zero RMS metrics establish non-silent content-free evidence; no transcript
+or raw-audio artifact was produced.
+
+Repository gate before this live result, GitHub Actions run `35851491443`,
+passed on Python 3.12 and 3.14:
+
+- focused Android RX/TX + codec regression: **28 passed**;
+- Bluetooth regression: **162 passed**;
+- full root: **1027 passed / exact 4 historical failures**;
+- exact baseline verifier: `FULL_SUITE_BASELINE_CLEAN`;
+- Java receive helper compilation/DEX conversion and full branch diff check:
+  PASS.
+
+A final repository gate is rerun after these evidence/documentation updates
+before merge.
+### Android RX SHUO-owned live reference PASS — 2026-09-23
+
+After correcting the RECORD_AUDIO permission-classification bug, the owner ran
+the repository-owned bounded receive probe during a real manually controlled
+cellular call on the itel P683L. Result:
+
+```text
+ANDROID_TELEPHONY_RX_PROBE=COMPLETE
+PCM_BYTES=1519616
+PCM_DURATION_SEC=7.915
+CHUNKS=371
+PEAK_RMS=4300
+AVERAGE_RMS=1541.0
+SHUO_MULAW_BYTES=63318
+RAW_AUDIO_PERSISTED=NO
+CALLER_AUDIO_CONTENT_LOGGED=NO
+CALLER_HEARD_LATENCY=NOT_MEASURED
+```
+
+This independently proves the SHUO helper itself can consume real cellular
+downlink from the reference phone. Non-zero RMS establishes non-silent
+content-free evidence; no transcript or raw-audio artifact was produced.
+
+GitHub Actions run `35851491443` passed on Python 3.12 and 3.14 before this
+evidence update: focused Android RX/TX + codec **28 passed**, Bluetooth
+**162 passed**, full root **1027 passed / exact 4 historical failures**,
+`FULL_SUITE_BASELINE_CLEAN`, Java helper compile/DEX and diff check all PASS.
+A final gate is rerun after the evidence/docs commit before merge.
+### Android RX post-live-evidence repository gate — 2026-09-23
+
+GitHub Actions run `35852151711` validated the branch after the live PASS
+evidence and synchronized documentation. Both Python 3.12 and 3.14 jobs passed:
+
+- focused Android RX/TX + codec regression: **28 passed**;
+- complete Bluetooth regression: **162 passed**;
+- full root regression: **1027 passed / exact 4 historical failures**;
+- exact failure-identity/signature verifier: `FULL_SUITE_BASELINE_CLEAN`;
+- Java `TelephonyRxBridge` compile + DEX conversion: PASS;
+- full branch diff validation: PASS.
+
+Warnings were 3 on Python 3.12 and 12 on Python 3.14 in the full suite. No new
+failure identity/signature was introduced. This gate used no phone, provider
+secret or raw-audio artifact; the separate itel live probe above is the
+reference-device runtime evidence.

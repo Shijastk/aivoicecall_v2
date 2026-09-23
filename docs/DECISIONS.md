@@ -194,3 +194,45 @@ utterance.
 The observed local Pocket-ready/first-PCM timings remain local-only evidence.
 Reverse/downlink capture must be runtime-proven independently before it becomes a
 supported receive bridge or the caller is described as fully automated.
+## BT-D30 — implement receive candidate only after independent downlink proof — 2026-09-23
+
+The reference itel P683L / Android 13 has now demonstrated real cellular
+downlink capture independently through upstream scrcpy 4.1. During an active
+manual call, `voice-call-downlink --require-audio` delivered Galaxy A10 speech
+clearly to Ubuntu; headphone monitoring removed the observed acoustic echo.
+
+Decision: permit a SHUO-owned Phase-5 receive **candidate** that mirrors the
+proven direct capture source/format, keeps raw audio only in transit/in memory,
+converts at the isolated benchmark edge to the existing mu-law/8 kHz SHUO
+contract, performs no automatic call control, and remains outside default
+production entrypoints.
+
+Do not mark the SHUO receive helper validated merely because scrcpy works. Its
+own `STREAM_READY` + non-silent content-free reference probe is required before
+merge/qualification. No receive latency claim follows from this decision.
+## BT-D31 — qualify SHUO-owned Android cellular RX on reference device — 2026-09-23
+
+The owner completed the required independent live gate for
+`TelephonyRxBridge` on the itel P683L. The bounded 8-second probe consumed
+1,519,616 PCM bytes over 371 chunks, observed peak RMS 4300 / average RMS
+1541.0, and converted 63,318 bytes to the existing SHUO mu-law/8 kHz boundary.
+No raw audio was persisted and no speech content was logged.
+
+Decision: promote the receive helper from candidate to reference-qualified
+Phase-5 development/benchmark transport, subject to final repository regression
+after the evidence/docs commit. This qualifies only the receive transport
+boundary; it does not automate call control, accept Phase 5, authorize Phase 6,
+or establish caller-heard latency.
+## BT-D31 — qualify SHUO-owned Android cellular RX on reference device — 2026-09-23
+
+The owner completed the required independent live gate for
+`TelephonyRxBridge` on the itel P683L. The bounded probe consumed 1,519,616
+PCM bytes over 371 chunks, observed peak RMS 4300 / average RMS 1541.0, and
+converted 63,318 bytes to the existing SHUO mu-law/8 kHz boundary. No raw audio
+was persisted and no speech content was logged.
+
+Decision: promote the receive helper from candidate to reference-qualified
+Phase-5 development/benchmark transport, subject to final repository regression
+after the evidence/docs commit. This qualifies only the receive transport
+boundary; it does not automate call control, accept Phase 5, authorize Phase 6,
+or establish caller-heard latency.
