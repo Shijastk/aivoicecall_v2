@@ -347,149 +347,150 @@ async def run_human_sim_benchmark(
         await asyncio.wait_for(ready.wait(), timeout_seconds)
         scenario_started_ns = _ns()
 
-        # Establish several ordinary turns before interruption tests.
-        await normal_turn("codeword")
-        await asyncio.sleep(0.35)
-        await normal_turn("continuity_seed")
-        await asyncio.sleep(0.55)
-        await normal_turn("normal_one")
-        await asyncio.sleep(0.45)
+        async with asyncio.timeout(max_scenario_seconds):
+            # Establish several ordinary turns before interruption tests.
+            await normal_turn("codeword")
+            await asyncio.sleep(0.35)
+            await normal_turn("continuity_seed")
+            await asyncio.sleep(0.55)
+            await normal_turn("normal_one")
+            await asyncio.sleep(0.45)
 
-        # Thinking-pause turn. The pass criterion is deliberately narrow:
-        # no real Flux final EndOfTurn may arrive during the configured pause.
-        flux: _MeasuredFlux = holder["flux"]
-        before_pause_flux = len(flux.turns)
-        before_pause_capture = len(capture.turns)
-        await session.play_fixture(stimuli["pause_a"], timeout_seconds=timeout_seconds)
-        pause_started_ns = _ns()
-        await asyncio.sleep(thinking_pause_ms / 1000.0)
-        premature_eot = len(flux.turns) > before_pause_flux
-        pause_ended_ns = _ns()
+            # Thinking-pause turn. The pass criterion is deliberately narrow:
+            # no real Flux final EndOfTurn may arrive during the configured pause.
+            flux: _MeasuredFlux = holder["flux"]
+            before_pause_flux = len(flux.turns)
+            before_pause_capture = len(capture.turns)
+            await session.play_fixture(stimuli["pause_a"], timeout_seconds=timeout_seconds)
+            pause_started_ns = _ns()
+            await asyncio.sleep(thinking_pause_ms / 1000.0)
+            premature_eot = len(flux.turns) > before_pause_flux
+            pause_ended_ns = _ns()
 
-        scenario_results.append(
-            _HumanSimResult(
-                "thinking_pause_no_premature_eot",
-                not premature_eot,
-                (
-                    f"pause_ms={(pause_ended_ns - pause_started_ns) / 1_000_000.0:.1f}; "
-                    f"eot_threshold={HUMAN_SIM_EOT_THRESHOLD}"
-                ),
-            )
-        )
-
-        if premature_eot:
-            # Preserve evidence and recover deterministically rather than
-            # pretending the two halves remained one caller turn.
-            await wait_for_response(before_pause_capture)
-            await normal_turn("pause_b")
-        else:
-            await session.play_fixture(stimuli["pause_b"], timeout_seconds=timeout_seconds)
-            await flux.wait_for_turn(before_pause_flux + 1, timeout_seconds=timeout_seconds)
-            await wait_for_response(before_pause_capture)
-
-        await asyncio.sleep(0.45)
-        await normal_turn("normal_two")
-        await asyncio.sleep(0.45)
-
-        first_cancel, first_replacement, first_late_writes = await barge_turn(
-            "barge_one_setup",
-            "barge_one",
-        )
-        first_cancelled = capture.turns[first_cancel].cancel_return_ns is not None
-        first_cleared = len(barge_clear_latencies) >= 1
-        scenario_results.append(
-            _HumanSimResult(
-                "barge_in_1_cancel_and_clear",
-                first_cancelled and first_cleared,
-                "real Deepgram StartOfTurn while SHUO was responding",
-            )
-        )
-        scenario_results.append(
-            _HumanSimResult(
-                "barge_in_1_no_late_local_audio_before_replacement",
-                first_late_writes == 0,
-                f"writes_after_clear_before_replacement_first_audio={first_late_writes}",
-            )
-        )
-        first_answer = capture.turns[first_replacement].response_text
-        scenario_results.append(
-            _HumanSimResult(
-                "continuity_after_barge_in",
-                "mango" in first_answer.casefold(),
-                "replacement answer must recall caller-provided fruit=mango",
-            )
-        )
-
-        await asyncio.sleep(0.55)
-        unknown_index = await normal_turn("unknown")
-        unknown_answer = capture.turns[unknown_index].response_text.casefold()
-        scenario_results.append(
-            _HumanSimResult(
-                "unknown_fact_grounded_fallback",
-                "i don't have that detail" in unknown_answer,
-                "synthetic prompt supplies no benchmark launch city",
-            )
-        )
-
-        await asyncio.sleep(0.45)
-        second_cancel, second_replacement, second_late_writes = await barge_turn(
-            "barge_two_setup",
-            "barge_two",
-        )
-        second_cancelled = capture.turns[second_cancel].cancel_return_ns is not None
-        second_cleared = len(barge_clear_latencies) >= 2
-        scenario_results.append(
-            _HumanSimResult(
-                "barge_in_2_cancel_and_clear",
-                second_cancelled and second_cleared,
-                "second independent real Deepgram StartOfTurn during response",
-            )
-        )
-        scenario_results.append(
-            _HumanSimResult(
-                "barge_in_2_no_late_local_audio_before_replacement",
-                second_late_writes == 0,
-                f"writes_after_clear_before_replacement_first_audio={second_late_writes}",
-            )
-        )
-        second_answer = capture.turns[second_replacement].response_text.casefold()
-        scenario_results.append(
-            _HumanSimResult(
-                "replacement_codeword_grounding",
-                "orbit-7" in second_answer,
-                "replacement answer must contain benchmark codeword",
-            )
-        )
-
-        await asyncio.sleep(0.5)
-        continuity_index = await normal_turn("continuity_final")
-        continuity_answer = capture.turns[continuity_index].response_text.casefold()
-        scenario_results.append(
-            _HumanSimResult(
-                "late_short_session_continuity",
-                "mango" in continuity_answer,
-                "later follow-up must remain connected to the earlier caller fact",
-            )
-        )
-
-        scenario_ended_ns = _ns()
-        elapsed = _ms_between(scenario_started_ns, scenario_ended_ns)
-        if elapsed is not None:
             scenario_results.append(
                 _HumanSimResult(
-                    "scenario_within_phase5_five_minute_cap",
-                    elapsed <= max_scenario_seconds * 1000.0,
-                    f"elapsed_ms={elapsed:.1f}; configured_cap_s={max_scenario_seconds:.1f}",
+                    "thinking_pause_no_premature_eot",
+                    not premature_eot,
+                    (
+                        f"pause_ms={(pause_ended_ns - pause_started_ns) / 1_000_000.0:.1f}; "
+                        f"eot_threshold={HUMAN_SIM_EOT_THRESHOLD}"
+                    ),
                 )
             )
 
-        scenario_results.append(
-            _HumanSimResult(
-                "at_least_ten_agent_turns_exercised",
-                len(capture.turns) >= 10,
-                f"agent_turns={len(capture.turns)}",
+            if premature_eot:
+                # Preserve evidence and recover deterministically rather than
+                # pretending the two halves remained one caller turn.
+                await wait_for_response(before_pause_capture)
+                await normal_turn("pause_b")
+            else:
+                await session.play_fixture(stimuli["pause_b"], timeout_seconds=timeout_seconds)
+                await flux.wait_for_turn(before_pause_flux + 1, timeout_seconds=timeout_seconds)
+                await wait_for_response(before_pause_capture)
+
+            await asyncio.sleep(0.45)
+            await normal_turn("normal_two")
+            await asyncio.sleep(0.45)
+
+            first_cancel, first_replacement, first_late_writes = await barge_turn(
+                "barge_one_setup",
+                "barge_one",
             )
-        )
+            first_cancelled = capture.turns[first_cancel].cancel_return_ns is not None
+            first_cleared = len(barge_clear_latencies) >= 1
+            scenario_results.append(
+                _HumanSimResult(
+                    "barge_in_1_cancel_and_clear",
+                    first_cancelled and first_cleared,
+                    "real Deepgram StartOfTurn while SHUO was responding",
+                )
+            )
+            scenario_results.append(
+                _HumanSimResult(
+                    "barge_in_1_no_late_local_audio_before_replacement",
+                    first_late_writes == 0,
+                    f"writes_after_clear_before_replacement_first_audio={first_late_writes}",
+                )
+            )
+            first_answer = capture.turns[first_replacement].response_text
+            scenario_results.append(
+                _HumanSimResult(
+                    "continuity_after_barge_in",
+                    "mango" in first_answer.casefold(),
+                    "replacement answer must recall caller-provided fruit=mango",
+                )
+            )
+
+            await asyncio.sleep(0.55)
+            unknown_index = await normal_turn("unknown")
+            unknown_answer = capture.turns[unknown_index].response_text.casefold()
+            scenario_results.append(
+                _HumanSimResult(
+                    "unknown_fact_grounded_fallback",
+                    "i don't have that detail" in unknown_answer,
+                    "synthetic prompt supplies no benchmark launch city",
+                )
+            )
+
+            await asyncio.sleep(0.45)
+            second_cancel, second_replacement, second_late_writes = await barge_turn(
+                "barge_two_setup",
+                "barge_two",
+            )
+            second_cancelled = capture.turns[second_cancel].cancel_return_ns is not None
+            second_cleared = len(barge_clear_latencies) >= 2
+            scenario_results.append(
+                _HumanSimResult(
+                    "barge_in_2_cancel_and_clear",
+                    second_cancelled and second_cleared,
+                    "second independent real Deepgram StartOfTurn during response",
+                )
+            )
+            scenario_results.append(
+                _HumanSimResult(
+                    "barge_in_2_no_late_local_audio_before_replacement",
+                    second_late_writes == 0,
+                    f"writes_after_clear_before_replacement_first_audio={second_late_writes}",
+                )
+            )
+            second_answer = capture.turns[second_replacement].response_text.casefold()
+            scenario_results.append(
+                _HumanSimResult(
+                    "replacement_codeword_grounding",
+                    "orbit-7" in second_answer,
+                    "replacement answer must contain benchmark codeword",
+                )
+            )
+
+            await asyncio.sleep(0.5)
+            continuity_index = await normal_turn("continuity_final")
+            continuity_answer = capture.turns[continuity_index].response_text.casefold()
+            scenario_results.append(
+                _HumanSimResult(
+                    "late_short_session_continuity",
+                    "mango" in continuity_answer,
+                    "later follow-up must remain connected to the earlier caller fact",
+                )
+            )
+
+            scenario_ended_ns = _ns()
+            elapsed = _ms_between(scenario_started_ns, scenario_ended_ns)
+            if elapsed is not None:
+                scenario_results.append(
+                    _HumanSimResult(
+                        "scenario_within_phase5_five_minute_cap",
+                        elapsed <= max_scenario_seconds * 1000.0,
+                        f"elapsed_ms={elapsed:.1f}; configured_cap_s={max_scenario_seconds:.1f}",
+                    )
+                )
+
+            scenario_results.append(
+                _HumanSimResult(
+                    "at_least_ten_agent_turns_exercised",
+                    len(capture.turns) >= 10,
+                    f"agent_turns={len(capture.turns)}",
+                )
+            )
     except Exception as exc:
         error = f"{type(exc).__name__}: {exc}"
     finally:
