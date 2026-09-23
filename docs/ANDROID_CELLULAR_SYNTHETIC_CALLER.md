@@ -184,3 +184,28 @@ Together with the already-merged TX path, the reference device now has both
 caller-side cellular directions available to the Ubuntu synthetic-caller
 harness. This still does not automate dial/answer/hangup and does not by itself
 claim a complete autonomous conversation controller.
+## SHUO-owned receive bridge reference PASS — 2026-09-23
+
+The repository-owned receive helper has now passed its own reference-device gate, separately from scrcpy.
+
+During a manually established/answered real cellular call on the itel P683L, the bounded no-file SHUO probe reported:
+
+```text
+ANDROID_TELEPHONY_RX_PROBE=COMPLETE
+PCM_BYTES=1519616
+PCM_DURATION_SEC=7.915
+CHUNKS=371
+PEAK_RMS=4300
+AVERAGE_RMS=1541.0
+SHUO_MULAW_BYTES=63318
+RAW_AUDIO_PERSISTED=NO
+CALLER_AUDIO_CONTENT_LOGGED=NO
+CALLER_HEARD_LATENCY=NOT_MEASURED
+```
+
+This proves the SHUO-owned `TelephonyRxBridge` sustained real
+`VOICE_DOWNLINK` capture on the reference phone, produced non-silent
+content-free evidence, and reached the existing SHUO mu-law/8 kHz boundary
+without persisting raw audio. Together with the already-merged TX path, both
+caller-side cellular media directions are now independently reference-validated.
+Call establishment/hangup remain manual; no latency claim follows.
