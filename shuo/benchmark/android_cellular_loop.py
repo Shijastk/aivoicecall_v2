@@ -499,13 +499,32 @@ async def run_android_cellular_closed_loop(
     checks: list[LoopCheck] = []
     metrics: list[LoopMetric] = []
 
+    def ensure_rx_feed_alive() -> None:
+        if feed_task is None or not feed_task.done():
+            return
+        if feed_task.cancelled():
+            raise AndroidCellularLoopError(
+                "cellular RX observer feed stopped before scenario completion"
+            )
+        exc = feed_task.exception()
+        if exc is None:
+            raise AndroidCellularLoopError(
+                "cellular RX observer feed ended before scenario completion"
+            )
+        raise AndroidCellularLoopError(
+            "cellular RX observer feed failed before scenario completion: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+
     async def speak(name: str) -> tuple[int, int]:
+        ensure_rx_feed_alive()
         return await play_pcm_realtime(tx, prepared[name].pcm)
 
     async def wait_response(
         start_before: int,
         end_before: int,
     ) -> tuple[_RxStart, _RxEnd]:
+        ensure_rx_feed_alive()
         start = await monitor.wait_for_start(
             start_before,
             timeout_seconds=response_timeout_seconds,
