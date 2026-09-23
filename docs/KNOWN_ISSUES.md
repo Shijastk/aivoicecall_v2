@@ -231,3 +231,14 @@ No sub-500ms or other caller-heard latency claim follows from the offline pass.
   reported clear audio with no echo. This is a test-monitoring issue, not a
   reason to enable any acoustic production route.
 - No receive-side latency value has been measured.
+### RX doctor false negative on RECORD_AUDIO — corrected 2026-09-23
+
+The first repository-owned RX doctor treated both `CAPTURE_AUDIO_OUTPUT` and
+`RECORD_AUDIO` as privapp-allowlist permissions. On the reference itel this
+caused a false-negative stop at `RECORD_AUDIO`.
+
+AOSP permission definitions show the distinction: `RECORD_AUDIO` is
+dangerous/runtime, whereas `CAPTURE_AUDIO_OUTPUT` is privileged. The preflight
+now verifies the privileged capture permission in the privapp allowlist and
+separately requires a concrete package grant for `RECORD_AUDIO`. The live
+helper remains unqualified until the corrected doctor and bounded probe pass.
