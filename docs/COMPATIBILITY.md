@@ -139,3 +139,14 @@ Bounded probe evidence:
 
 This qualifies the reference phone/runtime for the SHUO-owned caller-side
 downlink bridge. It does not qualify arbitrary Android devices.
+## itel P683L SHUO receive qualification — 2026-09-23
+
+The repository-owned `TelephonyRxBridge` has passed on the same reference itel
+P683L / Android 13 runtime previously qualified with scrcpy.
+
+Bounded probe evidence: 1,519,616 PCM bytes, 7.915 s observed PCM duration,
+371 chunks, peak RMS 4300, average RMS 1541.0, and 63,318 in-memory SHUO
+mu-law bytes. No raw audio was persisted.
+
+This qualifies the reference phone/runtime for the SHUO-owned caller-side
+downlink bridge. It does not qualify arbitrary Android devices.
