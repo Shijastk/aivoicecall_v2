@@ -439,3 +439,8 @@ persistence, do not depend on Vobiz for this path, and label caller-heard latenc
 unmeasured. Local timing observed Pocket-ready 531.8ms and first PCM 630.2ms from
 probe-process start; these are not remote latency evidence. Reverse cellular
 downlink capture is the next evidence gate and is not claimed implemented.
+Repository verification for the Android ADB TX milestone: GitHub Actions run
+`35847203988` passed Python 3.12/3.14 compile, Java-to-DEX build, 17 focused
+tests, 162 Bluetooth tests, full-suite `1016 passed / 4 expected failed` exact
+baseline verification, and full branch diff validation. The verified source tree
+still makes no reverse/downlink or caller-heard latency claim.
