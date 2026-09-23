@@ -334,3 +334,24 @@ keeps three as default. The existing 15-second TTS warm-idle/readiness behavior 
 unchanged. None of these controls are imported or started by default `main.py`.
 Offline automation proves wiring, bounds, cleanup and regressions, not live
 provider timing, caller-heard latency, XRUN/audio quality or production benefit.
+## Supplemental Android ADB cellular TX harness — 2026-09-23
+
+An opt-in development-only path now exists under
+`shuo/benchmark/android_cellular_tx.py`,
+`scripts/dev/16_android_cellular_tx.py` and
+`tools/android/TelephonyTxBridge.java`. No default production entrypoint imports
+it.
+
+The host side accepts Pocket through the existing `PocketTTSService` interface
+(G.711 mu-law/8 kHz), then uses `BluetoothOutboundCodec` to reach
+S16LE/16 kHz/mono. That PCM is written with backpressure to `adb shell -T`
+stdin. The Android shell helper creates `AudioTrack` with
+`USAGE_VOICE_COMMUNICATION`, selects the unique `TYPE_TELEPHONY` output and
+fails closed unless `getRoutedDevice()` reports telephony after playback starts.
+
+Reference runtime evidence on the itel P683L/Android 13 showed actual routed type
+18 and clear tone/Pocket/live-stream speech at the remote Galaxy A10 over the
+real cellular call. This is supplemental test tooling, not a new carrier PCM
+contract, automatic call-control implementation, universal Android support claim,
+or caller-heard latency measurement. The reverse cellular downlink-to-ADB path is
+not yet reference-runtime validated.
