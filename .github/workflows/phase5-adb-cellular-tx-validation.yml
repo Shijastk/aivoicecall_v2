@@ -16,6 +16,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -136,4 +138,4 @@ jobs:
           test "$pytest_code" -eq 1
 
       - name: Diff validation
-        run: git diff --check HEAD^ HEAD
+        run: git diff --check origin/main...HEAD
