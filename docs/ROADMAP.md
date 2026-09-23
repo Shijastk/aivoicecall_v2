@@ -296,3 +296,15 @@ Phase 5 remains **not accepted** until the controlled live evidence is reviewed.
 Caller mouth-to-ear `<500 ms` is not claimable from current local timestamps, and
 no missing latency/echo threshold is invented. Phase 6 remains blocked pending a
 separate explicit approval after Phase 5 evidence review.
+## Phase 5 supplemental ADB synthetic-caller TX milestone — 2026-09-23
+
+Owner-authorized reference testing has proven and now codified the transmit half
+of a Vobiz-free synthetic caller: Ubuntu Pocket speech -> existing SHUO mu-law
+provider seam -> Bluetooth codec -> live ADB PCM -> itel Telephony Tx -> real
+cellular -> remote Galaxy A10.
+
+This is additive Phase-5 test infrastructure only. It does not accept Phase 5,
+change the manual answer/hangup rule, authorize Phase 6, establish universal
+Android support, or support a caller-heard <500 ms claim. The next independent
+external gate is caller-phone cellular downlink capture back to Ubuntu; no
+receive implementation is promoted until reference-runtime evidence exists.
