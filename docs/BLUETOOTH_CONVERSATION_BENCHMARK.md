@@ -328,3 +328,12 @@ P683L, so the caller-side real-cellular harness has validated TX and RX
 transport directions. This remains distinct from the provider-only human-sim
 benchmark and from a complete closed-loop synthetic-human conversation
 controller. No caller-heard latency is inferred from the transport probe.
+## Real-cellular closed-loop caller candidate — 2026-09-23
+
+A new controller now differs from the provider-only `human-sim` surface in one
+important way: it traverses the real itel <-> Galaxy cellular connection and
+uses the reference-qualified ADB receive/transmit boundaries.
+
+It still does not automate call control or create an external caller-heard clock.
+Its report is content-free: response text is used only in memory to score
+deterministic continuity booleans. The branch remains live-gated before merge.
