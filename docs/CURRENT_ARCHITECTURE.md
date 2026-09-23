@@ -398,3 +398,25 @@ The receive bridge remains a dev/benchmark transport boundary. It persists no ra
 audio, performs no call control, and is not imported by default production
 entrypoints. TX and RX are now both reference-validated independently; a higher
 level closed-loop synthetic-human controller is a separate gate.
+## Candidate real-cellular synthetic-human controller — 2026-09-23
+
+The independently validated itel ADB TX and RX transports are now composed by an
+opt-in dev/benchmark controller. It does not change either transport contract.
+
+```text
+itel VOICE_DOWNLINK
+-> ADB RX PCM16/48k/stereo
+-> in-memory mu-law/8k conversion
+-> observer Deepgram Flux (EOT 0.8)
+-> deterministic scenario state
+-> pre-synthesized Pocket caller PCM16/16k/mono
+-> persistent ADB Telephony Tx
+-> itel cellular uplink
+```
+
+The controller uses Flux only to observe the remote SHUO response boundary and
+to perform in-memory boolean continuity checks. It does not write response text
+or raw audio to disk. Dial/answer/hangup remain manual.
+
+Repository-level tests are baseline-clean; simultaneous real-device operation is
+the remaining qualification gate.
