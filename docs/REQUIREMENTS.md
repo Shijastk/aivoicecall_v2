@@ -138,3 +138,13 @@ contract with no raw-audio persistence.
 The authorization remains scoped to the isolated Phase-5 development/benchmark
 transport. Manual call control, privacy restrictions, core codec invariants and
 the Phase-6 boundary remain unchanged.
+## Android cellular receive amendment status — 2026-09-23
+
+The owner-authorized receive amendment has now satisfied its reference-device
+runtime gate. The SHUO-owned `VOICE_DOWNLINK` helper sustained a bounded real
+cellular capture and converted it in memory to the unchanged SHUO mu-law/8 kHz
+contract with no raw-audio persistence.
+
+The authorization remains scoped to the isolated Phase-5 development/benchmark
+transport. Manual call control, privacy restrictions, core codec invariants and
+the Phase-6 boundary remain unchanged.
