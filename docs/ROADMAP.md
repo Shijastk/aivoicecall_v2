@@ -313,3 +313,18 @@ helper build, focused tests, complete Bluetooth regression, exact four-failure
 historical full-suite baseline verification and full-diff validation on Python
 3.12/3.14. This makes the supplemental TX harness repository-ready; it does not
 change the remaining Phase-5 acceptance gates or authorize Phase 6.
+## Phase 5 supplemental Android cellular RX gate — 2026-09-23
+
+The reference caller phone's receive capability is now independently proven:
+scrcpy 4.1 `VOICE_DOWNLINK` capture delivered real Galaxy A10 call audio to
+Ubuntu clearly, and headphone monitoring produced a clear/no-echo result.
+
+A SHUO-owned receive bridge candidate is implemented behind the dev/benchmark
+boundary. The immediate gate is not more architecture speculation: run the
+bounded no-file reference probe and verify `STREAM_READY`, sustained PCM bytes,
+and non-silent content-free energy metrics. Only then synchronize the evidence,
+rerun repository validation, and merge.
+
+This work remains Phase 5 supplemental test infrastructure. It does not accept
+Phase 5, authorize Phase 6, automate answer/hangup, or establish caller-heard
+latency.
