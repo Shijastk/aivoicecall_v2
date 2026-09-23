@@ -308,3 +308,8 @@ change the manual answer/hangup rule, authorize Phase 6, establish universal
 Android support, or support a caller-heard <500 ms claim. The next independent
 external gate is caller-phone cellular downlink capture back to Ubuntu; no
 receive implementation is promoted until reference-runtime evidence exists.
+Repository gate update: GitHub Actions run `35847203988` passed the Android
+helper build, focused tests, complete Bluetooth regression, exact four-failure
+historical full-suite baseline verification and full-diff validation on Python
+3.12/3.14. This makes the supplemental TX harness repository-ready; it does not
+change the remaining Phase-5 acceptance gates or authorize Phase 6.
