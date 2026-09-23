@@ -47,7 +47,7 @@ async def _doctor(args) -> None:
         serial=args.serial,
         require_active_call=not args.allow_no_call,
     )
-    print(f"ADB_SERIAL={preflight.serial}")
+    print("ADB_DEVICE=READY")
     print(f"ANDROID_SDK={preflight.sdk_int}")
     print(f"APP_PROCESS={preflight.app_process}")
     print(f"ACTUAL_MODE={preflight.actual_mode}")
