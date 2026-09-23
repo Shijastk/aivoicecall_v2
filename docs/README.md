@@ -41,6 +41,7 @@ create a caller-heard latency claim.
 | Which systems have compatibility evidence? | [COMPATIBILITY.md](COMPATIBILITY.md) | Reference evidence and validation policy |
 | What is next, and what permits advancing? | [ROADMAP.md](ROADMAP.md), [phases/](phases/) | Phase 1 complete; Phase 2 implemented; Phase 3 implemented/reference-validated; later integration phases pending |
 | How should changes be tested? | [TESTING.md](TESTING.md) | Code inventory, historical baseline, future gates |
+| How are synthetic conversation/provider-pipeline benchmarks scoped and prevented from becoming live-device claims? | [BLUETOOTH_CONVERSATION_BENCHMARK.md](BLUETOOTH_CONVERSATION_BENCHMARK.md) | Additive benchmark evidence contract; live HFP/cellular boundaries remain separate |
 | What is uncertain or problematic? | [KNOWN_ISSUES.md](KNOWN_ISSUES.md) | Recorded failures, source findings, unknowns |
 | Why these boundaries? | [DECISIONS.md](DECISIONS.md) | Decisions, evidence and revisit conditions |
 | What instructions govern work? | [../AGENTS.md](../AGENTS.md) | Permanent repository guidance |
