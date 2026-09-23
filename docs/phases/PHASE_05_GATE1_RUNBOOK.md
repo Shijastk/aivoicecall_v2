@@ -290,3 +290,16 @@ and answered manually, records no raw audio, performs no automatic hangup, and
 does not make local timestamps into caller-heard latency evidence. It is suitable
 for repeatable caller stimulus; the reverse caller-phone downlink path is not yet
 validated and therefore full closed-loop automation is not claimed.
+## Supplemental caller-side receive probe — 2026-09-23
+
+Independent capability evidence now exists for the itel P683L using upstream
+scrcpy 4.1 `voice-call-downlink`; clear Galaxy A10 speech reached Ubuntu, and
+headphone monitoring eliminated acoustic echo.
+
+The repository-owned receive candidate is intentionally gated separately. During
+a manually established/answered authorized cellular call, its bounded
+`scripts/dev/17_android_cellular_rx.py probe` command may consume downlink PCM
+only in memory and print content-free byte/RMS/conversion metrics. It must not
+write a raw-audio file, automate call control, or be interpreted as a latency
+measurement. Failure to reach `STREAM_READY` or capture sustained non-silent
+data is a stop condition, not a reason to bypass the route/permission checks.
