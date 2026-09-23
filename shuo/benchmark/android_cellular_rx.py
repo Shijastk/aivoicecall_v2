@@ -29,9 +29,15 @@ class AndroidCellularRxError(RuntimeError):
 
 
 DEFAULT_REMOTE_RX_DEX = "/data/local/tmp/shuo-telephony-rx-bridge.dex"
-_REQUIRED_RX_PERMISSIONS = (
-    "android.permission.RECORD_AUDIO",
+_REQUIRED_RX_PRIVAPP_PERMISSIONS = (
     "android.permission.CAPTURE_AUDIO_OUTPUT",
+)
+_REQUIRED_RX_RUNTIME_PERMISSIONS = (
+    "android.permission.RECORD_AUDIO",
+)
+_REQUIRED_RX_PERMISSIONS = (
+    *_REQUIRED_RX_RUNTIME_PERMISSIONS,
+    *_REQUIRED_RX_PRIVAPP_PERMISSIONS,
 )
 
 ANDROID_RX_SAMPLE_RATE = 48_000
@@ -65,6 +71,25 @@ def _decode(command: CompletedCommand) -> str:
 
 def _stderr(command: CompletedCommand) -> str:
     return command.stderr.decode("utf-8", errors="replace").strip()
+
+
+def package_permission_is_granted(output: str, permission: str) -> bool:
+    """Parse one explicit dumpsys-package grant row.
+
+    RECORD_AUDIO is a dangerous/runtime permission in AOSP, so it is not
+    expected to appear in the privapp allowlist. Match only a concrete
+    `permission: granted=true` row; a requested-permission mention is not
+    sufficient evidence.
+    """
+
+    prefix = f"{permission}:"
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if not line.startswith(prefix):
+            continue
+        fields = line[len(prefix):].strip().split(",")
+        return any(field.strip() == "granted=true" for field in fields)
+    return False
 
 
 async def _run_checked(
@@ -135,16 +160,33 @@ async def preflight_android_cellular_rx(
         ),
         label="read shell privapp permissions",
     )
-    grants = parse_privapp_permissions(_decode(grants_result))
-    missing = [
+    privapp_grants = parse_privapp_permissions(_decode(grants_result))
+    missing_privapp = [
         permission
-        for permission in _REQUIRED_RX_PERMISSIONS
-        if permission not in grants
+        for permission in _REQUIRED_RX_PRIVAPP_PERMISSIONS
+        if permission not in privapp_grants
     ]
-    if missing:
+    if missing_privapp:
         raise AndroidCellularRxError(
             "shell privapp allowlist is missing required receive permission(s): "
-            + ", ".join(missing)
+            + ", ".join(missing_privapp)
+        )
+
+    package_result = await _run_checked(
+        process_runner,
+        adb("shell", "dumpsys", "package", "com.android.shell"),
+        label="read shell package permission grants",
+    )
+    package_text = _decode(package_result)
+    missing_runtime = [
+        permission
+        for permission in _REQUIRED_RX_RUNTIME_PERMISSIONS
+        if not package_permission_is_granted(package_text, permission)
+    ]
+    if missing_runtime:
+        raise AndroidCellularRxError(
+            "shell package is missing granted runtime receive permission(s): "
+            + ", ".join(missing_runtime)
         )
 
     audio_result = await _run_checked(
