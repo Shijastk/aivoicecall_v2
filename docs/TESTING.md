@@ -782,3 +782,24 @@ binary stdin transport, PCM16 alignment, existing Pocket-provider ->
 invariants. Java compilation and the normal Bluetooth/full-suite regression are
 part of the temporary branch validation gate; final results are recorded only
 after that gate completes.
+### Android cellular TX automated repository gate — 2026-09-23
+
+GitHub Actions run `35847203988` validated branch revision
+`4e0feffd1013ee2cb5c3d397a37374763d6c424a` on CPython 3.12 and 3.14.
+Both matrix jobs passed:
+
+- changed-Python compilation;
+- Java `TelephonyTxBridge` compilation and DEX conversion with the
+  Debian/Ubuntu Android API-23 toolchain;
+- focused Android-TX + Bluetooth-codec regression: **17 passed**;
+- complete Bluetooth regression: **162 passed**;
+- full root regression with the exact historical baseline verifier:
+  **1016 passed / 4 expected failed** on both Python versions;
+- full branch `git diff --check origin/main...HEAD`.
+
+Warnings were 3 on Python 3.12 and 12 on Python 3.14 in the full suite. The four
+failures were exactly the already-documented identities/signatures; the gate
+printed `FULL_SUITE_BASELINE_CLEAN` in both jobs. No provider secret, Android
+device, cellular call or raw-audio artifact was used by CI. Reference-device
+runtime evidence remains the separate external proof for actual Telephony Tx
+routing and remote audibility.
