@@ -358,3 +358,17 @@ turns and emits TX turns while keeping manual call answer/hangup and all existin
 Phase-5 privacy/acceptance restrictions.
 
 This milestone does not accept Phase 5 or authorize Phase 6.
+## Phase 5 closed-loop real-cellular synthetic caller — 2026-09-23
+
+The next bounded milestone is now implemented on a feature branch: compose the
+reference-qualified Android caller-side RX and TX transports into a deterministic
+real-cellular synthetic caller.
+
+Automated repository validation is baseline-clean. The remaining gate is one
+controlled reference run with the actual itel caller phone, Galaxy/SHUO endpoint,
+manual call setup, observer Deepgram Flux, prepared thinking pause, two
+interruptions and continuity checks.
+
+Do not merge/qualify this controller from CI alone. A successful run still does
+not accept Phase 5, automate call control, authorize Phase 6 or establish
+caller-heard latency.
