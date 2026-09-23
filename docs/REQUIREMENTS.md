@@ -104,3 +104,15 @@ of application/tests/providers/devices/calls, system changes, commit/push and
 Phase 2 implementation. **Product non-goals:** replacement of carriers, universal
 Android/Linux compatibility, an itel-only product, acoustic bridging, unvalidated
 codec fallback, promotional dialer work, unrelated frontend/provider migration.
+## Current owner amendment: supplemental Android cellular test transport — 2026-09-23
+
+The earlier task-specific OUT-OF-SCOPE wording above is historical. The task owner
+has now explicitly authorized implementation, test, documentation, commit and
+push of an isolated Phase-5 Android ADB synthetic-caller **transmit** harness.
+
+Permanent requirements remain unchanged: the shared SHUO/carrier boundary stays
+G.711 mu-law/8 kHz; S16LE/16 kHz/mono exists only at the isolated local device
+edge; no raw audio is persisted; manual call control remains in force for this
+harness; route selection is explicit/fail-closed; and documentation/tests ship
+with the implementation. This amendment does not by itself authorize Phase-6
+automatic call control or a caller-heard latency claim.
