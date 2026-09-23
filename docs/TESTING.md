@@ -879,3 +879,31 @@ passed on Python 3.12 and 3.14:
 
 A final repository gate is rerun after these evidence/documentation updates
 before merge.
+### Android RX SHUO-owned live reference PASS — 2026-09-23
+
+After correcting the RECORD_AUDIO permission-classification bug, the owner ran
+the repository-owned bounded receive probe during a real manually controlled
+cellular call on the itel P683L. Result:
+
+```text
+ANDROID_TELEPHONY_RX_PROBE=COMPLETE
+PCM_BYTES=1519616
+PCM_DURATION_SEC=7.915
+CHUNKS=371
+PEAK_RMS=4300
+AVERAGE_RMS=1541.0
+SHUO_MULAW_BYTES=63318
+RAW_AUDIO_PERSISTED=NO
+CALLER_AUDIO_CONTENT_LOGGED=NO
+CALLER_HEARD_LATENCY=NOT_MEASURED
+```
+
+This independently proves the SHUO helper itself can consume real cellular
+downlink from the reference phone. Non-zero RMS establishes non-silent
+content-free evidence; no transcript or raw-audio artifact was produced.
+
+GitHub Actions run `35851491443` passed on Python 3.12 and 3.14 before this
+evidence update: focused Android RX/TX + codec **28 passed**, Bluetooth
+**162 passed**, full root **1027 passed / exact 4 historical failures**,
+`FULL_SUITE_BASELINE_CLEAN`, Java helper compile/DEX and diff check all PASS.
+A final gate is rerun after the evidence/docs commit before merge.
