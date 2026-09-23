@@ -242,3 +242,17 @@ dangerous/runtime, whereas `CAPTURE_AUDIO_OUTPUT` is privileged. The preflight
 now verifies the privileged capture permission in the privapp allowlist and
 separately requires a concrete package grant for `RECORD_AUDIO`. The live
 helper remains unqualified until the corrected doctor and bounded probe pass.
+### Android RX live gate closed on reference device — 2026-09-23
+
+The earlier issue "SHUO-owned TelephonyRxBridge still requires its own live
+reference probe" is now closed for the itel P683L reference runtime. The bounded
+probe sustained 7.915 s of PCM, produced non-zero content-free energy metrics
+and converted into the SHUO mu-law boundary without raw-audio persistence.
+
+Remaining limitations are narrower:
+
+- other Android devices remain unqualified;
+- no caller-heard RX latency has been measured;
+- a full closed-loop synthetic-human controller using RX + TX together is not
+  yet promoted by this evidence alone;
+- call establishment and hangup remain manual.
