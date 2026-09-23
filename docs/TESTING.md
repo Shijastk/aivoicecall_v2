@@ -950,3 +950,27 @@ Not yet proven by CI: simultaneous ADB RX + TX on the live reference call,
 real observer-Flux progression, two cellular interruption attempts, real
 thinking-pause behavior, or continuity through the actual SHUO endpoint. Those
 are the required reference runtime gate before merge.
+### Closed-loop live attempt blocked at Galaxy Bluetooth discovery — 2026-09-23
+
+The first combined itel/Galaxy/SHUO live attempt reached the real-device setup
+with the Galaxy A10 paired/trusted/connected at Bluetooth level and the itel
+caller phone visible over ADB in `MODE_IN_CALL`. Starting the Galaxy-side SHUO
+runner then failed before session construction with:
+
+```text
+shuo.bluetooth.pipewire.PipeWireSelectionError:
+no compatible Bluetooth downlink target for 04:BA:8D:42:97:B1
+```
+
+This is a fail-closed discovery result, not a closed-loop controller failure.
+`build_phase3_ai_only_session()` calls fresh `pw-dump` discovery and
+`select_target()`; the downlink selector accepts only the validated HFP
+contract (BlueZ SCO source, headset-audio-gateway profile, mSBC,
+S16LE/16 kHz/mono, matching address). `bluetoothctl Connected: yes` alone does
+not prove that an active compatible SCO call node exists.
+
+No SHUO Bluetooth session, Pocket response path, or closed-loop Android
+controller started in this attempt, so no barge-in/continuity/closed-loop result
+can be inferred. The next step is content-free PipeWire graph inspection while
+the cellular call is active; do not weaken selector requirements until the live
+graph identifies the missing/mismatched property.
