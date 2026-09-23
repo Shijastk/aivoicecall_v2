@@ -760,3 +760,43 @@ Limit: this evidence establishes repository correctness only. It does not select
 phrase/history/pre-roll defaults and does not establish provider/server latency,
 Bluetooth XRUN/audio quality, prepared-stream latency gain, or caller mouth-to-ear
 performance. Those remain controlled real-path Phase 4 acceptance evidence.
+
+
+## Phase 5 supplemental human-sim benchmark — repository validation 2026-09-23
+
+The additive `human-sim` mode in
+`scripts/dev/15_conversation_benchmark.py` is a deterministic provider-pipeline
+test intended to reduce manual conversational checking without changing the
+Phase 5 live acceptance contract.
+
+The benchmark:
+
+- pre-synthesizes caller utterances in memory with Pocket TTS and writes no raw
+  audio files;
+- replays them at the isolated Bluetooth S16LE/16 kHz boundary cadence;
+- uses real Deepgram Flux at final EOT threshold `0.8`, the real SHUO
+  state/action loop, real Groq, Pocket Agent TTS and `AudioPlayer`;
+- exercises a deliberate thinking pause, two independent barge-ins, late-audio
+  cancellation checks, grounded unknown-fact handling and short-session
+  continuity across at least ten Agent turns;
+- is hard-capped at 300 seconds;
+- explicitly reports PipeWire/BlueZ HFP transport, cellular transport,
+  phone/network echo and caller-heard latency as `NOT_MEASURED`.
+
+It does **not** replace the manual cellular/Bluetooth Gate 1 run. In particular,
+no synthetic local write may be promoted to a handset-audible boundary or a
+caller-heard `<500 ms` claim.
+
+Temporary branch validation at source revision
+`9296f3a8b107547b831d9d7323060cbd0fd98578` completed successfully on
+GitHub Actions run `35820496134` for CPython 3.12 and 3.14. Both jobs passed
+Python compilation, CLI smoke, focused benchmark/TTS/Bluetooth/Player regression,
+offline orchestration smoke, the complete Bluetooth suite, full branch
+`git diff --check`, and exact full-suite baseline verification. The full suite
+retained only the four documented historical failure identities/signatures; no
+new failure identity was accepted as baseline.
+
+This automated gate did not contain provider credentials, so the real
+Deepgram/Groq `human-sim` scenario itself remains an owner-machine execution
+step. Its output must be interpreted according to
+`docs/BLUETOOTH_CONVERSATION_BENCHMARK.md`.
