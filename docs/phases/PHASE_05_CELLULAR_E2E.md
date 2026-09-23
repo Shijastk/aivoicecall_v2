@@ -136,3 +136,19 @@ A local timing probe observed Pocket-ready at 531.8 ms and first PCM at 630.2 ms
 from that probe process start. The difference is component-local evidence only.
 Phase 5 remains not accepted by this supplemental result. Reverse/downlink capture
 is separately unvalidated, and Phase 6 remains outside this implementation.
+## Supplemental cellular downlink evidence and receive candidate — 2026-09-23
+
+The owner completed the previously missing reference-phone capability check with
+upstream scrcpy 4.1. On the itel P683L during `MODE_IN_CALL`,
+`voice-call-downlink --require-audio` delivered Galaxy A10 speech clearly to
+Ubuntu. With Ubuntu monitoring on headphones the result was clear with no echo.
+
+This is sufficient to authorize a bounded SHUO-owned receive candidate using the
+same Android `VOICE_DOWNLINK` direct-capture concept and proven
+PCM16/48 kHz/stereo shape. It is not sufficient to pre-write a PASS for the new
+helper. The candidate must separately demonstrate its own `STREAM_READY` and
+non-silent content-free capture metrics on the reference call.
+
+All existing Phase-5 restrictions remain: manual answer/hangup, no raw-audio
+persistence, content-free public diagnostics, no Phase 6, and no caller-heard
+latency claim from local timestamps.
