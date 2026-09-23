@@ -803,3 +803,26 @@ printed `FULL_SUITE_BASELINE_CLEAN` in both jobs. No provider secret, Android
 device, cellular call or raw-audio artifact was used by CI. Reference-device
 runtime evidence remains the separate external proof for actual Telephony Tx
 routing and remote audibility.
+## Android cellular RX capability and candidate gate — 2026-09-23
+
+Reference external capability proof:
+
+- itel P683L / Android 13 connected over USB ADB;
+- active call reported `MODE_IN_CALL`;
+- upstream scrcpy 4.1 started with
+  `--audio-source=voice-call-downlink --require-audio`;
+- current scrcpy source maps that option to
+  `MediaRecorder.AudioSource.VOICE_DOWNLINK` and direct `AudioRecord`;
+- Galaxy A10 call speech was heard clearly on Ubuntu;
+- after Ubuntu monitoring moved to headphones, the owner reported
+  **clear, no echo**.
+
+The repository candidate is intentionally tested separately. Automated tests
+cover RX preflight permission/call-mode failure paths, fragmented stereo PCM
+conversion into the unchanged SHUO mu-law/8 kHz boundary, long-lived binary
+stdout transport without TTY/stdin, content-free bounded probe metrics, and
+source invariants forbidding an audio-file path. Java compilation/DEX creation,
+Bluetooth regression and exact historical full-suite baseline verification are
+required before the live SHUO-helper probe.
+
+No raw audio artifact is retained by the probe.
