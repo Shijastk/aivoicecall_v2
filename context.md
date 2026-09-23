@@ -423,3 +423,19 @@ was fixed and the entire relevant gate was rerun rather than bypassed. No live
 provider/device/cellular call was performed. Phase 4 remains open only for
 controlled real-path acceptance evidence; no new default or latency claim and no
 Phase 5 advancement follows from this repository milestone.
+## 2026-09-23 — rootless Android ADB cellular synthetic-caller TX milestone
+
+Task-owner supplied experiments on itel P683L/Android 13 proved a unique
+`TYPE_TELEPHONY` output is visible to shell UID 2000 and that an AudioTrack
+request actually routes to telephony type 18 during `MODE_IN_CALL`. Tone,
+Pocket-generated speech and live binary PCM sent over USB ADB stdin were heard
+clearly on the remote Galaxy A10 over the real cellular network. A final stream
+ended with `STREAM_DONE` / `ADB_EXIT=0`.
+
+Decision: codify only the proven transmit half as an isolated dev/benchmark
+harness using the existing Pocket provider seam and `BluetoothOutboundCodec`.
+Keep carrier/core mu-law unchanged, preserve manual call control and no raw-audio
+persistence, do not depend on Vobiz for this path, and label caller-heard latency
+unmeasured. Local timing observed Pocket-ready 531.8ms and first PCM 630.2ms from
+probe-process start; these are not remote latency evidence. Reverse cellular
+downlink capture is the next evidence gate and is not claimed implemented.
