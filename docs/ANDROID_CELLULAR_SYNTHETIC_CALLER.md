@@ -209,3 +209,52 @@ content-free evidence, and reached the existing SHUO mu-law/8 kHz boundary
 without persisting raw audio. Together with the already-merged TX path, both
 caller-side cellular media directions are now independently reference-validated.
 Call establishment/hangup remain manual; no latency claim follows.
+## Real-cellular closed-loop synthetic caller candidate — 2026-09-23
+
+With caller-side ADB TX and RX independently reference-qualified, the owner
+authorized the next Phase-5 development layer: a deterministic synthetic caller
+that listens to SHUO over the real cellular downlink and replies over the real
+cellular uplink while call establishment/hangup remain manual.
+
+Repository candidate:
+
+- `shuo/benchmark/android_cellular_loop.py`;
+- `scripts/dev/18_android_cellular_closed_loop.py`;
+- `tests/test_android_cellular_loop.py`.
+
+The controller pre-synthesizes all caller prompts in memory with Pocket before
+the scenario, keeps one TX and one RX helper alive, converts RX PCM into the
+unchanged SHUO mu-law/8 kHz boundary, and sends only that in-memory stream to a
+separate Deepgram Flux observer at final EOT threshold `0.8`.
+
+The deterministic scenario exercises:
+
+- ordinary real-cellular turns;
+- a 650 ms caller thinking pause using already-prepared audio on both sides of
+  the pause so local TTS generation delay is not hidden inside the pause;
+- two interruption attempts sent only after downlink speech has started;
+- caller-provided continuity facts (`mango` and `orbit seven`) scored only
+  in memory;
+- at least ten observed remote response EOTs;
+- a hard 300-second scenario cap.
+
+Response transcript text is never printed or serialized. The optional JSON
+report contains only boolean checks, counts, local timings and limitations. Raw
+audio is never persisted.
+
+Automated repository gate at revision `5d40f1817499f4cb117a3054cce75dfb390dbc0e`,
+GitHub Actions run `35853641593`, passed on Python 3.12 and 3.14:
+
+- focused closed-loop + Android RX/TX + codec: **36 passed**;
+- Bluetooth regression: **162 passed**;
+- full root: **1035 passed / exact 4 historical failures**;
+- `FULL_SUITE_BASELINE_CLEAN` in both jobs;
+- CLI smoke and full branch diff validation: PASS.
+
+The first automated attempt had one new test failure because the report test's
+own limitation string contained the word `transcript`; no production code
+failed. The test fixture wording was corrected and the complete gate rerun.
+
+The controller is **not yet reference-runtime qualified**. Simultaneous TX + RX,
+real Deepgram observer progression, pause behavior and two real-cellular
+interruptions must pass on the itel/Galaxy/SHUO path before merge.
