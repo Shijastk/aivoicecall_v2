@@ -321,3 +321,10 @@ headphone monitoring, the owner reported no echo.
 The SHUO-owned receive bridge remains a separate candidate until its own bounded
 reference probe passes. The provider-only `human-sim` still has no cellular
 transport, and no surface may be used to infer caller-heard latency.
+## Android caller-side RX transport qualified — 2026-09-23
+
+The SHUO-owned receive bridge has now independently passed on the reference itel
+P683L, so the caller-side real-cellular harness has validated TX and RX
+transport directions. This remains distinct from the provider-only human-sim
+benchmark and from a complete closed-loop synthetic-human conversation
+controller. No caller-heard latency is inferred from the transport probe.
