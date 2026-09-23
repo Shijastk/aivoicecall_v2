@@ -907,3 +907,19 @@ evidence update: focused Android RX/TX + codec **28 passed**, Bluetooth
 **162 passed**, full root **1027 passed / exact 4 historical failures**,
 `FULL_SUITE_BASELINE_CLEAN`, Java helper compile/DEX and diff check all PASS.
 A final gate is rerun after the evidence/docs commit before merge.
+### Android RX post-live-evidence repository gate — 2026-09-23
+
+GitHub Actions run `35852151711` validated the branch after the live PASS
+evidence and synchronized documentation. Both Python 3.12 and 3.14 jobs passed:
+
+- focused Android RX/TX + codec regression: **28 passed**;
+- complete Bluetooth regression: **162 passed**;
+- full root regression: **1027 passed / exact 4 historical failures**;
+- exact failure-identity/signature verifier: `FULL_SUITE_BASELINE_CLEAN`;
+- Java `TelephonyRxBridge` compile + DEX conversion: PASS;
+- full branch diff validation: PASS.
+
+Warnings were 3 on Python 3.12 and 12 on Python 3.14 in the full suite. No new
+failure identity/signature was introduced. This gate used no phone, provider
+secret or raw-audio artifact; the separate itel live probe above is the
+reference-device runtime evidence.
