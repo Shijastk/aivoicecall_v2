@@ -10,6 +10,7 @@ from shuo.benchmark.android_cellular_rx import (
     AdbTelephonyRxBridge,
     AndroidCellularRxCodec,
     AndroidCellularRxError,
+    package_permission_is_granted,
     preflight_android_cellular_rx,
     probe_android_cellular_rx,
 )
@@ -23,6 +24,24 @@ def _command(argv, stdout="", stderr="", returncode=0):
         returncode=returncode,
         stdout=stdout.encode(),
         stderr=stderr.encode(),
+    )
+
+
+def test_package_permission_parser_requires_explicit_granted_true_row():
+    assert package_permission_is_granted(
+        "runtime permissions:\n"
+        "  android.permission.RECORD_AUDIO: granted=true, flags=[ SYSTEM_FIXED ]\n",
+        "android.permission.RECORD_AUDIO",
+    )
+    assert not package_permission_is_granted(
+        "requested permissions:\n"
+        "  android.permission.RECORD_AUDIO\n",
+        "android.permission.RECORD_AUDIO",
+    )
+    assert not package_permission_is_granted(
+        "runtime permissions:\n"
+        "  android.permission.RECORD_AUDIO: granted=false, flags=[]\n",
+        "android.permission.RECORD_AUDIO",
     )
 
 
@@ -49,10 +68,13 @@ async def test_rx_preflight_requires_capture_permissions_and_active_call():
             {"stdout": "List of devices attached\nSERIAL device usb:3-4\n"},
             {"stdout": "33\n"},
             {"stdout": "/system/bin/app_process\n"},
+            {"stdout": "{android.permission.CAPTURE_AUDIO_OUTPUT}"},
             {
                 "stdout": (
-                    "{android.permission.RECORD_AUDIO, "
-                    "android.permission.CAPTURE_AUDIO_OUTPUT}"
+                    "requested permissions:\n"
+                    "  android.permission.RECORD_AUDIO\n"
+                    "runtime permissions:\n"
+                    "  android.permission.RECORD_AUDIO: granted=true, flags=[ SYSTEM_FIXED ]\n"
                 )
             },
             {
@@ -94,7 +116,7 @@ async def test_rx_preflight_fails_closed_when_capture_permission_missing():
             {"stdout": "List of devices attached\nSERIAL device\n"},
             {"stdout": "33\n"},
             {"stdout": "/system/bin/app_process\n"},
-            {"stdout": "{android.permission.RECORD_AUDIO}"},
+            {"stdout": "{}"},
         ]
     )
     tools = AndroidBuildTools(
@@ -113,16 +135,50 @@ async def test_rx_preflight_fails_closed_when_capture_permission_missing():
 
 
 @pytest.mark.asyncio
+async def test_rx_preflight_fails_closed_when_record_audio_not_granted():
+    runner = FakeRunner(
+        [
+            {"stdout": "List of devices attached\nSERIAL device\n"},
+            {"stdout": "33\n"},
+            {"stdout": "/system/bin/app_process\n"},
+            {"stdout": "{android.permission.CAPTURE_AUDIO_OUTPUT}"},
+            {
+                "stdout": (
+                    "requested permissions:\n"
+                    "  android.permission.RECORD_AUDIO\n"
+                    "runtime permissions:\n"
+                    "  android.permission.RECORD_AUDIO: granted=false, flags=[]\n"
+                )
+            },
+        ]
+    )
+    tools = AndroidBuildTools(
+        javac="javac",
+        android_jar=Path("/unused/android.jar"),
+        dx=Path("/unused/dx"),
+        adb="adb",
+    )
+
+    with pytest.raises(AndroidCellularRxError, match="RECORD_AUDIO"):
+        await preflight_android_cellular_rx(
+            tools,
+            serial="SERIAL",
+            runner=runner,
+        )
+
+
+@pytest.mark.asyncio
 async def test_rx_preflight_rejects_non_call_mode():
     runner = FakeRunner(
         [
             {"stdout": "List of devices attached\nSERIAL device\n"},
             {"stdout": "33\n"},
             {"stdout": "/system/bin/app_process\n"},
+            {"stdout": "{android.permission.CAPTURE_AUDIO_OUTPUT}"},
             {
                 "stdout": (
-                    "{android.permission.RECORD_AUDIO, "
-                    "android.permission.CAPTURE_AUDIO_OUTPUT}"
+                    "runtime permissions:\n"
+                    "  android.permission.RECORD_AUDIO: granted=true, flags=[ SYSTEM_FIXED ]\n"
                 )
             },
             {
