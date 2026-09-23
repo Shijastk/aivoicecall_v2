@@ -302,3 +302,12 @@ The real-Flux extension is still Phase-4 provider-pipeline evidence only. The
 repository's Phase-5 contract separately owns controlled cellular E2E validation,
 and Phase 6 owns automated call-control lifecycle. This harness does not advance
 either phase.
+## Relationship to the Android cellular TX harness — 2026-09-23
+
+The provider-only `human-sim` benchmark and the Android ADB cellular TX
+harness are different evidence surfaces. The former has no device/cellular
+transport. The latter has reference-proven real cellular **transmit** from an
+itel caller phone, but its reverse/downlink receive path is not yet validated.
+
+Neither surface alone is a fully automated real-cellular conversation benchmark,
+and neither may be used to manufacture a caller-heard latency measurement.

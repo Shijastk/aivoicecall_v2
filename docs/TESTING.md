@@ -760,3 +760,46 @@ Limit: this evidence establishes repository correctness only. It does not select
 phrase/history/pre-roll defaults and does not establish provider/server latency,
 Bluetooth XRUN/audio quality, prepared-stream latency gain, or caller mouth-to-ear
 performance. Those remain controlled real-path Phase 4 acceptance evidence.
+## Android ADB cellular synthetic-caller TX evidence — 2026-09-23
+
+Task-owner supplied reference-device evidence preceded repository implementation:
+
+- `app_process` ran as shell UID 2000 on itel P683L / Android 13;
+- unique `AudioDeviceInfo.TYPE_TELEPHONY` was visible;
+- active call state was `MODE_IN_CALL`;
+- actual AudioTrack route was `ROUTED_TYPE=18`;
+- tone, Pocket-generated speech and then live binary PCM over ADB stdin were
+  heard clearly at the remote Galaxy A10;
+- final live Pocket stream emitted `STREAM_DONE` and exited with code 0;
+- a local timing probe measured 531.8 ms process-start -> Pocket-ready and
+  630.2 ms process-start -> first PCM. The ~98.4 ms difference is a local
+  provider-ready-to-first-PCM observation only, not caller-heard latency.
+
+Repository tests in `tests/test_android_cellular_tx.py` are hardware-free and
+cover fail-closed ADB selection/preflight, call-mode and permission parsing,
+binary stdin transport, PCM16 alignment, existing Pocket-provider ->
+`BluetoothOutboundCodec` boundary use, and source-level actual-route/no-file
+invariants. Java compilation and the normal Bluetooth/full-suite regression are
+part of the temporary branch validation gate; final results are recorded only
+after that gate completes.
+### Android cellular TX automated repository gate — 2026-09-23
+
+GitHub Actions run `35847203988` validated branch revision
+`4e0feffd1013ee2cb5c3d397a37374763d6c424a` on CPython 3.12 and 3.14.
+Both matrix jobs passed:
+
+- changed-Python compilation;
+- Java `TelephonyTxBridge` compilation and DEX conversion with the
+  Debian/Ubuntu Android API-23 toolchain;
+- focused Android-TX + Bluetooth-codec regression: **17 passed**;
+- complete Bluetooth regression: **162 passed**;
+- full root regression with the exact historical baseline verifier:
+  **1016 passed / 4 expected failed** on both Python versions;
+- full branch `git diff --check origin/main...HEAD`.
+
+Warnings were 3 on Python 3.12 and 12 on Python 3.14 in the full suite. The four
+failures were exactly the already-documented identities/signatures; the gate
+printed `FULL_SUITE_BASELINE_CLEAN` in both jobs. No provider secret, Android
+device, cellular call or raw-audio artifact was used by CI. Reference-device
+runtime evidence remains the separate external proof for actual Telephony Tx
+routing and remote audibility.

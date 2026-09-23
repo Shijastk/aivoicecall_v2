@@ -93,3 +93,13 @@ Never mark a phase complete from code existence alone. Record gate results,
 limitations, rollback evidence and approval. No future phase is authorized by
 this setup. Report documentation conflicts; do not rewrite requirements after
 implementation merely to hide noncompliance.
+## 2026-09-23 supplemental Android cellular synthetic-caller TX
+
+The task owner authorized codifying the reference-proven, Vobiz-free Android ADB
+cellular transmit path as an isolated Phase-5 development harness. See
+[ANDROID_CELLULAR_SYNTHETIC_CALLER](ANDROID_CELLULAR_SYNTHETIC_CALLER.md).
+
+The harness is not imported by production entrypoints, keeps the shared/carrier
+audio contract at G.711 mu-law/8 kHz, performs no automatic call control, writes
+no raw audio, and does not create a caller-heard latency claim. Its Android edge
+is S16LE/16 kHz/mono, matching the already-validated Bluetooth boundary.

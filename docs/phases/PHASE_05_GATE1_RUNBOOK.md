@@ -277,3 +277,16 @@ PYTHONPATH=. \
 Pocket-backed evidence may support provider-independent functional observations: digital routing, turn-taking, interruption/cancellation mechanics, short-session continuity, manual hangup and bounded cleanup. Because Pocket inference is local CPU work and cancellation is cooperative at the vendor-yield boundary, the reference live run must specifically confirm that barge-in remains prompt while Flux/Groq/Pocket are active together and that no late Pocket audio leaks after interruption.
 
 Pocket evidence must **not** be used to claim ElevenLabs-specific latency/voice quality, production voice quality, caller mouth-to-ear `<500 ms`, or final Phase 5 quantitative latency/echo acceptance. Those remain separate evidence gates. The historical eSpeak amendment above is preserved rather than rewritten; this later Pocket amendment governs future functional Gate 1 runs.
+## Supplemental ADB synthetic-caller transmit tool — 2026-09-23
+
+A later owner-authorized development harness can inject synthetic caller speech
+from Ubuntu through an itel caller phone's real cellular uplink using USB ADB.
+Its owning documentation is
+`docs/ANDROID_CELLULAR_SYNTHETIC_CALLER.md`.
+
+This does not rewrite the historical Gate-1 manual command or its acceptance
+record. The supplemental tool still requires the cellular call to be established
+and answered manually, records no raw audio, performs no automatic hangup, and
+does not make local timestamps into caller-heard latency evidence. It is suitable
+for repeatable caller stimulus; the reverse caller-phone downlink path is not yet
+validated and therefore full closed-loop automation is not claimed.

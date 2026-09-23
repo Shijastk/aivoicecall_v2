@@ -201,3 +201,20 @@ live-qualified. In particular:
   jointly validated on a controlled real call.
 
 No sub-500ms or other caller-heard latency claim follows from the offline pass.
+## Android ADB synthetic-caller TX limits — 2026-09-23
+
+- The validated itel USB ADB connection was intermittently absent from
+  `adb devices`; the harness therefore requires an explicit connected
+  `state=device` target and never silently selects an unavailable/unauthorized
+  device.
+- An early Telephony-Tx helper consumed all PCM and printed `STREAM_DONE` but
+  could remain blocked in Android `AudioTrack.stop()/release()`. The dedicated
+  one-shot helper now exits after bounded drain and the host retains bounded
+  terminate/kill fallback. This is reference-device behavior, not a universal
+  Android claim.
+- Caller-phone cellular downlink capture back to Ubuntu is not yet
+  reference-runtime validated. Therefore the new path proves synthetic caller
+  **transmit** only; fully automated listen/decide/respond caller simulation
+  remains a later evidence gate.
+- The local Pocket timing markers do not establish caller-heard or mouth-to-ear
+  latency.

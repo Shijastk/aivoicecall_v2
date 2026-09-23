@@ -94,3 +94,20 @@ Player pre-roll is constrained to the already permitted two/three-frame range,
 with three retained as default. No claim is made that another phone, PipeWire
 version, codec/profile, provider region or operating system supports the reference
 Bluetooth path until independently qualified.
+## Supplemental Android ADB synthetic-caller TX — 2026-09-23
+
+Reference-only compatibility evidence now includes an itel P683L running Android
+13/API 33 as a **caller-side synthetic-audio injector** over USB ADB. During an
+active manually controlled cellular call, shell UID 2000 could enumerate a unique
+`TYPE_TELEPHONY` output and an `AudioTrack` explicitly routed to it returned
+actual `ROUTED_TYPE=18`. Generated tone, Pocket speech and live ADB-stdin PCM
+were heard at the remote Galaxy A10.
+
+This does not qualify arbitrary Android phones. Required capabilities remain
+runtime gates: connected authorized ADB target, API >=23, `app_process`, shell
+privapp routing grants, active `MODE_IN_CALL`, unique telephony output and actual
+telephony routing after playback starts. Any failure is fail-closed. USB UAC
+bidirectional audio is not part of this supported reference path.
+
+Receive/downlink capture on the itel remains unvalidated and must not be inferred
+from the transmit result.
