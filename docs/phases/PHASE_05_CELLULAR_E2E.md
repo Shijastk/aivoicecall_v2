@@ -184,3 +184,19 @@ synthetic-caller media directions are now available for Phase-5 development
 tooling. Manual call control, no raw recording, content-free public diagnostics,
 no caller-heard latency claim, Phase-5-not-accepted status and the Phase-6 block
 all remain unchanged.
+## Closed-loop caller automation candidate — 2026-09-23
+
+A deterministic caller-side controller now composes the independently validated
+itel ADB RX/TX media directions. It keeps the cellular call itself manual and
+uses only in-memory caller audio plus a separate Deepgram Flux observer on the
+real downlink.
+
+The scripted scenario targets the still-useful functional observations: ordinary
+multi-turn continuity, a sub-0.8-second prepared thinking pause, two
+interruptions while remote speech is active, and at least ten observed response
+turns. Response transcript text is not emitted as public evidence; only boolean
+content checks and content-free timings/counts leave the process.
+
+Repository tests have passed, but the controller remains a candidate until the
+combined real-cellular run succeeds. This does not alter the remaining formal
+Phase-5 quantitative latency/echo acceptance gate.
