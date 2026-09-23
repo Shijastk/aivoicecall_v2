@@ -110,3 +110,10 @@ upstream scrcpy 4.1. A SHUO-owned no-file receive bridge candidate is under the
 same [ANDROID_CELLULAR_SYNTHETIC_CALLER](ANDROID_CELLULAR_SYNTHETIC_CALLER.md)
 evidence record and remains gated by its own live reference probe before
 qualification.
+### Android caller-side RX qualified — 2026-09-23
+
+The SHUO-owned no-file `VOICE_DOWNLINK` bridge has now passed its independent
+reference-device probe. TX and RX transport directions are both
+reference-validated; see
+[ANDROID_CELLULAR_SYNTHETIC_CALLER](ANDROID_CELLULAR_SYNTHETIC_CALLER.md) for
+the exact evidence and remaining closed-loop/controller limits.
