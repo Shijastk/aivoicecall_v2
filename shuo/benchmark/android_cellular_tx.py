@@ -32,8 +32,8 @@ _REQUIRED_PRIVAPP_PERMISSIONS = (
     "android.permission.MODIFY_PHONE_STATE",
     "android.permission.MODIFY_AUDIO_ROUTING",
 )
-_DEVICE_LINE = re.compile(r"^(?P<serial>\\S+)\\s+(?P<state>\\S+)(?:\\s+(?P<details>.*))?$")
-_MODE_IN_CALL = re.compile(r"Actual mode\\s*=\\s*MODE_IN_CALL\\b")
+_DEVICE_LINE = re.compile(r"^(?P<serial>\S+)\s+(?P<state>\S+)(?:\s+(?P<details>.*))?$")
+_MODE_IN_CALL = re.compile(r"Actual mode\s*=\s*MODE_IN_CALL\b")
 
 
 @dataclass(frozen=True)
@@ -131,7 +131,7 @@ def choose_adb_serial(devices: Sequence[AdbDevice], requested: Optional[str]) ->
 
 
 def parse_privapp_permissions(output: str) -> frozenset[str]:
-    return frozenset(re.findall(r"android\\.permission\\.[A-Z0-9_]+", output))
+    return frozenset(re.findall(r"android\.permission\.[A-Z0-9_]+", output))
 
 
 def is_mode_in_call(output: str) -> bool:
