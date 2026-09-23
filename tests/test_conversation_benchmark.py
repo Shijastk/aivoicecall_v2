@@ -219,3 +219,59 @@ async def test_flux_pipeline_requires_explicit_network_permission(tmp_path):
             manifest_path=tmp_path / "missing.json",
             allow_provider_network=False,
         )
+
+
+@pytest.mark.asyncio
+async def test_human_sim_requires_explicit_network_permission(monkeypatch):
+    from shuo.benchmark.human_sim import run_human_sim_benchmark
+
+    monkeypatch.setenv("TTS_PROVIDER", "pocket")
+    monkeypatch.setenv("TTS_FALLBACK_PROVIDER", "")
+
+    with pytest.raises(PermissionError, match="allow-provider-network"):
+        await run_human_sim_benchmark(allow_provider_network=False)
+
+
+@pytest.mark.asyncio
+async def test_human_sim_requires_unambiguous_pocket_agent_route(monkeypatch):
+    from shuo.benchmark.human_sim import run_human_sim_benchmark
+
+    monkeypatch.setenv("TTS_PROVIDER", "elevenlabs")
+    monkeypatch.setenv("TTS_FALLBACK_PROVIDER", "")
+
+    with pytest.raises(ValueError, match="locked to TTS_PROVIDER=pocket"):
+        await run_human_sim_benchmark(allow_provider_network=True)
+
+
+@pytest.mark.asyncio
+async def test_provider_benchmark_pocket_route_does_not_require_elevenlabs_key(monkeypatch):
+    from shuo.benchmark.conversation import run_provider_benchmark
+
+    monkeypatch.setenv("TTS_PROVIDER", "pocket")
+    monkeypatch.setenv("TTS_FALLBACK_PROVIDER", "")
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        await run_provider_benchmark(allow_provider_network=True)
+
+    message = str(exc_info.value)
+    assert "GROQ_API_KEY" in message
+    assert "ELEVENLABS_API_KEY" not in message
+
+
+@pytest.mark.asyncio
+async def test_provider_benchmark_default_route_still_requires_elevenlabs_key(monkeypatch):
+    from shuo.benchmark.conversation import run_provider_benchmark
+
+    monkeypatch.delenv("TTS_PROVIDER", raising=False)
+    monkeypatch.delenv("TTS_FALLBACK_PROVIDER", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        await run_provider_benchmark(allow_provider_network=True)
+
+    message = str(exc_info.value)
+    assert "GROQ_API_KEY" in message
+    assert "ELEVENLABS_API_KEY" in message
