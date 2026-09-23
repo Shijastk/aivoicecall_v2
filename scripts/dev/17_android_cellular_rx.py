@@ -52,7 +52,8 @@ async def _doctor(args) -> None:
     print(f"ANDROID_SDK={preflight.sdk_int}")
     print(f"APP_PROCESS={preflight.app_process}")
     print(f"ACTUAL_MODE={preflight.actual_mode}")
-    print("PRIVAPP_RX_PERMISSIONS=OK")
+    print("PRIVAPP_CAPTURE_PERMISSION=OK")
+    print("RUNTIME_RECORD_PERMISSION=OK")
 
 
 async def _probe(args) -> None:
