@@ -77,3 +77,15 @@ The reference runtime consumed all stdin and emitted `STREAM_DONE`, but an earli
 ## Reverse/downlink status
 
 The caller-phone cellular downlink-to-ADB receive path is **not yet runtime-validated on the itel reference device**. Do not describe the synthetic caller as fully automated until that receive path is demonstrated. The next external gate is a disposable no-file downlink probe; only proven behavior should be promoted into supported repository code.
+## Automated repository validation
+
+GitHub Actions run `35847203988` passed the Android/Java build, focused harness
+and codec tests, the full Bluetooth regression, exact historical full-suite
+baseline verification, and full branch diff validation on Python 3.12 and 3.14.
+The validated revision was
+`4e0feffd1013ee2cb5c3d397a37374763d6c424a`.
+
+CI proves repository/build/regression correctness only. Actual Telephony Tx
+routing and remote audibility are supported by the separate reference-device
+evidence above; caller-heard latency and reverse/downlink capture remain
+unmeasured/unvalidated respectively.
