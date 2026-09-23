@@ -284,3 +284,14 @@ The controller remains unqualified until one controlled reference run proves:
 - manual hangup/cleanup remains bounded.
 
 No latency threshold is invented for this gate.
+### Galaxy A10 connected but compatible SCO downlink absent in first closed-loop attempt — 2026-09-23
+
+During the first combined live attempt, `bluetoothctl` reported the Galaxy A10
+paired, trusted and connected, but fresh PipeWire discovery returned no
+compatible downlink target for its address. The SHUO runner correctly failed
+closed before opening any default source.
+
+Root cause is not yet established. Possibilities such as an HFP SCO node not
+being active or a live property/codec/format mismatch must be distinguished from
+the actual `pw-dump` graph; they are not treated as conclusions. The validated
+selector contract remains unchanged pending that evidence.
