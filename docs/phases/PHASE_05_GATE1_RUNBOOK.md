@@ -343,3 +343,22 @@ It may not dial, answer, hang up, save raw audio, serialize response transcripts
 or turn local timings into caller-heard latency. Maximum scenario duration
 remains 300 seconds. Any timeout/provider/device error is a failed supplemental
 run, not permission to weaken a gate.
+### Closed-loop preflight correction after first Galaxy attempt — 2026-09-23
+
+For the Galaxy-side SHUO leg, `bluetoothctl Connected: yes` is not a sufficient
+precondition. Before starting `run_bluetooth_ai.py`, verify that the active
+cellular call has produced compatible BlueZ SCO PipeWire nodes.
+
+Use the existing content-free graph helper while the call is active:
+
+```bash
+cd /tmp/shuo-cellular-loop
+./scripts/dev/07_bluetooth_graph.sh
+wpctl status
+```
+
+Do not continue to the closed-loop controller unless the graph contains the
+Galaxy call's BlueZ SCO capture/playback pair. If the SHUO runner reports
+`no compatible Bluetooth downlink target`, stop and inspect the live graph;
+do not remove the address/profile/codec/format gates or fall back to a default
+microphone/speaker.
