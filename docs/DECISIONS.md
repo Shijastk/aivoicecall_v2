@@ -176,3 +176,21 @@ Before changing repository code, Pocket TTS 3.1.0 and Supertonic 3 were compared
 Decision: keep ElevenLabs as the unchanged default/production-quality provider; use `TTS_PROVIDER=pocket` for cost-free functional testing and permit `TTS_FALLBACK_PROVIDER=pocket` only for the existing pre-first-audio recovery contract. Pocket is an optional Python dependency profile (`requirements-pocket-tts.txt`) rather than part of the default install. Use the ungated built-in catalog voice `alba`; custom/gated voice cloning is outside this validated path. Native Pocket PCM must remain inside the provider module and be converted to the existing mono G.711 mu-law/8 kHz boundary. Remove eSpeak as a selectable runtime provider while preserving its historical evidence in documentation.
 
 The first real-package CI attempt supplied an `hf://...wav` prompt and failed because Pocket correctly treated it as gated voice cloning. That evidence directly drove the correction to built-in alias `alba`; no speculative workaround or credential was added. The subsequent source validation passed real Pocket synthesis, focused regression, the full Bluetooth suite, and the exact historical full-suite failure baseline. Final merge still requires the same automated gate against the final documentation/source snapshot. Manual reference-hardware validation remains required for caller-heard clarity, simultaneous CPU load, interruption/cancellation and cleanup. This decision does not accept Phase 5 and does not authorize Phase 6.
+## BT-D24 — isolate the reference-proven ADB Telephony-Tx synthetic caller — 2026-09-23
+
+Owner-authorized reference evidence proved that a shell-UID `app_process`
+helper on the itel P683L can route S16LE/16 kHz/mono to the actual Android
+`TYPE_TELEPHONY` sink during a manually controlled real cellular call, and that
+the remote Galaxy A10 hears generated speech clearly.
+
+Decision: preserve that capability only as an opt-in Phase-5 development/
+benchmark boundary. Feed it through the existing Pocket provider contract and
+`BluetoothOutboundCodec`; do not add PCM to the shared carrier core, do not use
+Vobiz for this path, do not add automatic dial/answer/hangup, do not persist raw
+audio, and fail closed unless the actual Android route is telephony. Keep one
+helper alive for multi-turn work rather than paying process/route startup on each
+utterance.
+
+The observed local Pocket-ready/first-PCM timings remain local-only evidence.
+Reverse/downlink capture must be runtime-proven independently before it becomes a
+supported receive bridge or the caller is described as fully automated.
