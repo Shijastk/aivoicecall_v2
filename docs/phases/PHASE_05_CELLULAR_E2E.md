@@ -118,3 +118,21 @@ Approved behavior:
 Detailed provider behavior, installation and regression commands are owned by [TTS_PROVIDERS](../TTS_PROVIDERS.md).
 
 For Phase 5 interpretation, eSpeak-backed live evidence may establish only provider-independent functional observations (digital duplex/routing, turn-taking, interruption mechanics, continuity, manual hangup and bounded cleanup). It cannot establish ElevenLabs TTS latency/quality or caller mouth-to-ear performance. Existing ElevenLabs runs remain separate evidence. Phase 5 remains **not accepted** until all remaining Gate 1 observations are reviewed and the final quantitative latency/echo methodology, sample and thresholds required by this document are separately approved and satisfied.
+## Owner-authorized supplemental Android ADB synthetic-caller TX — 2026-09-23
+
+The owner authorized a Vobiz-free supplemental synthetic-caller transmit path
+after direct reference-device experiments. On itel P683L / Android 13, shell UID
+2000 exposed a unique `TYPE_TELEPHONY` output; during an active manually
+controlled cellular call, `AudioTrack.getRoutedDevice()` returned telephony
+type 18. Generated tone, Pocket speech and live ADB-stdin PCM were then heard
+clearly at the remote Galaxy A10.
+
+The repository implementation is deliberately outside default production
+entrypoints and preserves all locked media/privacy boundaries: no raw-audio
+persistence, no automatic call control, no Vobiz dependency for this supplemental
+path, no shared/carrier PCM contract change, and no caller-heard latency claim.
+
+A local timing probe observed Pocket-ready at 531.8 ms and first PCM at 630.2 ms
+from that probe process start. The difference is component-local evidence only.
+Phase 5 remains not accepted by this supplemental result. Reverse/downlink capture
+is separately unvalidated, and Phase 6 remains outside this implementation.
