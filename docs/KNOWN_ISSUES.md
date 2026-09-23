@@ -266,3 +266,21 @@ and converted into the SHUO mu-law boundary without raw-audio persistence.
 Remaining limits: other Android devices are unqualified; no caller-heard RX
 latency has been measured; a complete closed-loop synthetic-human controller is
 a separate gate; and call establishment/hangup remain manual.
+## Closed-loop Android cellular controller live gate pending — 2026-09-23
+
+TX and RX are independently qualified, but simultaneous use by the new
+closed-loop controller is not inferred from those independent tests.
+
+The controller remains unqualified until one controlled reference run proves:
+
+- TX and RX helpers remain active together on the itel P683L;
+- observer Deepgram Flux receives real SHUO downlink turns;
+- the 650 ms prepared-audio thinking pause does not trigger a premature SHUO
+  response;
+- two interruption stimuli are sent while a remote response is still active and
+  each reaches a replacement response;
+- the deterministic continuity checks complete;
+- no raw audio/transcript artifact is written;
+- manual hangup/cleanup remains bounded.
+
+No latency threshold is invented for this gate.
