@@ -458,3 +458,10 @@ candidate is now implemented on a feature branch using the same proven
 PCM16/48k/stereo capture shape and an in-memory conversion to the unchanged SHUO
 mu-law/8k boundary. Its own reference probe remains the explicit promotion gate;
 no caller-heard latency or automatic call-control claim follows.
+RX candidate correction: the first SHUO `doctor` stopped on a false-negative
+permission classification because it expected dangerous/runtime
+`RECORD_AUDIO` in the privapp allowlist. AOSP source confirms
+`RECORD_AUDIO` and privileged `CAPTURE_AUDIO_OUTPUT` have different grant
+classes. The branch now checks the privileged allowlist and the explicit runtime
+package grant separately, still fail-closed. The SHUO helper itself has not yet
+run on the reference phone, so its live gate remains pending.
