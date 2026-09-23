@@ -223,3 +223,16 @@ Phase-5 development/benchmark transport, subject to final repository regression
 after the evidence/docs commit. This qualifies only the receive transport
 boundary; it does not automate call control, accept Phase 5, authorize Phase 6,
 or establish caller-heard latency.
+## BT-D31 — qualify SHUO-owned Android cellular RX on reference device — 2026-09-23
+
+The owner completed the required independent live gate for
+`TelephonyRxBridge` on the itel P683L. The bounded probe consumed 1,519,616
+PCM bytes over 371 chunks, observed peak RMS 4300 / average RMS 1541.0, and
+converted 63,318 bytes to the existing SHUO mu-law/8 kHz boundary. No raw audio
+was persisted and no speech content was logged.
+
+Decision: promote the receive helper from candidate to reference-qualified
+Phase-5 development/benchmark transport, subject to final repository regression
+after the evidence/docs commit. This qualifies only the receive transport
+boundary; it does not automate call control, accept Phase 5, authorize Phase 6,
+or establish caller-heard latency.
