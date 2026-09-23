@@ -218,3 +218,16 @@ No sub-500ms or other caller-heard latency claim follows from the offline pass.
   remains a later evidence gate.
 - The local Pocket timing markers do not establish caller-heard or mouth-to-ear
   latency.
+## Android ADB synthetic-caller RX candidate — 2026-09-23
+
+- The reference itel downlink capability is proven with upstream scrcpy 4.1,
+  but the SHUO-owned `TelephonyRxBridge` still requires its own live reference
+  probe before merge/qualification.
+- The candidate deliberately captures the same proven PCM16/48 kHz/stereo shape
+  as scrcpy, then converts in memory to SHUO mu-law/8 kHz. Do not assume a
+  lower-rate Android capture configuration is supported without evidence.
+- Laptop-speaker monitoring can create an acoustic echo path back into the
+  handset microphone. The reference verification used headphones and then
+  reported clear audio with no echo. This is a test-monitoring issue, not a
+  reason to enable any acoustic production route.
+- No receive-side latency value has been measured.
