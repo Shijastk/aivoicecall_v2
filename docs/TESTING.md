@@ -826,3 +826,20 @@ Bluetooth regression and exact historical full-suite baseline verification are
 required before the live SHUO-helper probe.
 
 No raw audio artifact is retained by the probe.
+### Android RX first doctor result and correction — 2026-09-23
+
+The first reference run of the SHUO-owned RX `doctor` failed closed before
+starting `TelephonyRxBridge`:
+
+`shell privapp allowlist is missing required receive permission(s): android.permission.RECORD_AUDIO`.
+
+Source review against AOSP showed this was a harness-check defect rather than a
+validated device denial. `RECORD_AUDIO` is a dangerous/runtime permission;
+`CAPTURE_AUDIO_OUTPUT` is signature/privileged/role. The preflight was updated
+without weakening the gate: it still requires `CAPTURE_AUDIO_OUTPUT` in the
+privapp allowlist and now additionally requires an explicit
+`RECORD_AUDIO: granted=true` package row. Tests reject requested-only and
+`granted=false` evidence.
+
+No AudioRecord helper was launched by the failed doctor, so it provides no
+positive or negative evidence about the SHUO receive bridge itself.
