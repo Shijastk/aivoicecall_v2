@@ -760,3 +760,25 @@ Limit: this evidence establishes repository correctness only. It does not select
 phrase/history/pre-roll defaults and does not establish provider/server latency,
 Bluetooth XRUN/audio quality, prepared-stream latency gain, or caller mouth-to-ear
 performance. Those remain controlled real-path Phase 4 acceptance evidence.
+## Android ADB cellular synthetic-caller TX evidence — 2026-09-23
+
+Task-owner supplied reference-device evidence preceded repository implementation:
+
+- `app_process` ran as shell UID 2000 on itel P683L / Android 13;
+- unique `AudioDeviceInfo.TYPE_TELEPHONY` was visible;
+- active call state was `MODE_IN_CALL`;
+- actual AudioTrack route was `ROUTED_TYPE=18`;
+- tone, Pocket-generated speech and then live binary PCM over ADB stdin were
+  heard clearly at the remote Galaxy A10;
+- final live Pocket stream emitted `STREAM_DONE` and exited with code 0;
+- a local timing probe measured 531.8 ms process-start -> Pocket-ready and
+  630.2 ms process-start -> first PCM. The ~98.4 ms difference is a local
+  provider-ready-to-first-PCM observation only, not caller-heard latency.
+
+Repository tests in `tests/test_android_cellular_tx.py` are hardware-free and
+cover fail-closed ADB selection/preflight, call-mode and permission parsing,
+binary stdin transport, PCM16 alignment, existing Pocket-provider ->
+`BluetoothOutboundCodec` boundary use, and source-level actual-route/no-file
+invariants. Java compilation and the normal Bluetooth/full-suite regression are
+part of the temporary branch validation gate; final results are recorded only
+after that gate completes.
