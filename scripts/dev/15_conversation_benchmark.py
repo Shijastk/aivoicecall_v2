@@ -21,6 +21,11 @@ from shuo.benchmark.flux_pipeline import (
     prepare_flux_fixture,
     run_flux_pipeline_benchmark,
 )
+from shuo.benchmark.human_sim import (
+    DEFAULT_THINKING_PAUSE_MS,
+    MAX_SCENARIO_SECONDS,
+    run_human_sim_benchmark,
+)
 
 
 def _repo_root() -> Path:
@@ -133,6 +138,14 @@ async def _run(args) -> BenchmarkReport:
             eot_threshold=args.eot_threshold,
             history_turns=args.history_turns,
         )
+    if args.command == "human-sim":
+        return await run_human_sim_benchmark(
+            allow_provider_network=args.allow_provider_network,
+            repo_root=root,
+            timeout_seconds=args.timeout,
+            thinking_pause_ms=args.thinking_pause_ms,
+            max_scenario_seconds=args.max_scenario_seconds,
+        )
     raise AssertionError(args.command)
 
 
@@ -203,6 +216,34 @@ def main() -> int:
         ),
     )
     flux_pipeline.add_argument("--json-out", type=Path)
+
+    human_sim = sub.add_parser(
+        "human-sim",
+        help=(
+            "multi-turn Pocket synthetic caller -> real Deepgram Flux -> real Groq -> "
+            "Pocket agent, with thinking pause + two barge-ins + continuity; "
+            "no PipeWire/Bluetooth/cellular"
+        ),
+    )
+    human_sim.add_argument(
+        "--allow-provider-network",
+        action="store_true",
+        help="required acknowledgement that this mode contacts Deepgram and Groq",
+    )
+    human_sim.add_argument("--timeout", type=float, default=45.0)
+    human_sim.add_argument(
+        "--thinking-pause-ms",
+        type=int,
+        default=DEFAULT_THINKING_PAUSE_MS,
+        help="silence inserted inside one synthetic caller question",
+    )
+    human_sim.add_argument(
+        "--max-scenario-seconds",
+        type=float,
+        default=MAX_SCENARIO_SECONDS,
+        help="hard Phase-5 scenario cap; values above 300 are rejected",
+    )
+    human_sim.add_argument("--json-out", type=Path)
 
     log = sub.add_parser("log", help="analyze an existing content-free Bluetooth lifecycle log")
     log.add_argument("path", type=Path)
