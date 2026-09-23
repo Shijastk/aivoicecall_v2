@@ -492,3 +492,16 @@ never serialized and raw audio is never persisted. GitHub Actions run
 
 This is not yet merged or reference-qualified. One combined itel/Galaxy/SHUO
 live run is the explicit next gate. Call answer/hangup remain manual.
+## 2026-09-23 — first combined closed-loop live attempt stopped at Bluetooth preflight
+
+The itel ADB caller side was connected and `MODE_IN_CALL`; Galaxy A10 was
+paired/trusted/connected over Bluetooth. The Galaxy-side
+`scripts/run_bluetooth_ai.py` failed before SHUO session startup with
+`PipeWireSelectionError: no compatible Bluetooth downlink target for
+04:BA:8D:42:97:B1`.
+
+This is currently a PipeWire/HFP readiness or capability-discovery question, not
+evidence against the Android RX/TX transports or the new closed-loop controller.
+Do not relax capability matching. Capture the content-free live PipeWire graph
+while the call is active and identify whether the SCO node is absent or which
+required property differs.
