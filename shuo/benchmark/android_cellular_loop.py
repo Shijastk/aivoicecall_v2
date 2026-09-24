@@ -498,6 +498,31 @@ async def run_android_cellular_closed_loop(
     ended_ns: Optional[int] = None
     checks: list[LoopCheck] = []
     metrics: list[LoopMetric] = []
+    response_observer_latencies_ms: list[float] = []
+
+    def record_response_observer_latency(
+        label: str,
+        *,
+        caller_tx_end_ns: int,
+        response_start: _RxStart,
+    ) -> None:
+        value_ms = (
+            response_start.at_ns - caller_tx_end_ns
+        ) / 1_000_000.0
+        response_observer_latencies_ms.append(value_ms)
+        metrics.append(
+            LoopMetric(
+                name=f"response_{label}_tx_end_to_observer_start_ms",
+                value=value_ms,
+                unit="ms",
+                status="MEASURED_HOST_CORRELATED",
+                note=(
+                    "host caller-TX final write timestamp to Deepgram-observed "
+                    "VOICE_DOWNLINK StartOfTurn on the itel caller; includes "
+                    "observer detection delay and is not caller-heard latency"
+                ),
+            )
+        )
 
     def ensure_rx_feed_alive() -> None:
         if feed_task is None or not feed_task.done():
@@ -539,8 +564,13 @@ async def run_android_cellular_closed_loop(
     async def normal_turn(name: str) -> _RxEnd:
         start_before = monitor.start_count
         end_before = monitor.end_count
-        await speak(name)
-        _start, end = await wait_response(start_before, end_before)
+        _tx_start_ns, tx_end_ns = await speak(name)
+        start, end = await wait_response(start_before, end_before)
+        record_response_observer_latency(
+            name,
+            caller_tx_end_ns=tx_end_ns,
+            response_start=start,
+        )
         return end
 
     async def barge_turn(
@@ -551,11 +581,16 @@ async def run_android_cellular_closed_loop(
     ) -> _RxEnd:
         start_before = monitor.start_count
         end_before = monitor.end_count
-        await speak(setup_name)
+        _setup_tx_start_ns, setup_tx_end_ns = await speak(setup_name)
 
         original_start = await monitor.wait_for_start(
             start_before,
             timeout_seconds=response_timeout_seconds,
+        )
+        record_response_observer_latency(
+            f"{label}_original",
+            caller_tx_end_ns=setup_tx_end_ns,
+            response_start=original_start,
         )
         await asyncio.sleep(barge_delay_ms / 1000.0)
 
@@ -574,12 +609,17 @@ async def run_android_cellular_closed_loop(
             )
         )
 
-        interrupt_start_ns, _ = await speak(interrupt_name)
-
-        # The interrupted response may first produce its own EOT. Require a new
-        # response start after the interrupt before accepting the replacement.
+        # Capture the replacement baselines before sending the interrupt.
+        # Otherwise a fast replacement StartOfTurn that arrives while the
+        # prepared interruption audio is still being streamed can be skipped.
         replacement_start_baseline = monitor.start_count
         replacement_end_baseline = monitor.end_count
+        interrupt_start_ns, interrupt_end_ns = await speak(interrupt_name)
+
+        # The interrupted response may first produce its own EOT. Require a new
+        # response start after the interrupt baseline before accepting the
+        # replacement; wait_for_start also returns an event that arrived while
+        # the interruption audio was still being sent.
         replacement_start = await monitor.wait_for_start(
             replacement_start_baseline,
             timeout_seconds=response_timeout_seconds,
@@ -588,6 +628,11 @@ async def run_android_cellular_closed_loop(
             replacement_start.at_ns,
             replacement_end_baseline,
             timeout_seconds=response_timeout_seconds,
+        )
+        record_response_observer_latency(
+            f"{label}_replacement",
+            caller_tx_end_ns=interrupt_end_ns,
+            response_start=replacement_start,
         )
 
         metrics.append(
@@ -647,8 +692,16 @@ async def run_android_cellular_closed_loop(
                     "ms",
                 )
             )
-            await speak("pause_b")
-            await wait_response(pause_start_count, pause_end_count)
+            _pause_b_tx_start_ns, pause_b_tx_end_ns = await speak("pause_b")
+            pause_response_start, _pause_response_end = await wait_response(
+                pause_start_count,
+                pause_end_count,
+            )
+            record_response_observer_latency(
+                "thinking_pause",
+                caller_tx_end_ns=pause_b_tx_end_ns,
+                response_start=pause_response_start,
+            )
 
             await normal_turn("normal_two")
 
@@ -730,6 +783,34 @@ async def run_android_cellular_closed_loop(
             )
         )
 
+    if response_observer_latencies_ms:
+        metrics.extend(
+            (
+                LoopMetric(
+                    "response_observer_latency_min_ms",
+                    min(response_observer_latencies_ms),
+                    "ms",
+                    status="MEASURED_HOST_CORRELATED",
+                    note="minimum across per-response host-correlated samples",
+                ),
+                LoopMetric(
+                    "response_observer_latency_avg_ms",
+                    sum(response_observer_latencies_ms)
+                    / len(response_observer_latencies_ms),
+                    "ms",
+                    status="MEASURED_HOST_CORRELATED",
+                    note="average across per-response host-correlated samples",
+                ),
+                LoopMetric(
+                    "response_observer_latency_max_ms",
+                    max(response_observer_latencies_ms),
+                    "ms",
+                    status="MEASURED_HOST_CORRELATED",
+                    note="maximum across per-response host-correlated samples",
+                ),
+            )
+        )
+
     checks.insert(
         0,
         LoopCheck(
@@ -757,6 +838,16 @@ async def run_android_cellular_closed_loop(
             "real_cellular_used": True,
             "raw_audio_written": False,
             "call_control": "manual",
+            "response_latency_definition": (
+                "host caller-TX final write -> itel VOICE_DOWNLINK "
+                "Deepgram StartOfTurn; observer delay included"
+            ),
+            "response_latency_sample_count": len(
+                response_observer_latencies_ms
+            ),
+            "response_started_before_tx_end_count": sum(
+                1 for value in response_observer_latencies_ms if value < 0
+            ),
             "rx_start_of_turn_count": monitor.start_count,
             "rx_end_of_turn_count": monitor.end_count,
         },
