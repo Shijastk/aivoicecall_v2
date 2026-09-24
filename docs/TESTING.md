@@ -974,3 +974,35 @@ controller started in this attempt, so no barge-in/continuity/closed-loop result
 can be inferred. The next step is content-free PipeWire graph inspection while
 the cellular call is active; do not weaken selector requirements until the live
 graph identifies the missing/mismatched property.
+## Phase 5 two-device closed-loop latency instrumentation — 2026-09-24
+
+The real-cellular closed-loop candidate now emits one host-correlated response
+latency sample per deterministic response. The sample boundary is synthetic
+caller paced-TX completion on Ubuntu to the separate itel VOICE_DOWNLINK Flux
+observer's StartOfTurn event. This is suitable for comparing the complete
+two-device test path on one monotonic host clock, but it is not caller-heard
+mouth-to-ear latency and no acceptance threshold is inferred from it.
+
+Expected content-free output includes:
+
+```text
+RESPONSE_LATENCY_01 response_seed_tx_end_to_observer_start_ms=...ms
+...
+RESPONSE_LATENCY_KIND=HOST_CORRELATED_OBSERVER
+RESPONSE_LATENCY_SAMPLES=...
+RESPONSE_STARTED_BEFORE_TX_END=...
+CALLER_HEARD_LATENCY=NOT_MEASURED
+```
+
+A negative individual sample, if ever observed, means the downlink observer
+reported response speech before the controller finished the caller TX boundary;
+it must be investigated rather than clamped or hidden. Min/average/max summary
+metrics are computed from the recorded samples without an invented pass/fail
+threshold.
+
+The latest owner-supplied run before this instrumentation completed 10 observed
+response EOTs in about 105.09 seconds. Closed-loop completion, seed response,
+thinking-pause behavior, both interruption timing checks and the first barge-in
+continuity check passed. The second codeword continuity check and final fruit
+continuity check failed, so the overall supplemental run remained FAIL. Fresh
+hardware evidence is required for the new latency metrics.
