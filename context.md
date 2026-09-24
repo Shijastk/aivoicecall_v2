@@ -505,3 +505,22 @@ evidence against the Android RX/TX transports or the new closed-loop controller.
 Do not relax capability matching. Capture the content-free live PipeWire graph
 while the call is active and identify whether the SCO node is absent or which
 required property differs.
+### 2026-09-24 — two-device closed loop and latency seam
+
+- Owner-supplied real itel P683L USB/ADB <-> Galaxy A10 Bluetooth/SHUO cellular
+  run completed the deterministic scenario with 10 observed remote response EOTs.
+- Closed-loop completion, seed response, 650 ms thinking-pause behavior, both
+  interruption-send-while-remote-speaking checks, and first barge-in fruit
+  continuity passed.
+- Second barge-in codeword continuity and final fruit continuity failed; overall
+  supplemental result remains FAIL. Phase 5 is not accepted and Phase 6 remains
+  unauthorized.
+- Owner authorized per-response latency instrumentation.
+- Feature-branch controller now records each response from host paced caller-TX
+  completion to itel VOICE_DOWNLINK Flux-observer StartOfTurn, plus min/average/max.
+- Measurement is explicitly `MEASURED_HOST_CORRELATED`; observer delay is included,
+  no acceptance threshold was invented, and
+  `CALLER_HEARD_LATENCY=NOT_MEASURED` remains unchanged.
+- Barge-in replacement baselines are captured before interrupt TX so a fast
+  replacement StartOfTurn cannot be skipped merely because it arrives while the
+  prepared interrupt audio is still being streamed.
