@@ -66,6 +66,31 @@ async def _run(args) -> int:
         else:
             print(f"METRIC {metric.name}={metric.value:.3f}{metric.unit}")
 
+    response_metrics = [
+        metric
+        for metric in report.metrics
+        if metric.name.startswith("response_")
+        and metric.name.endswith("_tx_end_to_observer_start_ms")
+    ]
+    for index, metric in enumerate(response_metrics, start=1):
+        if metric.value is None:
+            value = "NOT_MEASURED"
+        else:
+            value = f"{metric.value:.3f}ms"
+        print(
+            f"RESPONSE_LATENCY_{index:02d} "
+            f"{metric.name}={value}"
+        )
+    print("RESPONSE_LATENCY_KIND=HOST_CORRELATED_OBSERVER")
+    print(
+        "RESPONSE_LATENCY_SAMPLES="
+        f"{report.metadata.get('response_latency_sample_count', 0)}"
+    )
+    print(
+        "RESPONSE_STARTED_BEFORE_TX_END="
+        f"{report.metadata.get('response_started_before_tx_end_count', 0)}"
+    )
+
     print(
         "RX_TURNS="
         f"{report.metadata.get('rx_end_of_turn_count', 0)}"
