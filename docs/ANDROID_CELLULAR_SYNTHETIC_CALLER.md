@@ -258,3 +258,40 @@ failed. The test fixture wording was corrected and the complete gate rerun.
 The controller is **not yet reference-runtime qualified**. Simultaneous TX + RX,
 real Deepgram observer progression, pause behavior and two real-cellular
 interruptions must pass on the itel/Galaxy/SHUO path before merge.
+## Per-response closed-loop latency instrumentation — 2026-09-24
+
+The owner authorized adding a latency finder to the already-authorized two-device
+closed-loop controller, with one sample for every observed SHUO response. The
+measurement intentionally does not invent an acceptance threshold and does not
+rename a host-side observation as caller-heard mouth-to-ear latency.
+
+For each deterministic response, the controller now records:
+
+```text
+host timestamp after the synthetic caller's final paced ADB TX write
+-> itel VOICE_DOWNLINK
+-> separate Deepgram Flux observer StartOfTurn
+```
+
+Samples are emitted for the normal turns, the response after the prepared
+thinking-pause turn, both original barge-in setup responses, both replacement
+responses, and the final continuity turn. Summary min/average/max metrics are
+also reported.
+
+The metric status is `MEASURED_HOST_CORRELATED`. It includes real cellular,
+Galaxy Bluetooth/SHUO processing, return cellular transport, Android downlink
+capture, and observer speech-start detection. It also includes observer detection
+delay and uses a host-side TX completion boundary rather than an acoustic handset
+boundary. Therefore `CALLER_HEARD_LATENCY=NOT_MEASURED` remains mandatory.
+
+While adding this seam, the barge-in replacement baseline was moved to before
+interrupt TX. The previous ordering could miss a fast replacement StartOfTurn
+that arrived while prepared interrupt audio was still being streamed.
+
+Latest owner-supplied pre-instrumentation real-cellular run completed the
+two-device scenario and observed 10 response EOTs. Digital closed-loop progression,
+the 650 ms thinking-pause check, and both interruption-send-while-remote-speaking
+checks passed. `barge_in_2_continuity_codeword` and
+`late_session_continuity_fruit` failed, so the overall supplemental run remained
+FAIL and Phase 5 was not accepted. The new per-response latency instrumentation
+still requires a fresh reference-device runtime run.
