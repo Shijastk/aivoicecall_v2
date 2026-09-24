@@ -176,6 +176,23 @@ async def test_closed_loop_rejects_pause_that_reaches_final_eot_threshold(
         )
 
 
+def test_closed_loop_latency_output_is_host_correlated_not_caller_heard():
+    root = Path(__file__).resolve().parents[1]
+    module = (
+        root / "shuo" / "benchmark" / "android_cellular_loop.py"
+    ).read_text(encoding="utf-8")
+    cli = (
+        root / "scripts" / "dev" / "18_android_cellular_closed_loop.py"
+    ).read_text(encoding="utf-8")
+
+    assert "tx_end_to_observer_start_ms" in module
+    assert "MEASURED_HOST_CORRELATED" in module
+    assert "response_latency_sample_count" in module
+    assert "response_started_before_tx_end_count" in module
+    assert "RESPONSE_LATENCY_KIND=HOST_CORRELATED_OBSERVER" in cli
+    assert "CALLER_HEARD_LATENCY=NOT_MEASURED" in cli
+
+
 def test_closed_loop_source_has_no_automatic_call_control_or_raw_audio_writer():
     root = Path(__file__).resolve().parents[1]
     module = (
