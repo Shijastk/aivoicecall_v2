@@ -295,3 +295,19 @@ Root cause is not yet established. Possibilities such as an HFP SCO node not
 being active or a live property/codec/format mismatch must be distinguished from
 the actual `pw-dump` graph; they are not treated as conclusions. The validated
 selector contract remains unchanged pending that evidence.
+## Phase 5 closed-loop continuity failures and latency evidence — 2026-09-24
+
+A real two-device itel P683L <-> Galaxy A10/SHUO cellular run completed the
+deterministic controller with 10 observed remote response EOTs, but the overall
+result remained FAIL because `barge_in_2_continuity_codeword` and
+`late_session_continuity_fruit` failed. The first barge-in fruit continuity
+check passed. Do not attribute the two failures to STT, LLM history, cancellation,
+or transport until new evidence localizes the cause.
+
+The earlier controller exposed only interruption-start-to-observer-start and
+scenario-duration values; those are not caller-heard response latency. A new
+per-response host-correlated measurement seam has been added on the feature
+branch. It measures caller paced-TX completion to the itel downlink observer
+StartOfTurn for every deterministic response and keeps
+`CALLER_HEARD_LATENCY=NOT_MEASURED`. The new seam is not reference-runtime
+qualified yet.
