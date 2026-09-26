@@ -311,3 +311,21 @@ branch. It measures caller paced-TX completion to the itel downlink observer
 StartOfTurn for every deterministic response and keeps
 `CALLER_HEARD_LATENCY=NOT_MEASURED`. The new seam is not reference-runtime
 qualified yet.
+
+## Closed-loop response overlap observed in latency run — 2026-09-26
+
+One of ten host-correlated latency samples was negative
+(`-6238.519 ms`) during the first barge-in setup. This means the downlink
+observer registered response speech before the synthetic caller's paced TX
+boundary completed. The same run reported
+`barge_in_1_interrupt_sent_while_remote_speaking=FAIL`.
+
+This evidence is compatible with more than one cause, including premature SHUO
+turn finalization, observer-side classification of unintended downlink audio, or
+another turn-ordering problem. Do not choose a root cause without additional
+content-free timing/audio-path evidence.
+
+Negative samples are now retained and explicitly classified as
+`OVERLAP_RESPONSE_STARTED_BEFORE_TX_END` but excluded from response-latency
+summary statistics. This is a reporting correction only; it does not hide the
+overlap event or convert the supplemental run to PASS.
