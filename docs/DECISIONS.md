@@ -277,3 +277,17 @@ strict MODE_IN_CALL preflight, and only then starts TX/RX/observer/scenario.
 Reason: owner observation plus source review proved the visible 5-10 second delay
 before the first synthetic question was harness setup after call connection, not
 SHUO first-response latency. The two latency questions must remain separate.
+
+
+## 2026-09-26 — Do not route SHUO through current IndicF5 AutoModel path
+
+Decision: keep IndicF5 cloned voice experimental and out of the TTS provider
+router after the reference GTX 1650 CUDA gate failed. The model fit in memory,
+but the short-phrase median audio-available latency was 85.086 s against the
+500 ms experimental component gate.
+
+Reason: voice similarity alone is insufficient for live telephony. Provider
+integration is deferred until a distinct optimized path demonstrates acceptable
+warm first-audio latency, intelligible 8 kHz mu-law output, bounded cancellation,
+and no regression to the existing streaming contract. The threshold is not
+relaxed to accommodate the current implementation.
