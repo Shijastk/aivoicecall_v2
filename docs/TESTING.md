@@ -1006,3 +1006,54 @@ thinking-pause behavior, both interruption timing checks and the first barge-in
 continuity check passed. The second codeword continuity check and final fruit
 continuity check failed, so the overall supplemental run remained FAIL. Fresh
 hardware evidence is required for the new latency metrics.
+
+## Phase 5 live per-response latency evidence — 2026-09-26
+
+Owner-supplied reference-device run of the latency-instrumented two-device
+controller completed the deterministic scenario with 10 observed response EOTs.
+The raw host-correlated response samples, in milliseconds, were:
+
+```text
+4208.180
+2876.757
+3317.006
+2883.421
+-6238.519
+2948.804
+4274.329
+3279.708
+1707.244
+3323.179
+```
+
+The negative sample means the observed response StartOfTurn occurred before the
+caller paced-TX completion boundary. It is therefore an overlap/turn-order
+diagnostic, not a valid non-negative TX-end-to-response-start latency sample.
+Including it in min/average made the first summary misleading.
+
+For the nine non-overlapping samples only:
+
+```text
+min    1707.244 ms
+avg    3202.070 ms
+median 3279.708 ms
+max    4274.329 ms
+```
+
+The controller now preserves the negative raw sample with status
+`OVERLAP_RESPONSE_STARTED_BEFORE_TX_END`, excludes it from min/average/max,
+reports total and valid sample counts separately, and keeps
+`CALLER_HEARD_LATENCY=NOT_MEASURED`.
+
+The run also reported:
+- closed-loop scenario completion PASS;
+- seed response PASS;
+- 650 ms thinking-pause behavior PASS;
+- barge-in 1 interruption-while-remote-speaking FAIL;
+- barge-in 1 mango continuity PASS;
+- barge-in 2 interruption-while-remote-speaking PASS;
+- barge-in 2 codeword continuity FAIL;
+- final mango continuity PASS;
+- at least ten remote response turns PASS.
+
+No root cause is assigned yet to the overlap or codeword-continuity failure.
