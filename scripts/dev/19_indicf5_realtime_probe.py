@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from shuo.benchmark.indicf5_realtime import run_indicf5_probe
+from shuo.indicf5_realtime import run_indicf5_probe
 
 
 def parse_args() -> argparse.Namespace:
