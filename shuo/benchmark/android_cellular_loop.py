@@ -499,6 +499,7 @@ async def run_android_cellular_closed_loop(
     checks: list[LoopCheck] = []
     metrics: list[LoopMetric] = []
     response_observer_latencies_ms: list[float] = []
+    valid_response_observer_latencies_ms: list[float] = []
 
     def record_response_observer_latency(
         label: str,
@@ -510,16 +511,30 @@ async def run_android_cellular_closed_loop(
             response_start.at_ns - caller_tx_end_ns
         ) / 1_000_000.0
         response_observer_latencies_ms.append(value_ms)
+        started_before_tx_end = value_ms < 0
+        if not started_before_tx_end:
+            valid_response_observer_latencies_ms.append(value_ms)
         metrics.append(
             LoopMetric(
                 name=f"response_{label}_tx_end_to_observer_start_ms",
                 value=value_ms,
                 unit="ms",
-                status="MEASURED_HOST_CORRELATED",
+                status=(
+                    "OVERLAP_RESPONSE_STARTED_BEFORE_TX_END"
+                    if started_before_tx_end
+                    else "MEASURED_HOST_CORRELATED"
+                ),
                 note=(
                     "host caller-TX final write timestamp to Deepgram-observed "
                     "VOICE_DOWNLINK StartOfTurn on the itel caller; includes "
-                    "observer detection delay and is not caller-heard latency"
+                    "observer detection delay and is not caller-heard latency; "
+                    + (
+                        "negative value means response/observer speech started "
+                        "before the caller TX boundary and is excluded from "
+                        "latency summary statistics"
+                        if started_before_tx_end
+                        else "included in valid latency summary statistics"
+                    )
                 ),
             )
         )
@@ -783,30 +798,39 @@ async def run_android_cellular_closed_loop(
             )
         )
 
-    if response_observer_latencies_ms:
+    if valid_response_observer_latencies_ms:
         metrics.extend(
             (
                 LoopMetric(
                     "response_observer_latency_min_ms",
-                    min(response_observer_latencies_ms),
+                    min(valid_response_observer_latencies_ms),
                     "ms",
                     status="MEASURED_HOST_CORRELATED",
-                    note="minimum across per-response host-correlated samples",
+                    note=(
+                        "minimum across non-overlapping per-response "
+                        "host-correlated samples"
+                    ),
                 ),
                 LoopMetric(
                     "response_observer_latency_avg_ms",
-                    sum(response_observer_latencies_ms)
-                    / len(response_observer_latencies_ms),
+                    sum(valid_response_observer_latencies_ms)
+                    / len(valid_response_observer_latencies_ms),
                     "ms",
                     status="MEASURED_HOST_CORRELATED",
-                    note="average across per-response host-correlated samples",
+                    note=(
+                        "average across non-overlapping per-response "
+                        "host-correlated samples"
+                    ),
                 ),
                 LoopMetric(
                     "response_observer_latency_max_ms",
-                    max(response_observer_latencies_ms),
+                    max(valid_response_observer_latencies_ms),
                     "ms",
                     status="MEASURED_HOST_CORRELATED",
-                    note="maximum across per-response host-correlated samples",
+                    note=(
+                        "maximum across non-overlapping per-response "
+                        "host-correlated samples"
+                    ),
                 ),
             )
         )
@@ -845,8 +869,12 @@ async def run_android_cellular_closed_loop(
             "response_latency_sample_count": len(
                 response_observer_latencies_ms
             ),
-            "response_started_before_tx_end_count": sum(
-                1 for value in response_observer_latencies_ms if value < 0
+            "response_latency_valid_sample_count": len(
+                valid_response_observer_latencies_ms
+            ),
+            "response_started_before_tx_end_count": (
+                len(response_observer_latencies_ms)
+                - len(valid_response_observer_latencies_ms)
             ),
             "rx_start_of_turn_count": monitor.start_count,
             "rx_end_of_turn_count": monitor.end_count,
