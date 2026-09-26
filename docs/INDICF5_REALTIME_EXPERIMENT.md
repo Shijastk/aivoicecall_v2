@@ -181,3 +181,12 @@ Reduced NFE is an experiment, not an automatic optimization win. Latency and
 voice/pronunciation quality must both be checked. If the long reference remains
 far from realtime, repeat only after recording a clean short reference clip with
 an exact transcript; do not silently truncate and guess the transcript.
+
+
+### Probe discovery note
+
+The gated wrapper on the reference CUDA host exposed the compiled sampler twice
+through named_modules(): ema_model and ema_model._orig_mod. The probe now
+treats that specific torch.compile wrapper/original pair as one logical sampler
+while continuing to fail closed if two genuinely independent samplers or
+decoders are discovered.
