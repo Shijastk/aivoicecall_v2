@@ -828,3 +828,35 @@ parallel-startup benefit, provider/server timing interpretation, two-frame pre-r
 quality/XRUN behavior, prepared-stream reuse benefit, and caller-heard latency
 still require a controlled real-path comparison before any candidate becomes a
 default or any latency target is claimed. Phase 5 is not advanced.
+
+## Bluetooth first-turn LLM warmup candidate — 2026-09-26
+
+Owner-supplied Phase-5 reference-path logs showed a repeatable asymmetry in local
+SHUO response startup: the first Agent turn reached TTS first audio at about
+984 ms, with about 247 ms attributable to TTS after the first LLM token, while
+subsequent turns commonly reached first audio in about 339-421 ms. This supports
+a first-request LLM cold-path hypothesis, but does not by itself identify DNS,
+TLS, provider queueing, model scheduling, or another internal component as the
+root cause.
+
+A narrow, default-off Bluetooth-only candidate therefore adds
+`--llm-warmup`. The Agent's existing `LLMService` sends one static
+`ping` request to the selected model, streaming at most one output token, before
+caller audio processing begins. The response is discarded. The warmup does not
+send the system/persona prompt, committed history, caller transcript or any other
+conversation content, and it does not call normal Agent token/done callbacks or
+mutate history.
+
+The warmup uses the same `AsyncOpenAI` client instance later used for the real
+turn, so it can prime the exact streaming HTTP/provider path rather than a
+different health endpoint. It is bounded to five seconds and fail-open: provider
+failure or timeout leaves the ordinary final-EOT generation path intact.
+Cancellation still propagates. This follows the Phase-4 rule that latency
+optimizations must degrade to the established path rather than fail a call.
+
+This is not enabled by default, does not authorize prepared-response reuse,
+does not change Flux EOT behavior, does not touch carrier paths, and does not
+establish caller-heard latency. Use `--parallel-startup` with it during the
+controlled Bluetooth comparison so Flux startup can overlap the Agent/TTS/LLM
+readiness sequence. Live benefit remains unproven until the first-turn
+before/after comparison is supplied.

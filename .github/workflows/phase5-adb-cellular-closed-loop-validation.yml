@@ -34,8 +34,13 @@ jobs:
       - name: Compile changed Python
         run: |
           python -m py_compile \
+            shuo/services/llm.py \
+            shuo/agent.py \
+            shuo/bluetooth/production.py \
+            scripts/run_bluetooth_ai.py \
             shuo/benchmark/android_cellular_loop.py \
             scripts/dev/18_android_cellular_closed_loop.py \
+            tests/test_bluetooth_phase4d.py \
             tests/test_android_cellular_loop.py
 
       - name: CLI smoke
@@ -45,6 +50,8 @@ jobs:
         run: |
           PYTHONPATH=. python scripts/dev/18_android_cellular_closed_loop.py --help >/tmp/loop-help.txt
           grep -q "allow-provider-network" /tmp/loop-help.txt
+          PYTHONPATH=. python scripts/run_bluetooth_ai.py --help >/tmp/bt-help.txt
+          grep -q "llm-warmup" /tmp/bt-help.txt
           grep -q "CALL" /tmp/loop-help.txt || true
 
       - name: Focused closed-loop and Android transport tests
@@ -57,6 +64,9 @@ jobs:
             tests/test_android_cellular_rx.py \
             tests/test_android_cellular_tx.py \
             tests/test_bluetooth_codec.py \
+            tests/test_bluetooth_phase4d.py \
+            tests/test_bluetooth_production.py \
+            tests/test_bluetooth_phase4c.py \
             -p no:cacheprovider
 
       - name: Bluetooth regression

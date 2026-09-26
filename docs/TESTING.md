@@ -1057,3 +1057,47 @@ The run also reported:
 - at least ten remote response turns PASS.
 
 No root cause is assigned yet to the overlap or codeword-continuity failure.
+
+## Silent closed-loop rerun and first-turn warmup validation — 2026-09-26
+
+A fresh owner-supplied run with no manual caller speech removed the earlier
+"manual Hi" hypothesis. The seed response was non-overlapping at 3931.488 ms,
+but the scenario still ended FAIL with 11 observed RX EOTs for 10 expected
+responses and three overlap-classified samples: thinking-pause -2963.587 ms,
+barge-in-1 original -6085.002 ms and barge-in-2 replacement -77.566 ms.
+The seven non-overlapping observer samples had min 2592.480 ms, average
+3355.323 ms and max 3931.488 ms. This remains host-correlated observer timing,
+not caller-heard latency.
+
+The paired SHUO content-free log showed Agent turns 1-11 during the scenario and
+multiple rapid Flux EOT/StartOfTurn/cancel sequences, so the extra turn is not
+explained by the itel observer alone. The log also showed first-turn local
+TTS-first-audio around 984 ms versus roughly 339-421 ms on later turns. Treat
+the turn-fragmentation correctness problem and the first-request local latency
+problem as separate issues.
+
+The default-off Bluetooth `--llm-warmup` candidate is covered without provider
+or device access by:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python -m pytest -q \
+  tests/test_bluetooth_phase4d.py \
+  tests/test_bluetooth_production.py \
+  tests/test_bluetooth_phase4c.py \
+  -p no:cacheprovider
+```
+
+Required assertions include: static `ping` only; one-token streaming request;
+no system/persona/history/caller content; no history mutation; no normal
+token/done callback; idempotent repeat warmup; fail-open provider failure; and
+explicit Bluetooth-only wiring. Phase-5 CI additionally compiles the changed
+LLM/Agent/production/runner files, checks the CLI flag, runs focused Android
+closed-loop tests, complete Bluetooth regression and the historical-baseline
+full suite.
+
+Controlled live comparison adds `--llm-warmup --parallel-startup` to the
+existing manual Bluetooth runner while retaining Pocket, EOT 0.8, manual call
+control and content-free diagnostics. Compare `LLMWarmup`, the first real
+`LLMRequest` stream-open/first-token, `TTS first audio` and
+`PlaybackFirstWrite` timestamps. No caller-heard <500 ms claim follows from
+local first-audio timing.

@@ -138,6 +138,10 @@ class Agent:
         """Read-only access to conversation history (owned by LLM)."""
         return self._llm.history
 
+    async def warmup_llm(self, *, timeout_seconds: float = 5.0) -> bool:
+        """Warm the owned LLM provider client without creating a turn."""
+        return await self._llm.warmup(timeout_seconds=timeout_seconds)
+
     # ── Turn Lifecycle ──────────────────────────────────────────────
 
     async def start_turn(

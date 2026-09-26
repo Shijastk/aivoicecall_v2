@@ -337,3 +337,15 @@ uses the reference-qualified ADB receive/transmit boundaries.
 It still does not automate call control or create an external caller-heard clock.
 Its report is content-free: response text is used only in memory to score
 deterministic continuity booleans. The branch remains live-gated before merge.
+
+## First-turn warmup A/B — 2026-09-26
+
+For the controlled reference-path A/B, keep the established runner arguments and
+add `--llm-warmup --parallel-startup` only to the candidate run. The warmup is
+default-off, uses static non-conversation input, and does not alter the approved
+Flux EOT threshold or the manual call-control boundary.
+
+Report the content-free `LLMWarmup`, first real `LLMRequest` stream-open /
+first-token timing, first `TTS first audio`, and first
+`PlaybackFirstWrite_returned` timing. Later turns are the warm-path comparison.
+Do not equate these local timestamps with caller-heard mouth-to-ear latency.

@@ -329,3 +329,23 @@ Negative samples are now retained and explicitly classified as
 `OVERLAP_RESPONSE_STARTED_BEFORE_TX_END` but excluded from response-latency
 summary statistics. This is a reporting correction only; it does not hide the
 overlap event or convert the supplemental run to PASS.
+
+## First-request LLM cold path and separate Flux fragmentation — 2026-09-26
+
+Reference-path content-free logs show first-turn Agent-start to TTS-first-audio
+at about 984 ms versus roughly 339-421 ms on several later turns. The first turn
+contained about 247 ms of post-first-token TTS time, indicating that most of the
+extra local delay occurred before the first LLM token. Exact provider-internal
+root cause remains unknown.
+
+A default-off Bluetooth `--llm-warmup` candidate now primes the same LLM client
+with static non-conversation input before caller processing. Live improvement is
+not yet proven. Do not describe this as a confirmed DNS/TLS or model-loading bug.
+
+A separate fresh silent closed-loop run still produced 11 observed response EOTs
+for 10 expected responses and three response-start-before-caller-TX-end samples.
+The SHUO-side log itself reached Agent turn 11 during the scenario, with rapid
+Flux turn/cancel sequences, so this cannot be dismissed as only an itel observer
+counting issue. The exact cause—premature Flux EOT, speech fragmentation/merge,
+transport behavior or another turn-ordering effect—remains unresolved. LLM
+warmup must not hide or reclassify this correctness problem.

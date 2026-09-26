@@ -297,6 +297,7 @@ class LLMService:
         self._task: Optional[asyncio.Task] = None
         self._running = False
         self._request_seq = 0
+        self._warmup_complete = False
         if history_max_chars is not None and (
             isinstance(history_max_chars, bool)
             or not isinstance(history_max_chars, int)
@@ -318,6 +319,110 @@ class LLMService:
     
     def clear_history(self) -> None:
         self._history = []
+
+    async def warmup(self, *, timeout_seconds: float = 5.0) -> bool:
+        """Warm the existing streaming provider client without conversation data.
+
+        This explicitly invoked optimization sends only static "ping" input,
+        requests at most one output token, discards provider output, and never
+        touches conversation history or normal token/done callbacks. Failure is
+        fail-open to the ordinary first-turn path; cancellation still propagates.
+        """
+
+        if timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be positive")
+        if self._warmup_complete:
+            return True
+        if self._running:
+            log.error("LLM warmup skipped because generation is already active")
+            return False
+
+        model = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
+        extra_body = {}
+        if model.startswith("openai/gpt-oss"):
+            extra_body = {
+                "reasoning_effort": "low",
+                "include_reasoning": False,
+            }
+        elif model in {
+            "qwen/qwen3.6-27b",
+            "qwen/qwen3.8-27b",
+        }:
+            extra_body = {
+                "reasoning_effort": "none",
+            }
+
+        started_at = time.perf_counter()
+        stream = None
+        stream_opened_at: Optional[float] = None
+        first_token_at: Optional[float] = None
+        try:
+            async with asyncio.timeout(timeout_seconds):
+                stream = await self._client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": "ping"}],
+                    stream=True,
+                    max_tokens=1,
+                    temperature=0.7,
+                    extra_body=extra_body,
+                )
+                stream_opened_at = time.perf_counter()
+                async for chunk in stream:
+                    delta = chunk.choices[0].delta if chunk.choices else None
+                    if first_token_at is None and delta and delta.content:
+                        first_token_at = time.perf_counter()
+
+            self._warmup_complete = True
+            ended_at = time.perf_counter()
+            stream_open_ms = (
+                (stream_opened_at - started_at) * 1000.0
+                if stream_opened_at is not None
+                else None
+            )
+            first_token_ms = (
+                (first_token_at - started_at) * 1000.0
+                if first_token_at is not None
+                else None
+            )
+            stream_open_value = (
+                f"{stream_open_ms:.1f}" if stream_open_ms is not None else "none"
+            )
+            first_token_value = (
+                f"{first_token_ms:.1f}" if first_token_ms is not None else "none"
+            )
+            log.info(
+                "LLMWarmup: complete "
+                f"model={model} "
+                f"stream_open_ms={stream_open_value} "
+                f"first_token_ms={first_token_value} "
+                f"total_ms={(ended_at - started_at) * 1000.0:.1f}"
+            )
+            return True
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            log.error(
+                "LLM warmup failed; continuing normal first-turn path "
+                f"error_type={type(exc).__name__}"
+            )
+            return False
+        finally:
+            if stream is not None:
+                close = getattr(stream, "close", None)
+                if close is None:
+                    close = getattr(stream, "aclose", None)
+                if close is not None:
+                    try:
+                        result = close()
+                        if asyncio.iscoroutine(result):
+                            await result
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as exc:
+                        log.error(
+                            "LLM warmup stream cleanup failed "
+                            f"error_type={type(exc).__name__}"
+                        )
     
     async def start(self, user_message: str) -> None:
         """Start generating a response."""

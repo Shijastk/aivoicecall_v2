@@ -150,6 +150,14 @@ def parse_args() -> argparse.Namespace:
         help="Phase-4D opt-in: request/log content-free streaming usage timing when supported.",
     )
     parser.add_argument(
+        "--llm-warmup",
+        action="store_true",
+        help=(
+            "Bluetooth-only opt-in: warm the selected LLM streaming path with "
+            "static non-conversation input before caller audio is processed."
+        ),
+    )
+    parser.add_argument(
         "--parallel-startup",
         action="store_true",
         help="Phase-4D opt-in: warm Flux and TTS/Agent concurrently with fail-clean teardown.",
@@ -201,6 +209,7 @@ async def _main(args: argparse.Namespace) -> None:
         tts_phrase_chars=args.tts_phrase_chars,
         llm_history_max_chars=args.llm_history_max_chars,
         llm_provider_timing=args.llm_provider_timing,
+        llm_warmup=args.llm_warmup,
         parallel_startup=args.parallel_startup,
         player_preroll_frames=args.player_preroll_frames,
     )

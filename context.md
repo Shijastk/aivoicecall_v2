@@ -539,3 +539,22 @@ required property differs.
 - Overall run remained FAIL: first barge-in speaking-state check failed and
   second barge-in codeword continuity failed. Final mango continuity passed.
 - No caller-heard latency claim, Phase 5 acceptance, or Phase 6 authorization.
+
+### 2026-09-26 — first-turn LLM warmup candidate after silent closed-loop rerun
+
+- Fresh no-manual-speech closed-loop evidence removed the earlier "manual Hi"
+  explanation. Seed response was positive-latency, but 11 RX EOTs were observed
+  for 10 expected responses and three overlap samples remained.
+- SHUO-side content-free logs also reached Agent turn 11 during the scenario,
+  preserving Flux/turn-fragmentation as a separate unresolved correctness issue.
+- The same log showed first-turn TTS-first-audio around 984 ms versus about
+  339-421 ms on later turns; most first-turn excess occurred before first LLM
+  content.
+- Added explicit Bluetooth-only `--llm-warmup`: the existing Agent LLM client
+  sends static `ping`, streams at most one token, discards output, sends no
+  persona/history/caller content and mutates no conversation state.
+- Warmup is bounded and fail-open; cancellation propagates. Default behavior,
+  carrier paths, pure state machine, EOT 0.8 owner decision, manual call control
+  and raw-audio policy remain unchanged.
+- Recommended controlled candidate uses `--llm-warmup --parallel-startup`.
+  Live latency benefit is unproven; caller-heard latency remains NOT_MEASURED.

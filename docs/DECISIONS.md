@@ -250,3 +250,18 @@ transcript, and make no caller-heard latency claim.
 Repository validation is necessary but not sufficient. The branch must remain
 unmerged until simultaneous real-cellular RX/TX and the scripted pause/barge-in/
 continuity scenario pass on the reference itel/Galaxy/SHUO path.
+
+## 2026-09-26 — Prime first-turn LLM path only by explicit Bluetooth opt-in
+
+Decision: add default-off `--llm-warmup` to the manual Bluetooth runner. It
+warms the Agent's existing streaming LLM client with one static `ping` request
+capped at one generated token. It sends no digital-twin prompt, history or caller
+content and mutates no conversation state. Failure/timeout is fail-open to the
+normal final-EOT path; cancellation propagates.
+
+Reason: owner-supplied logs show a substantially slower first local LLM/TTS
+startup than later turns. Existing prepared-response reuse remains
+evidence-gated and is not enabled as a substitute, especially while Flux
+turn-fragmentation remains unresolved. The warmup is a narrower test of the
+observed first-request cold-path hypothesis and preserves carrier/default
+behavior.
