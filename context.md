@@ -524,3 +524,18 @@ required property differs.
 - Barge-in replacement baselines are captured before interrupt TX so a fast
   replacement StartOfTurn cannot be skipped merely because it arrives while the
   prepared interrupt audio is still being streamed.
+
+### 2026-09-26 — first per-response latency run
+
+- Latency-instrumented real itel P683L <-> Galaxy A10/SHUO run completed with
+  10 observed response turns.
+- Raw host-correlated samples included one negative overlap sample:
+  `-6238.519 ms`, meaning observer response start preceded caller TX end.
+- Nine non-overlapping samples: min 1707.244 ms, avg 3202.070 ms,
+  median 3279.708 ms, max 4274.329 ms.
+- The raw negative sample is now kept with
+  `OVERLAP_RESPONSE_STARTED_BEFORE_TX_END` status and excluded from summary
+  statistics. Total sample count and valid sample count are reported separately.
+- Overall run remained FAIL: first barge-in speaking-state check failed and
+  second barge-in codeword continuity failed. Final mango continuity passed.
+- No caller-heard latency claim, Phase 5 acceptance, or Phase 6 authorization.
