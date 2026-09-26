@@ -583,3 +583,13 @@ required property differs.
   readiness, then reruns strict active-call preflight.
 - Raw caller audio remains memory-only; call control remains manual; default mode
   is unchanged. Live call-connected-to-seed improvement remains unproven.
+
+### Automated gate — pre-call synthetic-caller preparation
+
+- Exact candidate commit `671821696292998df6c25cdf7ee03d6f201d77ee`
+  passed Actions run `36223200306` on Python 3.12/3.14.
+- 72 focused tests and 164 Bluetooth tests passed on each matrix.
+- Full suite: 1039 passed plus the exact four historical failures;
+  `FULL_SUITE_BASELINE_CLEAN` and diff validation passed on both matrices.
+- No live-device/provider execution occurred in CI; runtime seed-start reduction
+  remains to be measured.

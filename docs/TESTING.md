@@ -1146,3 +1146,19 @@ Controlled run order for this mode:
 
 This mode changes benchmark orchestration only. It does not change production
 conversation semantics or establish caller-heard latency.
+
+## Automated gate for pre-call preparation — 2026-09-26
+
+Exact candidate commit `671821696292998df6c25cdf7ee03d6f201d77ee`
+passed GitHub Actions run `36223200306` on Python 3.12 and 3.14.
+
+- changed-file compile and CLI smoke: PASS;
+- focused closed-loop/Android/Phase-4 set: 72 passed on each matrix;
+- complete Bluetooth regression: 164 passed on each matrix;
+- full repository: 1039 passed plus exactly the four documented historical
+  failures, with `FULL_SUITE_BASELINE_CLEAN` on both matrices;
+- diff validation: PASS.
+
+CI used no live phones, provider credentials or real cellular call. Therefore the
+new pre-call orchestration is repository/regression validated, while the actual
+call-connected-to-seed delay reduction remains a reference-device runtime gate.
