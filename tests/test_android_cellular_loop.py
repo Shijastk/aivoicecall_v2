@@ -188,8 +188,13 @@ def test_closed_loop_latency_output_is_host_correlated_not_caller_heard():
     assert "tx_end_to_observer_start_ms" in module
     assert "MEASURED_HOST_CORRELATED" in module
     assert "response_latency_sample_count" in module
+    assert "response_latency_valid_sample_count" in module
+    assert "OVERLAP_RESPONSE_STARTED_BEFORE_TX_END" in module
+    assert "valid_response_observer_latencies_ms" in module
     assert "response_started_before_tx_end_count" in module
     assert "RESPONSE_LATENCY_KIND=HOST_CORRELATED_OBSERVER" in cli
+    assert "RESPONSE_LATENCY_VALID_SAMPLES=" in cli
+    assert "STATUS={metric.status}" in cli
     assert "CALLER_HEARD_LATENCY=NOT_MEASURED" in cli
 
 
