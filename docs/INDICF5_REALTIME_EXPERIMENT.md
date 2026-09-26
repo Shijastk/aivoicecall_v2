@@ -153,3 +153,31 @@ CPU work, dtype choice or another cause must not be asserted without profiling.
 The next experiment, if pursued, must isolate model sampling, reference
 preprocessing and vocoder cost and may test lower NFE values without weakening
 the production latency target.
+
+
+## Reduced-NFE profiling follow-up
+
+After the default AutoModel gate failed, the branch adds
+`scripts/dev/20_indicf5_optimized_probe.py`. This remains benchmark-only.
+
+The probe discovers the wrapper's inner F5 sampler and Vocos decoder structurally,
+preprocesses the reference once, and calls the installed AI4Bharat inference
+utility directly with explicit NFE values. This tests whether the default
+32-step flow is the dominant cost without changing the production gate.
+
+Start conservatively with one run at NFE 8 and 4:
+
+~~~bash
+PYTHONPATH=. python scripts/dev/20_indicf5_optimized_probe.py \
+  --ref-audio /home/shijas/Downloads/myvoice.m4a \
+  --ref-text '<exact reference transcript>' \
+  --text 'ഹലോ, സുഖമാണോ?' \
+  --steps 8,4 \
+  --runs 1 \
+  --json-out /tmp/shuo/indicf5-optimized.json
+~~~
+
+Reduced NFE is an experiment, not an automatic optimization win. Latency and
+voice/pronunciation quality must both be checked. If the long reference remains
+far from realtime, repeat only after recording a clean short reference clip with
+an exact transcript; do not silently truncate and guess the transcript.
