@@ -362,3 +362,16 @@ An explicit `--prepare-before-call` path moves that work before call
 establishment and waits for manual operator confirmation before strict active-call
 preflight and scenario start. Live reduction of call-connected-to-seed delay is
 not yet measured.
+
+
+## IndicF5 AutoModel realtime gate failed on reference GTX 1650 — 2026-09-26
+
+The isolated cloned-voice probe fit in GPU memory but failed the experimental
+500 ms component gate by a wide margin. For a 0.747-second generated phrase,
+three warm CUDA runs took 51.996 s, 85.086 s and 156.787 s; peak PyTorch
+allocated VRAM was 1419.3 MiB. This is not an OOM result.
+
+Do not integrate the current Hugging Face AutoModel path as a SHUO TTS provider.
+The cause of the worsening run times is not yet localized. Any further work must
+profile preprocessing/model-sampling/vocoder stages and validate a materially
+different optimized inference path before revisiting provider integration.
