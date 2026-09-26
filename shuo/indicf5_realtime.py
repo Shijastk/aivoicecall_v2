@@ -188,12 +188,27 @@ def run_indicf5_probe(
     )
 
 
-def find_runtime_modules(wrapper):
-    """Find exactly one F5 sampler and one Vocos-style decoder.
+def _collapse_compiled_aliases(candidates):
+    """Drop torch.compile _orig_mod aliases when the wrapper is also present.
 
-    This is intentionally structural rather than tied to private attribute names
-    in the gated Hugging Face wrapper. It is used only by the isolated benchmark.
+    torch.compile can expose both ema_model and ema_model._orig_mod through
+    named_modules() even though they represent one logical sampler. Keep the
+    outer/shallow wrapper in that case. Independent candidates still fail closed.
     """
+    names = {name for name, _ in candidates}
+    collapsed = []
+    for name, module in candidates:
+        marker = "._orig_mod"
+        if marker in name:
+            outer = name.split(marker, 1)[0]
+            if outer in names:
+                continue
+        collapsed.append((name, module))
+    return collapsed
+
+
+def find_runtime_modules(wrapper):
+    """Find exactly one logical F5 sampler and one Vocos-style decoder."""
     samplers = []
     decoders = []
     for name, module in wrapper.named_modules():
@@ -205,14 +220,17 @@ def find_runtime_modules(wrapper):
         if "vocos" in class_name and callable(getattr(module, "decode", None)):
             decoders.append((name, module))
 
+    samplers = _collapse_compiled_aliases(samplers)
+    decoders = _collapse_compiled_aliases(decoders)
+
     if len(samplers) != 1:
         names = [name for name, _ in samplers]
         raise RuntimeError(
-            f"expected exactly one inner F5 sampler; found {len(samplers)}: {names}"
+            f"expected exactly one logical F5 sampler; found {len(samplers)}: {names}"
         )
     if len(decoders) != 1:
         names = [name for name, _ in decoders]
         raise RuntimeError(
-            f"expected exactly one Vocos decoder; found {len(decoders)}: {names}"
+            f"expected exactly one logical Vocos decoder; found {len(decoders)}: {names}"
         )
     return samplers[0], decoders[0]
