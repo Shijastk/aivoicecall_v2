@@ -190,3 +190,29 @@ through named_modules(): ema_model and ema_model._orig_mod. The probe now
 treats that specific torch.compile wrapper/original pair as one logical sampler
 while continuing to fail closed if two genuinely independent samplers or
 decoders are discovered.
+
+
+## Reduced-NFE reference result — 2026-09-26
+
+The owner ran the inner-runtime probe on the same GTX 1650 Max-Q CUDA host with
+the same mobile reference recording. The probe discovered the compiled sampler
+and Vocos decoder, preprocessed the reference once, and measured reduced diffusion
+steps without routing through SHUO production.
+
+Observed content-free evidence:
+
+- wrapper load: 3036.6 ms
+- preprocessed reference duration: 12.924 s
+- one-time reference preprocessing: 233.7 ms
+- NFE 8: 10581.2 ms for 0.747 s generated audio, RTF 14.171, peak allocated VRAM 1408.1 MiB
+- NFE 4: 5279.6 ms for 0.747 s generated audio, RTF 7.071, peak allocated VRAM 1405.6 MiB
+
+This materially improves on the default 32-step AutoModel path but remains more
+than an order of magnitude above the 500 ms experimental component gate. The
+evidence also shows that reference preprocessing itself is not the dominant cost
+in this run; it took 233.7 ms while the NFE-4 synthesis took 5279.6 ms.
+
+Do not infer an exact lower bound for shorter references or NFE values that were
+not measured. A short-reference / lower-NFE probe may still be used to close the
+local feasibility question, but no IndicF5 provider integration is authorized by
+these results.
