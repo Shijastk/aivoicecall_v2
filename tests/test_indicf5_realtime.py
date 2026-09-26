@@ -119,5 +119,36 @@ def test_find_runtime_modules_fails_closed_on_ambiguous_sampler():
         ("vocoder", Vocos()),
     ])
 
-    with pytest.raises(RuntimeError, match="exactly one inner F5 sampler"):
+    with pytest.raises(RuntimeError, match="exactly one logical F5 sampler"):
         find_runtime_modules(wrapper)
+
+
+def test_find_runtime_modules_collapses_torch_compile_orig_mod_alias():
+    from shuo.indicf5_realtime import find_runtime_modules
+
+    class CompiledSampler:
+        def sample(self):
+            pass
+
+    class OriginalSampler:
+        def sample(self):
+            pass
+
+    class Vocos:
+        def decode(self):
+            pass
+
+    outer = CompiledSampler()
+    inner = OriginalSampler()
+    vocos = Vocos()
+    wrapper = _FakeWrapper([
+        ("ema_model", outer),
+        ("ema_model._orig_mod", inner),
+        ("vocoder", vocos),
+    ])
+
+    (sampler_name, found_sampler), (decoder_name, found_decoder) = find_runtime_modules(wrapper)
+    assert sampler_name == "ema_model"
+    assert found_sampler is outer
+    assert decoder_name == "vocoder"
+    assert found_decoder is vocos
