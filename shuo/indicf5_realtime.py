@@ -186,3 +186,33 @@ def run_indicf5_probe(
         peak_vram_mb=peak_vram_mb,
         gate_ms=gate_ms,
     )
+
+
+def find_runtime_modules(wrapper):
+    """Find exactly one F5 sampler and one Vocos-style decoder.
+
+    This is intentionally structural rather than tied to private attribute names
+    in the gated Hugging Face wrapper. It is used only by the isolated benchmark.
+    """
+    samplers = []
+    decoders = []
+    for name, module in wrapper.named_modules():
+        if not name:
+            continue
+        if callable(getattr(module, "sample", None)):
+            samplers.append((name, module))
+        class_name = module.__class__.__name__.lower()
+        if "vocos" in class_name and callable(getattr(module, "decode", None)):
+            decoders.append((name, module))
+
+    if len(samplers) != 1:
+        names = [name for name, _ in samplers]
+        raise RuntimeError(
+            f"expected exactly one inner F5 sampler; found {len(samplers)}: {names}"
+        )
+    if len(decoders) != 1:
+        names = [name for name, _ in decoders]
+        raise RuntimeError(
+            f"expected exactly one Vocos decoder; found {len(decoders)}: {names}"
+        )
+    return samplers[0], decoders[0]
