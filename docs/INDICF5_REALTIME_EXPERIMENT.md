@@ -37,7 +37,7 @@ streaming TTFA.
 
 The experiment:
 
-- is opt-in and lives under shuo/benchmark plus scripts/dev;
+- is opt-in and lives in shuo/indicf5_realtime.py plus scripts/dev;
 - does not change TTS_PROVIDER, TTSPool, Agent, the state machine, carriers or
   Bluetooth production wiring;
 - does not persist generated audio;
@@ -55,14 +55,15 @@ Transformers 5.x produced a model/vocoder device initialization failure in the
 observed setup. TorchCodec was also required by the installed TorchAudio
 torchaudio.load path.
 
-For the realtime experiment, use a separate CUDA environment. Do not replace the
-repository's default dependencies.
+For the realtime experiment, use an isolated environment or the already-working
+local IndicF5 environment. Do not add the IndicF5/CUDA stack to the repository's
+default dependencies.
 
 Example reference-host setup, after verifying enough free disk space:
 
 ~~~bash
 python3.12 -m venv ~/venvs/indicf5-gpu
-source ~/venvs/indicf5-gpu/bin/activate
+source ~/venvs/indicf5/bin/activate
 python -m pip install --upgrade pip setuptools wheel
 
 pip install \
