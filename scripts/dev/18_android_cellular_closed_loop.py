@@ -79,12 +79,16 @@ async def _run(args) -> int:
             value = f"{metric.value:.3f}ms"
         print(
             f"RESPONSE_LATENCY_{index:02d} "
-            f"{metric.name}={value}"
+            f"{metric.name}={value} STATUS={metric.status}"
         )
     print("RESPONSE_LATENCY_KIND=HOST_CORRELATED_OBSERVER")
     print(
         "RESPONSE_LATENCY_SAMPLES="
         f"{report.metadata.get('response_latency_sample_count', 0)}"
+    )
+    print(
+        "RESPONSE_LATENCY_VALID_SAMPLES="
+        f"{report.metadata.get('response_latency_valid_sample_count', 0)}"
     )
     print(
         "RESPONSE_STARTED_BEFORE_TX_END="
