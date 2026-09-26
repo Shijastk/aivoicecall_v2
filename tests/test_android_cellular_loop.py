@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import shuo.benchmark.android_cellular_loop as loop_module
 from shuo.benchmark.android_cellular_loop import (
     AndroidCellularLoopError,
     AndroidCellularLoopReport,
@@ -15,6 +16,7 @@ from shuo.benchmark.android_cellular_loop import (
     _contains_mango,
     _contains_orbit_seven,
     play_pcm_realtime,
+    prepare_android_cellular_closed_loop,
     run_android_cellular_closed_loop,
     synthesize_pocket_pcm,
 )
@@ -134,6 +136,79 @@ def test_report_never_contains_response_transcripts():
 
 
 @pytest.mark.asyncio
+async def test_precall_prepare_uses_non_call_preflight_and_keeps_stimuli_in_memory(
+    tmp_path,
+    monkeypatch,
+):
+    calls = []
+
+    class Preflight:
+        def __init__(self, serial, sdk_int):
+            self.serial = serial
+            self.sdk_int = sdk_int
+
+    async def fake_tx_preflight(_tools, *, serial=None, require_active_call=True):
+        calls.append(("tx_preflight", require_active_call))
+        return Preflight(serial or "SERIAL", 33)
+
+    async def fake_rx_preflight(_tools, *, serial=None, require_active_call=True):
+        calls.append(("rx_preflight", require_active_call))
+        return Preflight(serial or "SERIAL", 33)
+
+    prepared = {
+        "seed": loop_module._PreparedStimulus("seed", b"\x00\x00"),
+    }
+
+    async def fake_prepare(**_kwargs):
+        calls.append(("prepare", None))
+        return prepared
+
+    async def fake_compile_tx(**_kwargs):
+        calls.append(("compile_tx", None))
+        return tmp_path / "tx.dex"
+
+    async def fake_compile_rx(**_kwargs):
+        calls.append(("compile_rx", None))
+        return tmp_path / "rx.dex"
+
+    async def fake_push_tx(**_kwargs):
+        calls.append(("push_tx", None))
+
+    async def fake_push_rx(**_kwargs):
+        calls.append(("push_rx", None))
+
+    monkeypatch.setattr(loop_module, "preflight_android_cellular_tx", fake_tx_preflight)
+    monkeypatch.setattr(loop_module, "preflight_android_cellular_rx", fake_rx_preflight)
+    monkeypatch.setattr(loop_module, "prepare_scenario_stimuli", fake_prepare)
+    monkeypatch.setattr(loop_module, "compile_android_tx_bridge", fake_compile_tx)
+    monkeypatch.setattr(loop_module, "compile_android_rx_bridge", fake_compile_rx)
+    monkeypatch.setattr(loop_module, "push_android_tx_bridge", fake_push_tx)
+    monkeypatch.setattr(loop_module, "push_android_rx_bridge", fake_push_rx)
+
+    tools = AndroidBuildTools(
+        javac="javac",
+        android_jar=Path("/unused/android.jar"),
+        dx=Path("/unused/dx"),
+        adb="adb",
+    )
+    setup = await prepare_android_cellular_closed_loop(
+        tools=tools,
+        repo_root=tmp_path,
+        build_dir=tmp_path / "build",
+        serial="SERIAL",
+    )
+
+    assert setup.serial == "SERIAL"
+    assert setup.sdk_int == 33
+    assert setup.stimuli is prepared
+    assert ("tx_preflight", False) in calls
+    assert ("rx_preflight", False) in calls
+    assert calls.index(("prepare", None)) < calls.index(("compile_tx", None))
+    assert ("push_tx", None) in calls
+    assert ("push_rx", None) in calls
+
+
+@pytest.mark.asyncio
 async def test_closed_loop_requires_explicit_provider_network_before_device_work(tmp_path):
     tools = AndroidBuildTools(
         javac="javac",
@@ -195,6 +270,8 @@ def test_closed_loop_latency_output_is_host_correlated_not_caller_heard():
     assert "RESPONSE_LATENCY_KIND=HOST_CORRELATED_OBSERVER" in cli
     assert "RESPONSE_LATENCY_VALID_SAMPLES=" in cli
     assert "STATUS={metric.status}" in cli
+    assert "--prepare-before-call" in cli
+    assert "ANDROID_CELLULAR_PRECALL_READY=YES" in cli
     assert "CALLER_HEARD_LATENCY=NOT_MEASURED" in cli
 
 

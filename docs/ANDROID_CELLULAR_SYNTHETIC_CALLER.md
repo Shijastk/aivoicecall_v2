@@ -295,3 +295,26 @@ checks passed. `barge_in_2_continuity_codeword` and
 `late_session_continuity_fruit` failed, so the overall supplemental run remained
 FAIL and Phase 5 was not accepted. The new per-response latency instrumentation
 still requires a fresh reference-device runtime run.
+
+## Pre-call controller preparation — 2026-09-26
+
+Owner observation clarified a separate startup delay: after the cellular call was
+already connected, the first synthetic caller question could take roughly
+5-10 seconds to begin. Source review confirmed this was not SHUO response
+latency. The legacy controller performed active-call TX/RX preflight, then
+sequentially pre-synthesized all 11 Pocket caller stimuli, compiled both Android
+bridges, pushed them over ADB, opened TX/RX and the observer, and only then sent
+the seed question. The scenario-duration metric already excluded that setup.
+
+The controller now has an explicit `--prepare-before-call` mode. In that mode
+it performs non-call device/permission preflight, keeps all Pocket caller PCM in
+process memory, compiles/pushes the Android TX/RX helpers, then prints
+`ANDROID_CELLULAR_PRECALL_READY=YES` and waits for the operator. The operator
+manually establishes/answers the call, starts Terminal 0 and waits for SHUO
+readiness, then presses Enter in Terminal 1. Only then does the controller rerun
+strict MODE_IN_CALL preflight and start the scenario.
+
+No caller PCM is written to disk. Android DEX build artifacts remain ordinary
+non-audio dev artifacts under the existing build directory. Dial/answer/hangup
+remain manual; no Phase-6 call control is added. Default legacy behavior remains
+available when the flag is omitted.

@@ -1121,3 +1121,28 @@ the two unsupported async tests in `scripts/test_v2_keys.py` and the two
 Bluetooth device, Android phone or real cellular call was used by CI. Therefore
 this gate validates implementation/regression behavior only; live first-turn
 latency benefit remains unproven.
+
+## Pre-call closed-loop preparation candidate — 2026-09-26
+
+The observed 5-10 second call-connected delay before the first synthetic caller
+question was traced to benchmark setup, not SHUO response generation. The
+controller prepares 11 Pocket stimuli sequentially and builds/pushes both Android
+bridges before the scenario starts.
+
+The explicit `--prepare-before-call` path moves those operations before the
+real call while retaining caller audio only in memory. Automated coverage asserts
+that pre-call TX/RX preflight uses `require_active_call=False`, preparation
+happens before bridge compilation, and the CLI exposes the readiness marker.
+The existing source-level no-call-control/no-raw-audio assertions remain.
+
+Controlled run order for this mode:
+1. Start Terminal 1 with `--prepare-before-call`.
+2. Wait for `ANDROID_CELLULAR_PRECALL_READY=YES`.
+3. Manually place/answer itel -> Galaxy.
+4. Start Terminal 0 with the validated Bluetooth runner and wait for SHUO ready.
+5. Press Enter in Terminal 1; strict MODE_IN_CALL preflight reruns, then the seed
+   question begins.
+6. Manually hang up before stopping Terminal 0.
+
+This mode changes benchmark orchestration only. It does not change production
+conversation semantics or establish caller-heard latency.

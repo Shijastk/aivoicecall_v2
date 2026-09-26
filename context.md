@@ -567,3 +567,19 @@ required property differs.
 - Full suite: 1038 passed plus the exact four documented historical failures;
   `FULL_SUITE_BASELINE_CLEAN` and diff validation passed on both matrices.
 - CI did not access providers or devices. Live latency benefit remains unproven.
+
+### 2026-09-26 — pre-call synthetic-caller preparation candidate
+
+- Owner observed roughly 5-10 seconds between call connection and the first
+  synthetic caller question even after LLM warmup work.
+- Source review located that delay before the scenario: legacy controller order
+  was active-call preflight -> 11 sequential Pocket pre-syntheses -> TX/RX bridge
+  compile/push -> TX/RX/observer start -> seed.
+- This is benchmark startup latency, separate from SHUO question-end -> response
+  latency.
+- Added explicit `--prepare-before-call` mode: non-call preflight, in-memory
+  prompt preparation and bridge build/push happen before the call; the controller
+  prints a readiness marker and waits for manual Enter after call + Terminal 0
+  readiness, then reruns strict active-call preflight.
+- Raw caller audio remains memory-only; call control remains manual; default mode
+  is unchanged. Live call-connected-to-seed improvement remains unproven.

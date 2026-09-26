@@ -105,6 +105,15 @@ class _PreparedStimulus:
 
 
 @dataclass(frozen=True)
+class AndroidCellularPreparedSetup:
+    """In-memory pre-call controller assets; contains no persisted raw audio."""
+
+    serial: str
+    sdk_int: int
+    stimuli: dict[str, _PreparedStimulus]
+
+
+@dataclass(frozen=True)
 class _RxStart:
     ordinal: int
     at_ns: int
@@ -339,6 +348,71 @@ async def prepare_scenario_stimuli(
     return prepared
 
 
+async def prepare_android_cellular_closed_loop(
+    *,
+    tools: AndroidBuildTools,
+    repo_root: Path,
+    build_dir: Path,
+    serial: Optional[str],
+    response_timeout_seconds: float = DEFAULT_RESPONSE_TIMEOUT_SECONDS,
+    voice_source: Optional[str] = None,
+) -> AndroidCellularPreparedSetup:
+    """Prepare caller audio and Android bridges before a real call is active.
+
+    Device and permission checks run without requiring MODE_IN_CALL. Deterministic
+    caller prompts stay in process memory. Android bridge build artifacts may be
+    written under build_dir, but caller PCM is never written to disk.
+    """
+
+    if response_timeout_seconds <= 0:
+        raise ValueError("response_timeout_seconds must be positive")
+
+    tx_preflight = await preflight_android_cellular_tx(
+        tools,
+        serial=serial,
+        require_active_call=False,
+    )
+    rx_preflight = await preflight_android_cellular_rx(
+        tools,
+        serial=tx_preflight.serial,
+        require_active_call=False,
+    )
+    if rx_preflight.serial != tx_preflight.serial:
+        raise AndroidCellularLoopError("RX/TX ADB target mismatch")
+
+    prepared = await prepare_scenario_stimuli(
+        timeout_seconds=response_timeout_seconds,
+        voice_source=voice_source,
+    )
+
+    tx_dex = await compile_android_tx_bridge(
+        repo_root=repo_root,
+        build_dir=build_dir / "tx",
+        tools=tools,
+    )
+    rx_dex = await compile_android_rx_bridge(
+        repo_root=repo_root,
+        build_dir=build_dir / "rx",
+        tools=tools,
+    )
+    await push_android_tx_bridge(
+        tools=tools,
+        serial=tx_preflight.serial,
+        dex_path=tx_dex,
+    )
+    await push_android_rx_bridge(
+        tools=tools,
+        serial=rx_preflight.serial,
+        dex_path=rx_dex,
+    )
+
+    return AndroidCellularPreparedSetup(
+        serial=tx_preflight.serial,
+        sdk_int=tx_preflight.sdk_int,
+        stimuli=prepared,
+    )
+
+
 async def play_pcm_realtime(
     bridge: AdbTelephonyTxBridge,
     pcm: bytes,
@@ -409,11 +483,14 @@ async def run_android_cellular_closed_loop(
     max_scenario_seconds: float = MAX_SCENARIO_SECONDS,
     voice_source: Optional[str] = None,
     flux_cls: Type = FluxService,
+    prepared_setup: Optional[AndroidCellularPreparedSetup] = None,
 ) -> AndroidCellularLoopReport:
     """Run a deterministic real-cellular synthetic caller with manual call control.
 
-    This function never dials, answers or hangs up. The real call must already be
-    active. Caller and SHUO response transcripts exist only in process memory for
+    This function never dials, answers or hangs up. The real call must be active
+    before scenario execution begins. A supplied prepared setup means caller
+    audio and Android bridge preparation already completed in this same process.
+    Caller and SHUO response transcripts exist only in process memory for
     deterministic checks and are excluded from the report.
     """
 
@@ -436,46 +513,72 @@ async def run_android_cellular_closed_loop(
     if not (0 < max_scenario_seconds <= MAX_SCENARIO_SECONDS):
         raise ValueError("max_scenario_seconds must be >0 and <=300")
 
-    tx_preflight = await preflight_android_cellular_tx(
-        tools,
-        serial=serial,
-        require_active_call=True,
-    )
-    rx_preflight = await preflight_android_cellular_rx(
-        tools,
-        serial=tx_preflight.serial,
-        require_active_call=True,
-    )
-    if rx_preflight.serial != tx_preflight.serial:
-        raise AndroidCellularLoopError("RX/TX ADB target mismatch")
+    if prepared_setup is None:
+        tx_preflight = await preflight_android_cellular_tx(
+            tools,
+            serial=serial,
+            require_active_call=True,
+        )
+        rx_preflight = await preflight_android_cellular_rx(
+            tools,
+            serial=tx_preflight.serial,
+            require_active_call=True,
+        )
+        if rx_preflight.serial != tx_preflight.serial:
+            raise AndroidCellularLoopError("RX/TX ADB target mismatch")
 
-    # Prepare all caller speech before opening the observer Flux connection.
-    # No caller audio is written to disk.
-    prepared = await prepare_scenario_stimuli(
-        timeout_seconds=response_timeout_seconds,
-        voice_source=voice_source,
-    )
+        prepared = await prepare_scenario_stimuli(
+            timeout_seconds=response_timeout_seconds,
+            voice_source=voice_source,
+        )
 
-    tx_dex = await compile_android_tx_bridge(
-        repo_root=repo_root,
-        build_dir=build_dir / "tx",
-        tools=tools,
-    )
-    rx_dex = await compile_android_rx_bridge(
-        repo_root=repo_root,
-        build_dir=build_dir / "rx",
-        tools=tools,
-    )
-    await push_android_tx_bridge(
-        tools=tools,
-        serial=tx_preflight.serial,
-        dex_path=tx_dex,
-    )
-    await push_android_rx_bridge(
-        tools=tools,
-        serial=rx_preflight.serial,
-        dex_path=rx_dex,
-    )
+        tx_dex = await compile_android_tx_bridge(
+            repo_root=repo_root,
+            build_dir=build_dir / "tx",
+            tools=tools,
+        )
+        rx_dex = await compile_android_rx_bridge(
+            repo_root=repo_root,
+            build_dir=build_dir / "rx",
+            tools=tools,
+        )
+        await push_android_tx_bridge(
+            tools=tools,
+            serial=tx_preflight.serial,
+            dex_path=tx_dex,
+        )
+        await push_android_rx_bridge(
+            tools=tools,
+            serial=rx_preflight.serial,
+            dex_path=rx_dex,
+        )
+    else:
+        if serial is not None and prepared_setup.serial != serial:
+            raise AndroidCellularLoopError(
+                "prepared ADB target does not match requested serial"
+            )
+        tx_preflight = await preflight_android_cellular_tx(
+            tools,
+            serial=prepared_setup.serial,
+            require_active_call=True,
+        )
+        rx_preflight = await preflight_android_cellular_rx(
+            tools,
+            serial=prepared_setup.serial,
+            require_active_call=True,
+        )
+        if (
+            tx_preflight.serial != prepared_setup.serial
+            or rx_preflight.serial != prepared_setup.serial
+        ):
+            raise AndroidCellularLoopError(
+                "active-call ADB target changed after pre-call preparation"
+            )
+        if tx_preflight.sdk_int != prepared_setup.sdk_int:
+            raise AndroidCellularLoopError(
+                "Android SDK changed after pre-call preparation"
+            )
+        prepared = prepared_setup.stimuli
 
     monitor = _RxTurnMonitor()
     tx = AdbTelephonyTxBridge(

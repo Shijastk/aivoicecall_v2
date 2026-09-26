@@ -50,6 +50,7 @@ jobs:
         run: |
           PYTHONPATH=. python scripts/dev/18_android_cellular_closed_loop.py --help >/tmp/loop-help.txt
           grep -q "allow-provider-network" /tmp/loop-help.txt
+          grep -q "prepare-before-call" /tmp/loop-help.txt
           PYTHONPATH=. python scripts/run_bluetooth_ai.py --help >/tmp/bt-help.txt
           grep -q "llm-warmup" /tmp/bt-help.txt
           grep -q "CALL" /tmp/loop-help.txt || true

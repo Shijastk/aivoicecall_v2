@@ -265,3 +265,15 @@ evidence-gated and is not enabled as a substitute, especially while Flux
 turn-fragmentation remains unresolved. The warmup is a narrower test of the
 observed first-request cold-path hypothesis and preserves carrier/default
 behavior.
+
+## 2026-09-26 — Pre-arm the synthetic caller before manual call establishment
+
+Decision: add default-off `--prepare-before-call` to the Phase-5 dev controller.
+It pre-synthesizes the fixed Pocket script into process memory and compiles/pushes
+the Android bridges before the real call. It then waits for explicit operator
+Enter after the call is manually established and Terminal 0 is ready, reruns
+strict MODE_IN_CALL preflight, and only then starts TX/RX/observer/scenario.
+
+Reason: owner observation plus source review proved the visible 5-10 second delay
+before the first synthetic question was harness setup after call connection, not
+SHUO first-response latency. The two latency questions must remain separate.

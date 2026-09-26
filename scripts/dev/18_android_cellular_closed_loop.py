@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import sys
 from pathlib import Path
 
 from shuo.benchmark.android_cellular_loop import (
@@ -11,6 +12,7 @@ from shuo.benchmark.android_cellular_loop import (
     DEFAULT_RESPONSE_TIMEOUT_SECONDS,
     DEFAULT_THINKING_PAUSE_MS,
     MAX_SCENARIO_SECONDS,
+    prepare_android_cellular_closed_loop,
     run_android_cellular_closed_loop,
 )
 from shuo.benchmark.android_cellular_tx import AndroidBuildTools
@@ -34,6 +36,28 @@ async def _run(args) -> int:
             "missing Android closed-loop host tool(s): " + ", ".join(missing)
         )
 
+    prepared_setup = None
+    if args.prepare_before_call:
+        prepared_setup = await prepare_android_cellular_closed_loop(
+            tools=tools,
+            repo_root=_repo_root(),
+            build_dir=args.build_dir,
+            serial=args.serial,
+            response_timeout_seconds=args.response_timeout,
+            voice_source=args.voice,
+        )
+        print("ANDROID_CELLULAR_PRECALL_READY=YES", flush=True)
+        print(
+            "MANUAL_ACTION=Establish/answer the call, start Terminal 0, "
+            "wait for SHUO readiness, then press Enter here.",
+            flush=True,
+        )
+        if not sys.stdin.isatty():
+            raise AndroidCellularLoopError(
+                "--prepare-before-call requires an interactive terminal"
+            )
+        await asyncio.to_thread(input)
+
     report = await run_android_cellular_closed_loop(
         tools=tools,
         repo_root=_repo_root(),
@@ -45,6 +69,7 @@ async def _run(args) -> int:
         response_timeout_seconds=args.response_timeout,
         max_scenario_seconds=args.max_scenario_seconds,
         voice_source=args.voice,
+        prepared_setup=prepared_setup,
     )
 
     print(
@@ -116,9 +141,20 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Phase-5 real-cellular deterministic synthetic caller. "
-            "Requires an already-active manually controlled cellular call. "
-            "No raw audio is persisted and no automatic call control occurs."
+            "Default mode requires an already-active manually controlled call. "
+            "The pre-call mode prepares in memory first and then waits for the "
+            "operator to establish the call. No raw audio is persisted and no "
+            "automatic call control occurs."
         )
+    )
+    parser.add_argument(
+        "--prepare-before-call",
+        action="store_true",
+        help=(
+            "Pre-synthesize caller prompts and compile/push Android bridges "
+            "before the call; then wait for manual Enter after the call and "
+            "Terminal 0 are ready."
+        ),
     )
     parser.add_argument(
         "--serial",

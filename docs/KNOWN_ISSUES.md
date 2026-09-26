@@ -349,3 +349,16 @@ Flux turn/cancel sequences, so this cannot be dismissed as only an itel observer
 counting issue. The exact cause—premature Flux EOT, speech fragmentation/merge,
 transport behavior or another turn-ordering effect—remains unresolved. LLM
 warmup must not hide or reclassify this correctness problem.
+
+## Closed-loop call-connected startup delay was harness preparation — 2026-09-26
+
+The owner observed that the first synthetic question began about 5-10 seconds
+after call connection. Source review found the legacy closed-loop controller did
+all 11 Pocket pre-syntheses plus Android bridge compile/push after confirming the
+call was already active. This delay is outside `scenario_duration_ms` and is
+not evidence of slow SHUO conversational response.
+
+An explicit `--prepare-before-call` path moves that work before call
+establishment and waits for manual operator confirmation before strict active-call
+preflight and scenario start. Live reduction of call-connected-to-seed delay is
+not yet measured.
