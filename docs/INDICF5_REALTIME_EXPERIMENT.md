@@ -123,3 +123,33 @@ terms.
 If this benchmark passes, the next change on this same experimental branch is an
 opt-in IndicF5TTSService behind the existing provider router, followed by focused
 tests and manual speaker/cellular validation before any production merge.
+
+
+## Reference GTX 1650 CUDA result — 2026-09-26
+
+The owner ran the isolated probe on the reference MSI laptop with
+NVIDIA GeForce GTX 1650 Max-Q. PyTorch reported CUDA available and the model
+loaded successfully; this was not an OOM failure.
+
+Observed content-free metrics for the short target phrase:
+
+- model load: 6898.9 ms
+- warm-up: 42579.9 ms
+- run 1: 51995.6 ms for 0.747 s generated audio (RTF 69.606)
+- run 2: 85086.1 ms for 0.747 s generated audio (RTF 113.904)
+- run 3: 156786.9 ms for 0.747 s generated audio (RTF 209.889)
+- median audio-available latency: 85086.1 ms
+- maximum audio-available latency: 156786.9 ms
+- peak PyTorch allocated VRAM: 1419.3 MiB
+- experimental 500 ms gate: **FAIL**
+
+This proves only that the current IndicF5 Hugging Face AutoModel inference path is
+not realtime on this reference GPU. It does not prove that every possible
+optimized IndicF5/F5-TTS runtime is too slow. Do not add TTS_PROVIDER=indicf5
+from this path.
+
+The increasing per-run time is observed evidence only; thermal throttling, hidden
+CPU work, dtype choice or another cause must not be asserted without profiling.
+The next experiment, if pursued, must isolate model sampling, reference
+preprocessing and vocoder cost and may test lower NFE values without weakening
+the production latency target.
