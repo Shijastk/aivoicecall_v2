@@ -558,3 +558,12 @@ required property differs.
   and raw-audio policy remain unchanged.
 - Recommended controlled candidate uses `--llm-warmup --parallel-startup`.
   Live latency benefit is unproven; caller-heard latency remains NOT_MEASURED.
+
+### Automated gate — first-turn LLM warmup candidate
+
+- Exact candidate commit `ad47766b86b7e74be148d86e7db5250bfd502eeb`
+  passed GitHub Actions run `36222331133` on Python 3.12/3.14.
+- 71 focused tests and 164 Bluetooth tests passed on each matrix.
+- Full suite: 1038 passed plus the exact four documented historical failures;
+  `FULL_SUITE_BASELINE_CLEAN` and diff validation passed on both matrices.
+- CI did not access providers or devices. Live latency benefit remains unproven.

@@ -860,3 +860,23 @@ establish caller-heard latency. Use `--parallel-startup` with it during the
 controlled Bluetooth comparison so Flux startup can overlap the Agent/TTS/LLM
 readiness sequence. Live benefit remains unproven until the first-turn
 before/after comparison is supplied.
+
+## Automated gate for first-turn LLM warmup candidate — 2026-09-26
+
+GitHub Actions run `36222331133` completed SUCCESS on exact candidate commit
+`ad47766b86b7e74be148d86e7db5250bfd502eeb` for Python 3.12 and 3.14.
+
+- changed-file compile: PASS;
+- Bluetooth runner CLI smoke including `--llm-warmup`: PASS;
+- focused closed-loop/Android/Phase-4 latency set: 71 passed on each matrix;
+- complete Bluetooth regression: 164 passed on each matrix;
+- full repository: 1038 passed plus exactly the four documented historical
+  failures, with `FULL_SUITE_BASELINE_CLEAN` on both matrices;
+- diff validation: PASS.
+
+The historical failures retained their documented identities/signatures:
+the two unsupported async tests in `scripts/test_v2_keys.py` and the two
+`_IncludedRouter.path` isolation-test failures. No provider credential,
+Bluetooth device, Android phone or real cellular call was used by CI. Therefore
+this gate validates implementation/regression behavior only; live first-turn
+latency benefit remains unproven.
