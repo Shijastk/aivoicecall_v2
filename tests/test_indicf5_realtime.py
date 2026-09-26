@@ -1,6 +1,6 @@
 import pytest
 
-from shuo.benchmark.indicf5_realtime import resolve_device, summarize_probe
+from shuo.indicf5_realtime import resolve_device, summarize_probe
 
 
 def test_realtime_probe_prefers_cuda_and_fails_closed_without_it():
