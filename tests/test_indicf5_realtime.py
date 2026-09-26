@@ -59,3 +59,65 @@ def test_realtime_probe_json_is_content_free():
     assert "ref_text" not in payload
     assert "target_text" not in payload
     assert "generated_audio" not in payload
+
+
+class _FakeModule:
+    def __init__(self, name, *, sample=False, decode=False):
+        self.__class__.__name__ = name
+        if sample:
+            self.sample = lambda *args, **kwargs: None
+        if decode:
+            self.decode = lambda *args, **kwargs: None
+
+
+class _FakeWrapper:
+    def __init__(self, modules):
+        self._modules = modules
+
+    def named_modules(self):
+        yield "", self
+        for item in self._modules:
+            yield item
+
+
+def test_find_runtime_modules_requires_one_sampler_and_vocos_decoder():
+    from shuo.indicf5_realtime import find_runtime_modules
+
+    class Sampler:
+        def sample(self):
+            pass
+
+    class Vocos:
+        def decode(self):
+            pass
+
+    sampler = Sampler()
+    vocos = Vocos()
+    wrapper = _FakeWrapper([("model", sampler), ("vocoder", vocos)])
+
+    (sampler_name, found_sampler), (decoder_name, found_decoder) = find_runtime_modules(wrapper)
+    assert sampler_name == "model"
+    assert found_sampler is sampler
+    assert decoder_name == "vocoder"
+    assert found_decoder is vocos
+
+
+def test_find_runtime_modules_fails_closed_on_ambiguous_sampler():
+    from shuo.indicf5_realtime import find_runtime_modules
+
+    class Sampler:
+        def sample(self):
+            pass
+
+    class Vocos:
+        def decode(self):
+            pass
+
+    wrapper = _FakeWrapper([
+        ("a", Sampler()),
+        ("b", Sampler()),
+        ("vocoder", Vocos()),
+    ])
+
+    with pytest.raises(RuntimeError, match="exactly one inner F5 sampler"):
+        find_runtime_modules(wrapper)
