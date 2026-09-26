@@ -34,7 +34,7 @@ create a caller-heard latency claim.
 |---|---|---|
 | What does this backend do? | [PROJECT.md](PROJECT.md) | VERIFIED IN CODE |
 | How do calls, audio and processes work? | [CURRENT_ARCHITECTURE.md](CURRENT_ARCHITECTURE.md) | VERIFIED IN CODE |
-| How are TTS provider selection and the Pocket local fallback constrained? | [TTS_PROVIDERS.md](TTS_PROVIDERS.md) | IMPLEMENTED contract; reference live validation still required |
+| How are TTS provider selection and the Pocket local fallback constrained? | [TTS_PROVIDERS.md](TTS_PROVIDERS.md) | IMPLEMENTED contract; reference live validation still required |\n| What is the isolated IndicF5 cloned-voice realtime experiment and its merge gate? | [INDICF5_REALTIME_EXPERIMENT.md](INDICF5_REALTIME_EXPERIMENT.md) | EXPERIMENTAL benchmark; not production routing |
 | What is the final product? | [PRODUCT_VISION.md](PRODUCT_VISION.md) | PLANNED direction |
 | What must be preserved or built? | [REQUIREMENTS.md](REQUIREMENTS.md) | Requirements, not proof of compliance |
 | What did hardware validation establish? What is the adapter design? | [BLUETOOTH_ARCHITECTURE.md](BLUETOOTH_ARCHITECTURE.md) | Supplied runtime evidence / PROPOSED design |
