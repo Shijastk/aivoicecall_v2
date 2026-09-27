@@ -12,7 +12,7 @@ import torchaudio
 from transformers import AutoModel
 
 from f5_tts.infer.utils_infer import infer_batch_process, preprocess_ref_audio_text
-from shuo.indicf5_realtime import find_runtime_modules
+from shuo.indicf5_realtime import find_runtime_modules, load_compatible_hf_checkpoint
 
 DEFAULT_REVISION = "ba85abedf18dc479a447eaa0eccbd76ab78a47d5"
 
@@ -28,6 +28,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ref-audio", required=True)
     parser.add_argument("--model-id", default="ai4bharat/IndicF5")
     parser.add_argument("--revision", default=None)
+    parser.add_argument("--checkpoint-repo", default=None)
+    parser.add_argument("--checkpoint-file", default="model.safetensors")
+    parser.add_argument("--checkpoint-revision", default=None)
     parser.add_argument("--ref-text", required=True)
     parser.add_argument("--text", default="ഹലോ, സുഖമാണോ?")
     parser.add_argument("--steps", default="16,8,4")
@@ -73,15 +76,33 @@ def main() -> int:
     print("Loading IndicF5 wrapper...")
     started = time.perf_counter()
     revision = args.revision
-    if revision is None and args.model_id == "ai4bharat/IndicF5":
+    model_id = args.model_id
+    if args.checkpoint_repo:
+        if model_id != "ai4bharat/IndicF5":
+            raise SystemExit(
+                "--checkpoint-repo requires the pinned ai4bharat/IndicF5 base architecture"
+            )
+        revision = revision or DEFAULT_REVISION
+    elif revision is None and model_id == "ai4bharat/IndicF5":
         revision = DEFAULT_REVISION
+
     load_kwargs = {"trust_remote_code": True}
     if revision:
         load_kwargs["revision"] = revision
     wrapper = AutoModel.from_pretrained(
-        args.model_id,
+        model_id,
         **load_kwargs,
-    ).to(device)
+    )
+    if args.checkpoint_repo:
+        checkpoint_path = load_compatible_hf_checkpoint(
+            wrapper,
+            repo_id=args.checkpoint_repo,
+            filename=args.checkpoint_file,
+            revision=args.checkpoint_revision,
+        )
+        print(f"Checkpoint loaded: {args.checkpoint_repo}")
+        print(f"Checkpoint file  : {checkpoint_path}")
+    wrapper = wrapper.to(device)
     wrapper.eval()
     torch.cuda.synchronize()
     print(f"Wrapper load: {(time.perf_counter() - started) * 1000:.1f} ms")
@@ -148,6 +169,8 @@ def main() -> int:
     payload = {
         "device": device,
         "gpu": torch.cuda.get_device_name(0),
+        "base_model_id": model_id,
+        "checkpoint_repo": args.checkpoint_repo,
         "reference_seconds": ref_seconds,
         "reference_preprocess_ms": preprocess_ms,
         "results": results,
