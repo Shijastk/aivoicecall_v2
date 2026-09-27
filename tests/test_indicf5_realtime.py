@@ -166,3 +166,21 @@ def test_indicf5_mulaw_quality_helpers_round_trip():
     assert mulaw
     assert pcm16
     assert len(pcm16) == len(mulaw) * 2
+
+
+def test_indicf5_headroom_helper_scales_only_when_needed():
+    import numpy as np
+
+    from shuo.indicf5_realtime import apply_peak_headroom
+
+    quiet = np.array([0.0, 0.25, -0.5], dtype=np.float32)
+    adjusted, gain, raw_peak = apply_peak_headroom(quiet, headroom_db=1.0)
+    assert raw_peak == pytest.approx(0.5)
+    assert gain == pytest.approx(1.0)
+    assert np.allclose(adjusted, quiet)
+
+    hot = np.array([0.0, 1.2, -0.8], dtype=np.float32)
+    adjusted, gain, raw_peak = apply_peak_headroom(hot, headroom_db=1.0)
+    assert raw_peak == pytest.approx(1.2)
+    assert gain < 1.0
+    assert float(np.max(np.abs(adjusted))) <= 10 ** (-1.0 / 20.0) + 1e-6
