@@ -152,3 +152,17 @@ def test_find_runtime_modules_collapses_torch_compile_orig_mod_alias():
     assert found_sampler is outer
     assert decoder_name == "vocoder"
     assert found_decoder is vocos
+
+
+def test_indicf5_mulaw_quality_helpers_round_trip():
+    import numpy as np
+
+    from shuo.indicf5_realtime import float_audio_to_mulaw_8k, mulaw_8k_to_pcm16
+
+    samples = np.linspace(-0.5, 0.5, 2400, dtype=np.float32)
+    mulaw = float_audio_to_mulaw_8k(samples, 24_000)
+    pcm16 = mulaw_8k_to_pcm16(mulaw)
+
+    assert mulaw
+    assert pcm16
+    assert len(pcm16) == len(mulaw) * 2
