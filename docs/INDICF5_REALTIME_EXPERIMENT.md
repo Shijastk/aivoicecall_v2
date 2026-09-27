@@ -262,3 +262,40 @@ production design would need an explicit startup warm-up before accepting live
 traffic. This remains complete bounded-phrase audio-available latency, not true
 first-sample TTFA or caller mouth-to-ear latency. Voice quality at NFE 4 and
 8 kHz mu-law quality still require manual validation before provider integration.
+
+
+## Manual NFE-4 voice-quality gate
+
+After latency and stability pass on L40S, use
+`scripts/dev/21_indicf5_quality_probe.py` before provider integration.
+
+The manual probe deliberately writes only generated/synthetic audio under
+`/tmp/indicf5-quality` by default; it does not record caller audio and it does
+not write the reference recording into the repository. It pins the same IndicF5
+revision used by the measured experiments, performs one startup warm-up, then
+writes:
+
+- `indicf5-nfe4-native.wav`: native generated PCM for voice/pronunciation review;
+- `indicf5-nfe4-8k.ulaw`: exact 8 kHz G.711 mu-law payload; and
+- `indicf5-nfe4-telephony.wav`: the same mu-law payload decoded back to PCM16 so
+  the owner can listen to the approximate caller-side codec quality.
+
+Run the focused CPU tests before spending GPU credits:
+
+~~~bash
+python -m pytest tests/test_indicf5_realtime.py -q
+~~~
+
+Then switch to L40S only for the manual quality generation:
+
+~~~bash
+PYTHONPATH=. python scripts/dev/21_indicf5_quality_probe.py \
+  --ref-audio /teamspace/studios/this_studio/myvoice.m4a \
+  --ref-text '<exact reference transcript>' \
+  --nfe-step 4
+~~~
+
+Manual acceptance requires both native and telephony WAVs to preserve recognizable
+speaker identity, understandable Malayalam pronunciation and acceptable pacing
+without obvious artifacts. This quality gate does not change the production
+provider router.
