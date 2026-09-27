@@ -283,3 +283,87 @@ def apply_peak_headroom(samples, headroom_db: float = 1.0):
     if gain < 1.0:
         array = array * gain
     return array, gain, peak
+
+
+def _normalize_compiled_state_key(key: str) -> str:
+    """Normalize torch.compile wrapper aliases in serialized state-dict keys."""
+    return key.replace("._orig_mod.", ".")
+
+
+def remap_compatible_state_dict(target_state: dict, source_state: dict) -> dict:
+    """Remap a structurally compatible checkpoint onto a loaded IndicF5 wrapper.
+
+    Both dictionaries must have a one-to-one normalized key mapping and identical
+    tensor shapes. Dtype differences are rejected as well so experimental
+    checkpoint swaps fail closed rather than silently coercing weights.
+    """
+    target_by_norm = {}
+    for key, tensor in target_state.items():
+        normalized = _normalize_compiled_state_key(key)
+        if normalized in target_by_norm:
+            raise RuntimeError(f"duplicate normalized target key: {normalized}")
+        target_by_norm[normalized] = (key, tensor)
+
+    source_by_norm = {}
+    for key, tensor in source_state.items():
+        normalized = _normalize_compiled_state_key(key)
+        if normalized in source_by_norm:
+            raise RuntimeError(f"duplicate normalized source key: {normalized}")
+        source_by_norm[normalized] = (key, tensor)
+
+    target_keys = set(target_by_norm)
+    source_keys = set(source_by_norm)
+    missing = sorted(target_keys - source_keys)
+    extra = sorted(source_keys - target_keys)
+    if missing or extra:
+        raise RuntimeError(
+            "checkpoint key mismatch after compile-alias normalization: "
+            f"missing={len(missing)} extra={len(extra)}"
+        )
+
+    remapped = {}
+    for normalized in sorted(target_keys):
+        target_key, target_tensor = target_by_norm[normalized]
+        _, source_tensor = source_by_norm[normalized]
+        if tuple(target_tensor.shape) != tuple(source_tensor.shape):
+            raise RuntimeError(
+                "checkpoint shape mismatch for "
+                f"{normalized}: target={tuple(target_tensor.shape)} "
+                f"source={tuple(source_tensor.shape)}"
+            )
+        if target_tensor.dtype != source_tensor.dtype:
+            raise RuntimeError(
+                "checkpoint dtype mismatch for "
+                f"{normalized}: target={target_tensor.dtype} source={source_tensor.dtype}"
+            )
+        remapped[target_key] = source_tensor
+
+    return remapped
+
+
+def load_compatible_hf_checkpoint(
+    wrapper,
+    *,
+    repo_id: str,
+    filename: str = "model.safetensors",
+    revision: Optional[str] = None,
+):
+    """Strictly replace wrapper weights from an IndicF5-compatible HF checkpoint."""
+    from huggingface_hub import hf_hub_download
+    from safetensors.torch import load_file
+
+    download_kwargs = {"repo_id": repo_id, "filename": filename}
+    if revision:
+        download_kwargs["revision"] = revision
+    checkpoint_path = hf_hub_download(**download_kwargs)
+
+    source_state = load_file(checkpoint_path, device="cpu")
+    target_state = wrapper.state_dict()
+    remapped = remap_compatible_state_dict(target_state, source_state)
+    result = wrapper.load_state_dict(remapped, strict=True)
+    if result.missing_keys or result.unexpected_keys:
+        raise RuntimeError(
+            "strict checkpoint load returned unresolved keys: "
+            f"missing={result.missing_keys} unexpected={result.unexpected_keys}"
+        )
+    return checkpoint_path
