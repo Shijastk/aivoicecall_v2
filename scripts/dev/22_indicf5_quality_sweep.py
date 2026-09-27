@@ -165,7 +165,7 @@ def main() -> int:
     print("INDICF5 QUALITY SWEEP")
     print("=" * 88)
     print(f"Base model                : {model_id}")
-    print(f"Checkpoint repo           : {args.checkpoint_repo or \"(base weights)\"}")
+    print(f"Checkpoint repo           : {args.checkpoint_repo or '(base weights)'}")
 
     for step in steps:
         # Reset the same RNG state for each NFE value so the A/B/C comparison
