@@ -460,3 +460,33 @@ This is strong evidence of checkpoint-layout compatibility but is not yet an
 exact compatibility proof. The next CPU-only check must normalize `._orig_mod`
 for both sampler and vocoder prefixes and compare all 447 key names and shapes
 before any custom checkpoint loader or paid-GPU inference is attempted.
+
+
+## Dhee exact normalized compatibility and strict loader — 2026-09-27
+
+A second CPU-only checkpoint comparison normalized every occurrence of
+`._orig_mod.` in both the F5 sampler and Vocos vocoder key paths.
+
+Observed result:
+
+- base tensors: 447
+- Dhee tensors: 447
+- normalized common tensors: 447
+- missing: 0
+- extra: 0
+- shape differences: 0
+- dtype differences: 0
+- result: **exact structural compatibility after compile-alias normalization**
+
+This is sufficient to build a fail-closed experimental checkpoint loader without
+using Dhee's currently incomplete AutoModel packaging. The branch now includes:
+
+- `remap_compatible_state_dict()`, which requires one-to-one normalized key
+  coverage plus identical shapes and dtypes;
+- `load_compatible_hf_checkpoint()`, which downloads and strict-loads the
+  compatible safetensors checkpoint into the pinned base IndicF5 wrapper; and
+- `scripts/dev/23_indicf5_checkpoint_validate.py`, a CPU-only strict-load
+  validation that performs no inference or audio generation.
+
+Unit tests cover compile-alias remapping plus fail-closed shape/key mismatch
+behavior. These new tests must pass before paid-GPU Dhee inference is attempted.
