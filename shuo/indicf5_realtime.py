@@ -234,3 +234,30 @@ def find_runtime_modules(wrapper):
             f"expected exactly one logical Vocos decoder; found {len(decoders)}: {names}"
         )
     return samplers[0], decoders[0]
+
+
+def float_audio_to_mulaw_8k(samples, sample_rate: int) -> bytes:
+    """Convert float PCM to mono G.711 mu-law at 8 kHz for quality probing."""
+    if sample_rate <= 0:
+        raise ValueError("sample_rate must be positive")
+
+    import audioop
+    import numpy as np
+
+    array = np.asarray(samples, dtype=np.float32).reshape(-1)
+    if array.size == 0:
+        return b""
+    array = np.clip(array, -1.0, 1.0)
+    pcm16 = (array * 32767.0).astype("<i2", copy=False).tobytes()
+    if sample_rate != 8_000:
+        pcm16, _ = audioop.ratecv(pcm16, 2, 1, sample_rate, 8_000, None)
+    return audioop.lin2ulaw(pcm16, 2)
+
+
+def mulaw_8k_to_pcm16(mulaw: bytes) -> bytes:
+    """Decode G.711 mu-law to PCM16 for an audible telephone-quality WAV."""
+    if not mulaw:
+        return b""
+    import audioop
+
+    return audioop.ulaw2lin(mulaw, 2)
