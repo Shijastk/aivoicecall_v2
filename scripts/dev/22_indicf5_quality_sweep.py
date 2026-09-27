@@ -34,6 +34,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ref-audio", required=True)
     parser.add_argument("--model-id", default="ai4bharat/IndicF5")
     parser.add_argument("--revision", default=None)
+    parser.add_argument("--checkpoint-repo", default=None)
+    parser.add_argument("--checkpoint-file", default="model.safetensors")
+    parser.add_argument("--checkpoint-revision", default=None)
     parser.add_argument("--ref-text", required=True)
     parser.add_argument(
         "--text",
@@ -95,15 +98,33 @@ def main() -> int:
     print("Loading pinned IndicF5 wrapper once...")
     started = time.perf_counter()
     revision = args.revision
-    if revision is None and args.model_id == "ai4bharat/IndicF5":
+    model_id = args.model_id
+    if args.checkpoint_repo:
+        if model_id != "ai4bharat/IndicF5":
+            raise SystemExit(
+                "--checkpoint-repo requires the pinned ai4bharat/IndicF5 base architecture"
+            )
+        revision = revision or DEFAULT_REVISION
+    elif revision is None and model_id == "ai4bharat/IndicF5":
         revision = DEFAULT_REVISION
+
     load_kwargs = {"trust_remote_code": True}
     if revision:
         load_kwargs["revision"] = revision
     wrapper = AutoModel.from_pretrained(
-        args.model_id,
+        model_id,
         **load_kwargs,
-    ).to("cuda")
+    )
+    if args.checkpoint_repo:
+        checkpoint_path = load_compatible_hf_checkpoint(
+            wrapper,
+            repo_id=args.checkpoint_repo,
+            filename=args.checkpoint_file,
+            revision=args.checkpoint_revision,
+        )
+        print(f"Checkpoint loaded          : {args.checkpoint_repo}")
+        print(f"Checkpoint file            : {checkpoint_path}")
+    wrapper = wrapper.to("cuda")
     wrapper.eval()
     torch.cuda.synchronize()
     print(f"Wrapper load: {(time.perf_counter() - started) * 1000:.1f} ms")
@@ -142,7 +163,8 @@ def main() -> int:
     print("=" * 88)
     print("INDICF5 QUALITY SWEEP")
     print("=" * 88)
-    print(f"Model                     : {args.model_id}")
+    print(f"Base model                : {model_id}")
+    print(f"Checkpoint repo           : {args.checkpoint_repo or \"(base weights)\"}")
 
     for step in steps:
         # Reset the same RNG state for each NFE value so the A/B/C comparison
