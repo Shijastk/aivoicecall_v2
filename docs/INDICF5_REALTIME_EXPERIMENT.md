@@ -379,3 +379,35 @@ The next bounded experiment is:
 
 L4 is chosen only as a cost/performance experiment; no latency claim is made
 before measurement.
+
+
+## L4 and Indian-English/code-mix candidate gate — 2026-09-27
+
+Current owner listening decision:
+- NFE 4 native and telephony outputs are rejected for quality.
+- NFE 6 and NFE 8 are materially more acceptable, but final production quality
+  is not yet accepted.
+- mixed-English pronunciation remains a visible gap with base IndicF5.
+
+Base IndicF5 officially lists 11 Indian languages and does not list English.
+Therefore mixed-English quality is not treated as guaranteed behavior.
+
+A current compatible candidate, dheeyantra/dhee-indic-f5, is a third-party
+IndicF5 fine-tune whose model card explicitly targets Indian-accented English,
+code-mixed input, the same Indian-language family including Malayalam, and
+zero-shot reference-audio voice cloning. It advertises the same IndicF5
+inference interface and approximately the same 0.4B model scale. Its license is
+CC-BY-NC-4.0, so it is experimental/non-commercial unless separate licensing is
+obtained. No production-quality claim is accepted from the model card alone.
+
+The quality sweep now resets a common RNG seed before each NFE value so future
+A/B comparisons are NFE-controlled rather than also changing the random sample.
+
+The next hardware experiment is Lightning L4, not L40S. Current Lightning
+pricing lists L4 at $0.48/GPU-hour versus L40S at $2.14/GPU-hour. Memory fit is
+not expected to be the limiting factor because measured IndicF5 peak PyTorch
+allocation on L40S was about 1.4 GiB, but L4 latency must be measured rather
+than inferred.
+
+No provider integration is authorized until the L4 latency and code-mix
+listening gates are complete.
