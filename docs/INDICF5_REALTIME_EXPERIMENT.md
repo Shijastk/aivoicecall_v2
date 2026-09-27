@@ -411,3 +411,31 @@ than inferred.
 
 No provider integration is authorized until the L4 latency and code-mix
 listening gates are complete.
+
+
+## L4 latency and Dhee packaging result — 2026-09-27
+
+The owner ran the base IndicF5 latency probe on a Lightning NVIDIA L4 (23034 MiB).
+
+Observed short-phrase metrics:
+- NFE 5: 2077.6 ms first run, then 972.4 ms and 962.6 ms
+- NFE 6: 1161.9 ms, 1170.1 ms, 1171.8 ms
+- NFE 8: 1582.8 ms, 1546.5 ms, 1540.1 ms
+- peak PyTorch allocation stayed about 1405-1407 MiB
+
+Therefore L4 is materially cheaper but does not meet the 500 ms component-local
+target at the NFE values that remain quality candidates. Do not choose L4 for
+the current realtime target from this evidence.
+
+A base IndicF5 mixed-English quality sweep also completed on L4:
+- NFE 6: 1352.5 ms for 2.741 s audio, RTF 0.493
+- NFE 8: 1779.5 ms for 2.741 s audio, RTF 0.649
+
+The attempted dheeyantra/dhee-indic-f5 AutoModel load failed before inference.
+Transformers reported an unrecognized model because the repository does not
+currently expose the config/custom-code metadata expected by AutoModel. This is
+a packaging/loading failure, not a voice-quality or latency result. The Dhee
+model card claims the same IndicF5 architecture and Indian-English/code-mix
+support, so any further Dhee experiment must first verify the actual safetensors
+key layout and load those weights through a known-good IndicF5 architecture
+rather than assuming AutoModel works from the repo id.
