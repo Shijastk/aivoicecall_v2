@@ -216,3 +216,25 @@ Do not infer an exact lower bound for shorter references or NFE values that were
 not measured. A short-reference / lower-NFE probe may still be used to close the
 local feasibility question, but no IndicF5 provider integration is authorized by
 these results.
+
+
+## L40S reduced-NFE result — 2026-09-27
+
+The owner ran the same inner-runtime IndicF5 probe on a Lightning AI NVIDIA L40S
+host (PyTorch 2.8.0+cu128, TorchAudio 2.8.0+cu128, TorchCodec 0.7.0).
+
+Observed content-free metrics with the same 12.924-second preprocessed reference
+and the same short target phrase:
+
+- wrapper load: 18604.9 ms
+- one-time reference preprocessing: 180.0 ms
+- NFE 8: 1583.4 ms for 0.747 s generated audio, RTF 2.121, peak allocated VRAM 1407.1 MiB
+- NFE 4: 284.7 ms for 0.747 s generated audio, RTF 0.381, peak allocated VRAM 1404.6 MiB
+
+The NFE-4 run passes the experimental 500 ms component-local audio-available
+gate. This is a materially different result from the GTX 1650 reference host.
+It is not yet a production acceptance result: the probe returns the completed
+bounded phrase, so 284.7 ms is not a true streaming first-sample TTFA and not
+caller mouth-to-ear latency. Voice quality at NFE 4, repeated-run stability,
+8 kHz mu-law quality and cancellation behavior still require validation before
+provider integration.
