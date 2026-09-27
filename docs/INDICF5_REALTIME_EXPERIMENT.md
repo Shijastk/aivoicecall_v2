@@ -490,3 +490,26 @@ using Dhee's currently incomplete AutoModel packaging. The branch now includes:
 
 Unit tests cover compile-alias remapping plus fail-closed shape/key mismatch
 behavior. These new tests must pass before paid-GPU Dhee inference is attempted.
+
+
+## Dhee strict-load validation pass — 2026-09-27
+
+The owner completed the fail-closed validation path on the Lightning CPU host:
+
+- focused tests: 12 passed, 1 expected audioop deprecation warning;
+- normalized checkpoint structure: 447/447 tensors matched;
+- missing/extra tensors: 0/0;
+- shape differences: 0;
+- dtype differences: 0;
+- pinned base IndicF5 wrapper load: PASS;
+- Dhee compatible checkpoint strict load: PASS.
+
+The experimental latency and quality probes now support loading a compatible
+checkpoint through the pinned base IndicF5 architecture with
+`--checkpoint-repo`. Direct `AutoModel.from_pretrained` against the Dhee
+repository remains unsupported because that repository does not currently ship
+the custom AutoModel packaging metadata used by the base IndicF5 repository.
+
+Before the next paid-GPU run, perform CPU syntax compilation and rerun the
+focused tests. The next paid run should use L40S, not L4, because the measured
+L4 NFE 6/8 latencies miss the 500 ms component target.
