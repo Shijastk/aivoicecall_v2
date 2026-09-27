@@ -238,3 +238,27 @@ bounded phrase, so 284.7 ms is not a true streaming first-sample TTFA and not
 caller mouth-to-ear latency. Voice quality at NFE 4, repeated-run stability,
 8 kHz mu-law quality and cancellation behavior still require validation before
 provider integration.
+
+
+## L40S NFE-4 stability run — 2026-09-27
+
+The owner repeated the same short-phrase L40S probe for five NFE-4 runs.
+
+Observed content-free metrics:
+
+- wrapper load: 3340.4 ms
+- reference preprocessing: 170.6 ms
+- run 1: 663.5 ms, RTF 0.889
+- run 2: 282.4 ms, RTF 0.378
+- run 3: 280.6 ms, RTF 0.376
+- run 4: 276.0 ms, RTF 0.370
+- run 5: 275.0 ms, RTF 0.368
+- generated audio duration: 0.747 s
+- peak allocated VRAM: 1404.6 MiB
+
+Interpretation: after the first post-load/compile run, the four steady runs were
+275.0–282.4 ms. The first run exceeded the 500 ms component target, so a
+production design would need an explicit startup warm-up before accepting live
+traffic. This remains complete bounded-phrase audio-available latency, not true
+first-sample TTFA or caller mouth-to-ear latency. Voice quality at NFE 4 and
+8 kHz mu-law quality still require manual validation before provider integration.
