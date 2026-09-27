@@ -184,3 +184,54 @@ def test_indicf5_headroom_helper_scales_only_when_needed():
     assert raw_peak == pytest.approx(1.2)
     assert gain < 1.0
     assert float(np.max(np.abs(adjusted))) <= 10 ** (-1.0 / 20.0) + 1e-6
+
+
+def test_remap_compatible_state_dict_handles_orig_mod_aliases():
+    import torch
+
+    from shuo.indicf5_realtime import remap_compatible_state_dict
+
+    target = {
+        "ema_model._orig_mod.layer.weight": torch.zeros((2, 2), dtype=torch.float32),
+        "vocoder._orig_mod.layer.bias": torch.zeros((2,), dtype=torch.float32),
+    }
+    source = {
+        "ema_model.layer.weight": torch.ones((2, 2), dtype=torch.float32),
+        "vocoder.layer.bias": torch.ones((2,), dtype=torch.float32),
+    }
+
+    remapped = remap_compatible_state_dict(target, source)
+
+    assert set(remapped) == set(target)
+    assert torch.equal(
+        remapped["ema_model._orig_mod.layer.weight"],
+        source["ema_model.layer.weight"],
+    )
+    assert torch.equal(
+        remapped["vocoder._orig_mod.layer.bias"],
+        source["vocoder.layer.bias"],
+    )
+
+
+def test_remap_compatible_state_dict_fails_closed_on_shape_mismatch():
+    import torch
+
+    from shuo.indicf5_realtime import remap_compatible_state_dict
+
+    target = {"ema_model._orig_mod.layer.weight": torch.zeros((2, 2))}
+    source = {"ema_model.layer.weight": torch.zeros((3, 2))}
+
+    with pytest.raises(RuntimeError, match="shape mismatch"):
+        remap_compatible_state_dict(target, source)
+
+
+def test_remap_compatible_state_dict_fails_closed_on_key_mismatch():
+    import torch
+
+    from shuo.indicf5_realtime import remap_compatible_state_dict
+
+    target = {"ema_model._orig_mod.layer.weight": torch.zeros((2, 2))}
+    source = {"ema_model.other.weight": torch.zeros((2, 2))}
+
+    with pytest.raises(RuntimeError, match="key mismatch"):
+        remap_compatible_state_dict(target, source)
