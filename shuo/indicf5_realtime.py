@@ -261,3 +261,25 @@ def mulaw_8k_to_pcm16(mulaw: bytes) -> bytes:
     import audioop
 
     return audioop.ulaw2lin(mulaw, 2)
+
+
+def apply_peak_headroom(samples, headroom_db: float = 1.0):
+    """Return float32 mono samples scaled only when needed to preserve headroom."""
+    if headroom_db < 0:
+        raise ValueError("headroom_db must be >= 0")
+
+    import numpy as np
+
+    array = np.asarray(samples, dtype=np.float32).reshape(-1)
+    if array.size == 0:
+        return array, 1.0, 0.0
+
+    peak = float(np.max(np.abs(array)))
+    if peak == 0.0:
+        return array, 1.0, peak
+
+    target_peak = float(10.0 ** (-headroom_db / 20.0))
+    gain = min(1.0, target_peak / peak)
+    if gain < 1.0:
+        array = array * gain
+    return array, gain, peak
