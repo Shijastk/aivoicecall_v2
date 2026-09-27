@@ -352,3 +352,30 @@ Do not integrate the provider from the NFE-4 quality sample alone. The next
 bounded experiment is an A/B/C quality sweep at NFE 4, 6 and 8 with identical
 reference/text and controlled output headroom. A clean reference recording should
 be reviewed separately if the room character persists at higher NFE.
+
+
+## Owner A/B feedback and next hardware/language gate — 2026-09-27
+
+The owner manually compared the generated sweep. NFE 4 native and telephony
+outputs were rejected as poor quality. NFE 6 and NFE 8 were materially more
+acceptable, although not yet final-production quality. A mixed-English phrase
+("voice assistant") was also pronounced unnaturally.
+
+This is consistent with an important model-boundary fact: IndicF5 officially
+lists 11 Indian languages and does not list English. Mixed English should
+therefore not be treated as a supported-quality guarantee.
+
+The previous NFE 4/6/8 sweep did not reset a common random seed before each NFE
+generation, so it was not a perfectly controlled NFE-only listening comparison.
+The sweep script now accepts --seed and resets the same RNG state before each NFE
+value.
+
+The next bounded experiment is:
+1. run a seed-controlled NFE 5/6/8 quality/latency sweep on a Lightning L4;
+2. compare against the L40S evidence without changing the production latency
+   threshold;
+3. separately A/B raw mixed-English text against Malayalam-script phonetic
+   normalization for common English loanwords.
+
+L4 is chosen only as a cost/performance experiment; no latency claim is made
+before measurement.
