@@ -17,6 +17,7 @@ from shuo.indicf5_realtime import (
     apply_peak_headroom,
     find_runtime_modules,
     float_audio_to_mulaw_8k,
+    load_compatible_hf_checkpoint,
     mulaw_8k_to_pcm16,
 )
 
