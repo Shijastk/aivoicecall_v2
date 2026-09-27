@@ -14,6 +14,8 @@ from transformers import AutoModel
 from f5_tts.infer.utils_infer import infer_batch_process, preprocess_ref_audio_text
 from shuo.indicf5_realtime import find_runtime_modules
 
+DEFAULT_REVISION = "ba85abedf18dc479a447eaa0eccbd76ab78a47d5"
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
