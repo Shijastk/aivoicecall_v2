@@ -325,3 +325,30 @@ intelligibility must be reviewed before provider integration.
 The focused pytest suite was not executed in that Lightning session because
 pytest was not installed in the Studio environment; do not treat this manual
 generation as an automated-test pass.
+
+
+## Manual quality review and focused tests — 2026-09-27
+
+The owner completed the focused CPU test suite after the L40S quality generation:
+
+- tests/test_indicf5_realtime.py: 8 passed
+- one expected Python 3.12 audioop deprecation warning
+
+Manual listening feedback on the generated NFE-4 artifacts was not accepted as
+production-quality yet. The owner reported:
+
+- an audible room/echo-like character, especially near the beginning;
+- some Malayalam articulation/pronunciation that did not sound fully natural;
+- otherwise recognizable voice identity in portions of the sample; and
+- a desire for higher overall voice quality before integration.
+
+Inspection of the uploaded generated WAVs showed that the room/echo-like
+character is already present in the native 24 kHz artifact, so the 8 kHz G.711
+mu-law conversion is not the sole source of that artifact. The native PCM16 WAV
+also reaches digital full scale, so the next quality comparison should preserve
+headroom before encoding.
+
+Do not integrate the provider from the NFE-4 quality sample alone. The next
+bounded experiment is an A/B/C quality sweep at NFE 4, 6 and 8 with identical
+reference/text and controlled output headroom. A clean reference recording should
+be reviewed separately if the room character persists at higher NFE.
