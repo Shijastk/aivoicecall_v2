@@ -32,6 +32,8 @@ def parse_args() -> argparse.Namespace:
         )
     )
     parser.add_argument("--ref-audio", required=True)
+    parser.add_argument("--model-id", default="ai4bharat/IndicF5")
+    parser.add_argument("--revision", default=None)
     parser.add_argument("--ref-text", required=True)
     parser.add_argument(
         "--text",
@@ -43,7 +45,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--steps", default="4,6,8")
     parser.add_argument("--headroom-db", type=float, default=1.0)
     parser.add_argument("--out-dir", default="/tmp/indicf5-quality-sweep")
-    parser.add_argument("--revision", default=DEFAULT_REVISION)
     parser.add_argument("--seed", type=int, default=1234)
     return parser.parse_args()
 
@@ -93,10 +94,15 @@ def main() -> int:
 
     print("Loading pinned IndicF5 wrapper once...")
     started = time.perf_counter()
+    revision = args.revision
+    if revision is None and args.model_id == "ai4bharat/IndicF5":
+        revision = DEFAULT_REVISION
+    load_kwargs = {"trust_remote_code": True}
+    if revision:
+        load_kwargs["revision"] = revision
     wrapper = AutoModel.from_pretrained(
-        "ai4bharat/IndicF5",
-        revision=args.revision,
-        trust_remote_code=True,
+        args.model_id,
+        **load_kwargs,
     ).to("cuda")
     wrapper.eval()
     torch.cuda.synchronize()
@@ -136,6 +142,7 @@ def main() -> int:
     print("=" * 88)
     print("INDICF5 QUALITY SWEEP")
     print("=" * 88)
+    print(f"Model                     : {args.model_id}")
 
     for step in steps:
         # Reset the same RNG state for each NFE value so the A/B/C comparison
