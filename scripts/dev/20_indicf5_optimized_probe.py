@@ -24,6 +24,8 @@ def parse_args() -> argparse.Namespace:
         )
     )
     parser.add_argument("--ref-audio", required=True)
+    parser.add_argument("--model-id", default="ai4bharat/IndicF5")
+    parser.add_argument("--revision", default=None)
     parser.add_argument("--ref-text", required=True)
     parser.add_argument("--text", default="ഹലോ, സുഖമാണോ?")
     parser.add_argument("--steps", default="16,8,4")
@@ -68,9 +70,15 @@ def main() -> int:
     device = "cuda"
     print("Loading IndicF5 wrapper...")
     started = time.perf_counter()
+    revision = args.revision
+    if revision is None and args.model_id == "ai4bharat/IndicF5":
+        revision = DEFAULT_REVISION
+    load_kwargs = {"trust_remote_code": True}
+    if revision:
+        load_kwargs["revision"] = revision
     wrapper = AutoModel.from_pretrained(
-        "ai4bharat/IndicF5",
-        trust_remote_code=True,
+        args.model_id,
+        **load_kwargs,
     ).to(device)
     wrapper.eval()
     torch.cuda.synchronize()
