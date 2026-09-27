@@ -439,3 +439,24 @@ model card claims the same IndicF5 architecture and Indian-English/code-mix
 support, so any further Dhee experiment must first verify the actual safetensors
 key layout and load those weights through a known-good IndicF5 architecture
 rather than assuming AutoModel works from the repo id.
+
+
+## Dhee checkpoint structural comparison — 2026-09-27
+
+CPU-only safetensors inspection compared the pinned base IndicF5 checkpoint with
+dheeyantra/dhee-indic-f5.
+
+Raw key comparison showed 447 tensors in each checkpoint but no direct key
+intersection because the pinned base checkpoint stores compiled-module aliases
+under `ema_model._orig_mod.*` and `vocoder._orig_mod.*`, while Dhee stores
+the corresponding tensors under `ema_model.*` and `vocoder.*`.
+
+After normalizing the `ema_model._orig_mod.` prefix, 364 model tensors matched
+with zero observed shape or dtype differences. The remaining 83 missing/extra
+keys were exactly the Vocos vocoder group, where the same
+`vocoder._orig_mod.` versus `vocoder.` naming difference remained.
+
+This is strong evidence of checkpoint-layout compatibility but is not yet an
+exact compatibility proof. The next CPU-only check must normalize `._orig_mod`
+for both sampler and vocoder prefixes and compare all 447 key names and shapes
+before any custom checkpoint loader or paid-GPU inference is attempted.
