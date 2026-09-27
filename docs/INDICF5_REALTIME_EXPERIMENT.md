@@ -513,3 +513,30 @@ the custom AutoModel packaging metadata used by the base IndicF5 repository.
 Before the next paid-GPU run, perform CPU syntax compilation and rerun the
 focused tests. The next paid run should use L40S, not L4, because the measured
 L4 NFE 6/8 latencies miss the 500 ms component target.
+
+
+## Dhee L40S latency result and quality-probe syntax failure — 2026-09-27
+
+The owner successfully loaded the Dhee checkpoint through the pinned base
+IndicF5 wrapper on an NVIDIA L40S and measured short-phrase latency.
+
+Observed metrics:
+- wrapper + compatible checkpoint load: 3528.9 ms
+- reference preprocessing: 293.3 ms
+- NFE 5: 1070.0 ms first run, then 356.5 ms and 347.8 ms
+- NFE 6: 418.8 ms, 418.1 ms and 425.1 ms
+- NFE 8: 556.8 ms, 554.5 ms and 555.9 ms
+- peak PyTorch allocation remained about 1405-1407 MiB
+
+Interpretation:
+- after startup compilation/warm-up, NFE 5 and NFE 6 meet the experimental
+  500 ms component-local complete-phrase latency target;
+- NFE 8 misses that target;
+- the first NFE-5 run confirms an explicit pre-traffic warm-up remains required.
+
+The first Dhee quality-sweep attempt did not generate audio because
+scripts/dev/22_indicf5_quality_sweep.py contained an invalid escaped quote inside
+an f-string used only for the checkpoint label. This was a script syntax bug,
+not a model/checkpoint failure. The syntax is fixed and a focused test now
+compiles all three IndicF5 dev probes so the same class of error fails before
+paid-GPU execution.
