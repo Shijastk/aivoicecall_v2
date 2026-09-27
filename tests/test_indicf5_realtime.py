@@ -235,3 +235,16 @@ def test_remap_compatible_state_dict_fails_closed_on_key_mismatch():
 
     with pytest.raises(RuntimeError, match="key mismatch"):
         remap_compatible_state_dict(target, source)
+
+
+def test_indicf5_dev_probe_scripts_compile():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    for relative in (
+        "scripts/dev/20_indicf5_optimized_probe.py",
+        "scripts/dev/22_indicf5_quality_sweep.py",
+        "scripts/dev/23_indicf5_checkpoint_validate.py",
+    ):
+        path = root / relative
+        compile(path.read_text(encoding="utf-8"), str(path), "exec")
