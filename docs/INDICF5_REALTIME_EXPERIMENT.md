@@ -299,3 +299,29 @@ Manual acceptance requires both native and telephony WAVs to preserve recognizab
 speaker identity, understandable Malayalam pronunciation and acceptable pacing
 without obvious artifacts. This quality gate does not change the production
 provider router.
+
+
+## L40S NFE-4 manual-quality generation result — 2026-09-27
+
+The owner ran `scripts/dev/21_indicf5_quality_probe.py` on the L40S after an
+explicit warm-up. The probe generated the native cloned-voice WAV and the exact
+8 kHz G.711 mu-law telephone simulation artifacts.
+
+Observed content-free runtime metrics:
+
+- wrapper load: 3244.4 ms
+- reference duration after preprocessing: 12.924 s
+- NFE: 4
+- generation time: 396.4 ms
+- generated audio duration: 6.165 s
+- RTF: 0.064
+- peak allocated VRAM: 1424.5 MiB
+
+This passes the experimental component-local 500 ms complete-phrase generation
+gate for this longer utterance. Manual listening acceptance is still pending:
+speaker identity, Malayalam pronunciation, pacing, artifacts and 8 kHz mu-law
+intelligibility must be reviewed before provider integration.
+
+The focused pytest suite was not executed in that Lightning session because
+pytest was not installed in the Studio environment; do not treat this manual
+generation as an automated-test pass.
