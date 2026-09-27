@@ -44,6 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--headroom-db", type=float, default=1.0)
     parser.add_argument("--out-dir", default="/tmp/indicf5-quality-sweep")
     parser.add_argument("--revision", default=DEFAULT_REVISION)
+    parser.add_argument("--seed", type=int, default=1234)
     return parser.parse_args()
 
 
@@ -115,6 +116,9 @@ def main() -> int:
     print(f"Reference duration: {ref_audio.shape[-1] / ref_sr:.3f} s")
 
     print("Startup warm-up...")
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+    np.random.seed(args.seed)
     with torch.inference_mode():
         warm = infer_batch_process(
             (ref_audio, ref_sr),
@@ -134,6 +138,11 @@ def main() -> int:
     print("=" * 88)
 
     for step in steps:
+        # Reset the same RNG state for each NFE value so the A/B/C comparison
+        # changes diffusion-step count without also changing the random sample.
+        torch.manual_seed(args.seed)
+        torch.cuda.manual_seed_all(args.seed)
+        np.random.seed(args.seed)
         torch.cuda.reset_peak_memory_stats()
         started = time.perf_counter()
         with torch.inference_mode():
@@ -180,6 +189,7 @@ def main() -> int:
         print(f"  telephony : {telephony_path}")
 
     print()
+    print(f"Seed                      : {args.seed}")
     print("A/B/C the native files first. Then compare matching telephony files.")
     print("Prefer the lowest NFE that preserves voice identity, Malayalam clarity,")
     print("natural pacing and absence of room/echo artifacts.")
