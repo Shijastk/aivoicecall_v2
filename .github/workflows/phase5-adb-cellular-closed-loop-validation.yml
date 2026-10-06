@@ -91,6 +91,7 @@ jobs:
             tests/test_bluetooth_codec.py \
             tests/test_bluetooth_shuo_media.py \
             tests/test_local_malayalam_speech.py \
+            tests/test_llm_reasoning_controls.py \
             tests/test_tts_audio_verify.py \
             tests/test_bluetooth_phase4d.py \
             tests/test_bluetooth_production.py \
