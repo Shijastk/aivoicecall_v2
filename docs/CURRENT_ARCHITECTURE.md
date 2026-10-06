@@ -463,7 +463,7 @@ window instead of immediately invoking ASR/EndOfTurn. A resumed Silero start
 inside that window continues the same in-memory speech buffer.
 
 Committed segments include only content-free metadata
-(`audio_ms`, `asr_ms`, `peak`, `rms`, `reason`) in normal logs; transcript
+(`buffered_audio_ms`, `asr_ms`, `peak`, `rms`, `reason`) in normal logs; transcript
 text continues through the existing private callback/trace path. No raw audio is
 written.
 
