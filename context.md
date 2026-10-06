@@ -641,3 +641,16 @@ required property differs.
 - This authorization supersedes only the historical merge hold. Phase 5 remains
   not accepted, Phase 6 remains unauthorized, failed live observations remain
   failed, and caller-heard latency remains unmeasured.
+
+### 2026-10-06 — validated feature tree integrated into main
+
+- PR #13 targeted `main` from `feat/local-malayalam-stt`.
+- PR validation run `37425710006` passed Python 3.12 and 3.14.
+- Each matrix passed 81 focused tests and 166 Bluetooth tests.
+- Full repository result on each matrix was 1048 passed plus the exact four
+  documented historical failures, with `FULL_SUITE_BASELINE_CLEAN`.
+- GitHub merged PR #13 as
+  `f0a02e5e841f64821f873bec0649ffc4360298c4`.
+- This is repository integration only: Phase 5 is not accepted, prior live FAIL
+  evidence is unchanged, Phase 6 is unauthorized, and caller-heard latency
+  remains unmeasured.
