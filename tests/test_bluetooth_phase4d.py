@@ -69,6 +69,23 @@ def test_phrase_buffer_rejects_invalid_capacity():
         BoundedPhraseBuffer(0)
 
 
+def test_phrase_buffer_uses_tighter_bound_only_for_first_phrase():
+    buffer = BoundedPhraseBuffer(
+        128,
+        min_soft_chars=80,
+        first_max_chars=48,
+        first_min_soft_chars=32,
+    )
+
+    first = buffer.feed("A" * 49)
+    assert first == ["A" * 48]
+    assert buffer.buffered_chars == 1
+
+    second = buffer.feed("B" * 127)
+    assert second == ["A" + "B" * 127]
+    assert buffer.buffered_chars == 0
+
+
 @pytest.mark.asyncio
 async def test_llm_context_budget_keeps_system_and_latest_user_but_not_canonical_history(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "unused")
