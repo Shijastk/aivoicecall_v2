@@ -436,7 +436,7 @@ class LocalMalayalamSpeechService:
 
             if metadata:
                 try:
-                    audio_ms = int(metadata["audio_ms"])
+                    buffered_audio_ms = int(metadata["buffered_audio_ms"])
                     asr_ms = float(metadata["asr_ms"])
                     peak = int(metadata["peak"])
                     rms = float(metadata["rms"])
@@ -459,7 +459,7 @@ class LocalMalayalamSpeechService:
                 log.info(
                     "Local Malayalam EndOfTurn "
                     f"transcript_chars={len(transcript)} "
-                    f"audio_ms={audio_ms} "
+                    f"buffered_audio_ms={audio_ms} "
                     f"asr_ms={asr_ms:.1f} "
                     f"peak={peak} "
                     f"rms={rms:.1f} "
