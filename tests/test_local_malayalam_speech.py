@@ -1,5 +1,6 @@
 import base64
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -179,6 +180,8 @@ def test_turn_buffer_merges_resume_before_conversational_commit():
     turn = SpeechTurnBuffer(
         preroll_frames=2,
         commit_silence_ms=96,
+        start_qualify_ms=32,
+        start_min_rms=0,
     )
     frame = _pcm_frame()
     max_bytes = FRAME_BYTES * 100
@@ -189,9 +192,17 @@ def test_turn_buffer_merges_resume_before_conversational_commit():
         max_speech_bytes=max_bytes,
     ) == (None, None)
 
+    # Acoustic start is tentative. The next frame qualifies the
+    # conversational START instead of cancelling on the first VAD edge.
     assert turn.feed(
         frame,
         {"start": 0},
+        max_speech_bytes=max_bytes,
+    ) == (None, None)
+
+    assert turn.feed(
+        frame,
+        None,
         max_speech_bytes=max_bytes,
     ) == ("start", None)
 
@@ -248,6 +259,8 @@ def test_turn_buffer_forced_max_speech_commit_is_immediate():
     turn = SpeechTurnBuffer(
         preroll_frames=1,
         commit_silence_ms=320,
+        start_qualify_ms=32,
+        start_min_rms=0,
     )
     frame = _pcm_frame()
 
@@ -255,7 +268,7 @@ def test_turn_buffer_forced_max_speech_commit_is_immediate():
         frame,
         {"start": 0},
         max_speech_bytes=FRAME_BYTES * 2,
-    ) == ("start", None)
+    ) == (None, None)
 
     action, payload = turn.feed(
         frame,
@@ -267,6 +280,81 @@ def test_turn_buffer_forced_max_speech_commit_is_immediate():
     reason, speech = payload
     assert reason == "max_speech"
     assert len(speech) == FRAME_BYTES * 2
+
+
+def test_turn_buffer_requires_duration_and_energy_before_start():
+    loud = b"\xd0\x07" * (FRAME_BYTES // 2)  # sample value 2000
+    quiet = b"\x01\x00" * (FRAME_BYTES // 2)
+    max_bytes = FRAME_BYTES * 100
+
+    turn = SpeechTurnBuffer(
+        preroll_frames=1,
+        commit_silence_ms=96,
+        start_qualify_ms=96,
+        start_min_rms=500,
+    )
+
+    assert turn.feed(
+        quiet,
+        {"start": 0},
+        max_speech_bytes=max_bytes,
+    ) == (None, None)
+    assert turn.feed(
+        quiet,
+        None,
+        max_speech_bytes=max_bytes,
+    ) == (None, None)
+    assert turn.feed(
+        quiet,
+        None,
+        max_speech_bytes=max_bytes,
+    ) == (None, None)
+
+    # A rolling 96 ms window becomes energetic enough only after real speech.
+    assert turn.feed(
+        loud,
+        None,
+        max_speech_bytes=max_bytes,
+    ) == ("start", None)
+    assert turn.start_emitted is True
+    assert turn.best_start_rms >= 500
+
+
+def test_turn_buffer_commits_low_energy_segment_without_qualifying_start():
+    quiet = b"\x01\x00" * (FRAME_BYTES // 2)
+    max_bytes = FRAME_BYTES * 100
+    turn = SpeechTurnBuffer(
+        preroll_frames=1,
+        commit_silence_ms=64,
+        start_qualify_ms=64,
+        start_min_rms=500,
+    )
+
+    assert turn.feed(
+        quiet,
+        {"start": 0},
+        max_speech_bytes=max_bytes,
+    ) == (None, None)
+    assert turn.feed(
+        quiet,
+        {"end": 0},
+        max_speech_bytes=max_bytes,
+    ) == (None, None)
+    assert turn.feed(
+        quiet,
+        None,
+        max_speech_bytes=max_bytes,
+    ) == (None, None)
+
+    action, payload = turn.feed(
+        quiet,
+        None,
+        max_speech_bytes=max_bytes,
+    )
+    assert action == "commit"
+    assert payload[0] == "vad_silence"
+    assert turn.start_emitted is False
+    assert turn.best_start_rms < 500
 
 
 @pytest.mark.asyncio
@@ -351,6 +439,8 @@ def test_worker_end_frame_builder_executes_runtime_metadata_path():
     assert float(metadata["rms"]) >= 0
     assert metadata["asr_ms"] == "87.2"
     assert metadata["reason"] == "vad_silence"
+    assert metadata["start_qualified"] == "1"
+    assert metadata["start_rms"] == "0"
     assert int(metadata["peak"]) >= 0
     assert float(metadata["rms"]) >= 0
 
@@ -419,3 +509,99 @@ def test_tts_verify_pcm_frame_reports_post_codec_metrics():
     assert metadata["peak"] == "0"
     assert metadata["rms"] == "0.0"
     assert metadata["near_full_scale_ratio"] == "0.00000000"
+
+
+@pytest.mark.asyncio
+async def test_unqualified_worker_end_is_not_promoted_to_agent_turn():
+    rec = Recorder()
+    service = LocalMalayalamSpeechService(
+        rec.end,
+        rec.start,
+    )
+    text = "ആ"
+    encoded = base64.b64encode(text.encode("utf-8")).decode("ascii")
+
+    await service._handle_worker_line(
+        "END\t"
+        + encoded
+        + "\tbuffered_audio_ms=832"
+        + "\tasr_ms=30.0"
+        + "\tpeak=428"
+        + "\trms=45"
+        + "\treason=vad_silence"
+        + "\tstart_qualified=0"
+        + "\tstart_rms=45"
+    )
+
+    assert rec.starts == 0
+    assert rec.ends == []
+
+
+@pytest.mark.asyncio
+async def test_post_end_guard_suppresses_residual_start_and_matching_end(monkeypatch):
+    rec = Recorder()
+    now = [10.0]
+    monkeypatch.setattr(
+        "shuo.services.local_malayalam_speech.time",
+        SimpleNamespace(perf_counter=lambda: now[0]),
+    )
+    service = LocalMalayalamSpeechService(
+        rec.end,
+        rec.start,
+        post_end_start_guard_ms=200,
+    )
+
+    first = base64.b64encode("ഹലോ".encode("utf-8")).decode("ascii")
+    await service._handle_worker_line(
+        "END\t"
+        + first
+        + "\tbuffered_audio_ms=1184"
+        + "\tasr_ms=80.0"
+        + "\tpeak=17000"
+        + "\trms=2500"
+        + "\treason=vad_silence"
+        + "\tstart_qualified=1"
+        + "\tstart_rms=2200"
+    )
+    assert rec.ends == ["ഹലോ"]
+
+    now[0] = 10.050
+    await service._handle_worker_line("START")
+    assert rec.starts == 0
+
+    now[0] = 10.300
+    residual = base64.b64encode("ആ".encode("utf-8")).decode("ascii")
+    await service._handle_worker_line(
+        "END\t"
+        + residual
+        + "\tbuffered_audio_ms=900"
+        + "\tasr_ms=40.0"
+        + "\tpeak=18000"
+        + "\trms=1200"
+        + "\treason=vad_silence"
+        + "\tstart_qualified=1"
+        + "\tstart_rms=1100"
+    )
+
+    assert rec.ends == ["ഹലോ"]
+
+
+@pytest.mark.asyncio
+async def test_start_after_post_end_guard_is_forwarded(monkeypatch):
+    rec = Recorder()
+    now = [20.0]
+    monkeypatch.setattr(
+        "shuo.services.local_malayalam_speech.time",
+        SimpleNamespace(perf_counter=lambda: now[0]),
+    )
+    service = LocalMalayalamSpeechService(
+        rec.end,
+        rec.start,
+        post_end_start_guard_ms=200,
+    )
+
+    service._last_worker_end_at = 20.0
+    now[0] = 20.250
+    await service._handle_worker_line("START")
+
+    assert rec.starts == 1
