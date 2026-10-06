@@ -40,6 +40,9 @@ jobs:
             shuo/services/llm.py \
             shuo/agent.py \
             shuo/bluetooth/production.py \
+            shuo/bluetooth/conversation.py \
+            shuo/bluetooth/shuo_media.py \
+            shuo/bluetooth/tts_audio_verify.py \
             shuo/services/local_malayalam_speech.py \
             shuo/services/local_malayalam_speech_worker.py \
             shuo/services/phrase_buffer.py \
@@ -62,6 +65,7 @@ jobs:
           grep -q "llm-warmup" /tmp/bt-help.txt
           grep -q "speech-provider" /tmp/bt-help.txt
           grep -q "local-malayalam" /tmp/bt-help.txt
+          grep -q "verify-tts-audio-transcript" /tmp/bt-help.txt
           grep -q "CALL" /tmp/loop-help.txt || true
 
       - name: Local Malayalam STT portability guard
@@ -83,7 +87,9 @@ jobs:
             tests/test_android_cellular_rx.py \
             tests/test_android_cellular_tx.py \
             tests/test_bluetooth_codec.py \
+            tests/test_bluetooth_shuo_media.py \
             tests/test_local_malayalam_speech.py \
+            tests/test_tts_audio_verify.py \
             tests/test_bluetooth_phase4d.py \
             tests/test_bluetooth_production.py \
             tests/test_bluetooth_phase4c.py \
