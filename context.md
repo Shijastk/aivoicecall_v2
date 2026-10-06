@@ -611,3 +611,18 @@ required property differs.
   portability guard, compile/CLI smoke and diff validation all passed.
 - Live cellular validation remains pending. Phase 5 is not accepted, Phase 6 is
   not authorized, and caller-heard latency remains unmeasured.
+
+### 2026-10-06 — Python 3.14 CI ordering-fixture stabilization
+
+- Initial GitHub Actions run `37423454956` attempt 1 passed Python 3.12 but
+  Python 3.14 observed one extra active-call ordering test failure.
+- Source review found the test created sequential summaries from separate
+  millisecond-precision `now_iso()` samples while production sorts
+  `startedAt` newest-first.
+- The same exact commit reran successfully in workflow attempt 2 without any
+  source change, confirming the failure was intermittent fixture timing.
+- A test-only fix on `fix/py314-active-call-order-test` pins distinct
+  `startedAt` values; production code is untouched.
+- PR #11 workflow run `37424535788` passed Python 3.12 and 3.14: 81 focused,
+  166 Bluetooth, and 1048 full-suite passes plus the exact four historical
+  failures on each matrix, with `FULL_SUITE_BASELINE_CLEAN`.
