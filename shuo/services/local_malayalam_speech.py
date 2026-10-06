@@ -56,6 +56,7 @@ class LocalMalayalamSpeechService:
         min_silence_ms: int = 200,
         speech_pad_ms: int = 30,
         preroll_frames: int = 8,
+        commit_silence_ms: int = 320,
         startup_timeout_seconds: float = 20.0,
         stop_timeout_seconds: float = 2.0,
     ) -> None:
@@ -74,6 +75,10 @@ class LocalMalayalamSpeechService:
         if preroll_frames <= 0:
             raise ValueError(
                 "preroll_frames must be positive"
+            )
+        if commit_silence_ms <= 0:
+            raise ValueError(
+                "commit_silence_ms must be positive"
             )
 
         self._on_end_of_turn = on_end_of_turn
@@ -97,6 +102,7 @@ class LocalMalayalamSpeechService:
         self._min_silence_ms = min_silence_ms
         self._speech_pad_ms = speech_pad_ms
         self._preroll_frames = preroll_frames
+        self._commit_silence_ms = commit_silence_ms
         self._startup_timeout_seconds = (
             startup_timeout_seconds
         )
@@ -191,6 +197,8 @@ class LocalMalayalamSpeechService:
                 str(self._speech_pad_ms),
                 "--preroll-frames",
                 str(self._preroll_frames),
+                "--commit-silence-ms",
+                str(self._commit_silence_ms),
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -392,10 +400,14 @@ class LocalMalayalamSpeechService:
             return
 
         if line.startswith("END\t"):
-            encoded = line.split(
-                "\t",
-                1,
-            )[1]
+            parts = line.split("\t")
+            if len(parts) < 2:
+                raise LocalMalayalamSpeechError(
+                    "Local STT worker returned "
+                    "an invalid transcript frame"
+                )
+
+            encoded = parts[1]
 
             try:
                 transcript = (
@@ -412,10 +424,54 @@ class LocalMalayalamSpeechService:
                     "an invalid transcript frame"
                 ) from exc
 
-            log.info(
-                "Local Malayalam EndOfTurn "
-                f"transcript_chars={len(transcript)}"
-            )
+            metadata = {}
+            for field in parts[2:]:
+                if "=" not in field:
+                    raise LocalMalayalamSpeechError(
+                        "Local STT worker returned "
+                        "invalid diagnostic metadata"
+                    )
+                key, value = field.split("=", 1)
+                metadata[key] = value
+
+            if metadata:
+                try:
+                    audio_ms = int(metadata["audio_ms"])
+                    asr_ms = float(metadata["asr_ms"])
+                    peak = int(metadata["peak"])
+                    rms = float(metadata["rms"])
+                    reason = metadata["reason"]
+                except (KeyError, ValueError) as exc:
+                    raise LocalMalayalamSpeechError(
+                        "Local STT worker returned "
+                        "invalid diagnostic metadata"
+                    ) from exc
+
+                if reason not in {
+                    "vad_silence",
+                    "max_speech",
+                }:
+                    raise LocalMalayalamSpeechError(
+                        "Local STT worker returned "
+                        "invalid end reason"
+                    )
+
+                log.info(
+                    "Local Malayalam EndOfTurn "
+                    f"transcript_chars={len(transcript)} "
+                    f"audio_ms={audio_ms} "
+                    f"asr_ms={asr_ms:.1f} "
+                    f"peak={peak} "
+                    f"rms={rms:.1f} "
+                    f"reason={reason}"
+                )
+            else:
+                # Backward-compatible protocol handling for injected tests and
+                # older workers. Production worker emits the metadata above.
+                log.info(
+                    "Local Malayalam EndOfTurn "
+                    f"transcript_chars={len(transcript)}"
+                )
 
             await self._on_end_of_turn(
                 transcript
