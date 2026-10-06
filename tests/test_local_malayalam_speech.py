@@ -12,6 +12,7 @@ from shuo.services.local_malayalam_speech_worker import (
     FRAME_BYTES,
     SpeechTurnBuffer,
     format_end_frame,
+    format_barge_probe_frame,
     format_verify_mulaw_frame,
     format_verify_pcm_frame,
     transcribe_mulaw8,
@@ -606,3 +607,73 @@ async def test_start_after_post_end_guard_is_forwarded(monkeypatch):
     await service._handle_worker_line("START")
 
     assert rec.starts == 1
+
+
+def test_barge_probe_frame_is_content_free_and_reports_prefix_asr():
+    class FakeModel:
+        def recognize(self, samples, *, sample_rate):
+            assert sample_rate == 16000
+            if len(samples) < int(0.384 * 16000):
+                return ""
+            return "ഹലോ"
+
+    pcm = b"\x10\x00" * int(0.512 * 16000)
+    frame = format_barge_probe_frame(
+        FakeModel(),
+        segment_id=4,
+        prefix_pcm=pcm,
+        probe_ms=(256, 384, 512),
+        final_chars=4,
+        start_qualified=True,
+        start_rms=2100,
+    )
+
+    parts = frame.split("\t")
+    assert parts[0] == "PROBE"
+    metadata = dict(field.split("=", 1) for field in parts[1:])
+    assert metadata["segment"] == "4"
+    assert metadata["final_chars"] == "4"
+    assert metadata["start_qualified"] == "1"
+    assert metadata["start_rms"] == "2100"
+    assert metadata["p256_chars"] == "0"
+    assert metadata["p384_chars"] == str(len("ഹലോ"))
+    assert metadata["p512_chars"] == str(len("ഹലോ"))
+    assert "ഹലോ" not in frame
+
+
+@pytest.mark.asyncio
+async def test_barge_probe_protocol_is_logged_without_forwarding_turn(caplog):
+    rec = Recorder()
+    service = LocalMalayalamSpeechService(
+        rec.end,
+        rec.start,
+        barge_in_probe_ms=(256, 384, 512),
+    )
+
+    await service._handle_worker_line(
+        "PROBE"
+        "\tsegment=2"
+        "\tfinal_chars=0"
+        "\tstart_qualified=1"
+        "\tstart_rms=2465"
+        "\tp256_chars=0"
+        "\tp256_asr_ms=12.0"
+        "\tp384_chars=0"
+        "\tp384_asr_ms=14.0"
+        "\tp512_chars=0"
+        "\tp512_asr_ms=18.0"
+    )
+
+    assert rec.starts == 0
+    assert rec.ends == []
+    assert "Local Malayalam BargeProbe" in caplog.text
+    assert "p512_chars=0" in caplog.text
+
+
+def test_barge_probe_durations_must_be_unique_ascending_and_bounded():
+    with pytest.raises(ValueError, match="barge_in_probe_ms"):
+        LocalMalayalamSpeechService(
+            Recorder().end,
+            Recorder().start,
+            barge_in_probe_ms=(384, 256),
+        )
