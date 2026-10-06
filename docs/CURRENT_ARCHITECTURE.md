@@ -491,4 +491,3 @@ segment. Only transcript text plus duration/cancel/truncation metadata is writte
 to `<tempdir>/shuo/<call-id>-tts-outbound-transcript.json`; raw audio is never
 persisted. The verifier runs after the call so it adds no ASR workload to the
 live response-latency path.
-
