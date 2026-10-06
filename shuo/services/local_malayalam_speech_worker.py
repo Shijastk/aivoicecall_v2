@@ -287,7 +287,7 @@ def main() -> int:
 
             emit(
                 f"END\t{encoded}"
-                f"\taudio_ms={audio_ms}"
+                f"\tbuffered_audio_ms={audio_ms}"
                 f"\tasr_ms={asr_ms:.1f}"
                 f"\tpeak={peak}"
                 f"\trms={rms}"
