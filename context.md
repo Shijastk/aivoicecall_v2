@@ -700,3 +700,14 @@ required property differs.
   captured outbound segments and writes only text/metadata to
   `/tmp/shuo/<call-id>-tts-outbound-transcript.json`.
 - This is pre-Bluetooth-codec digital evidence, not a remote caller-heard claim.
+### 2026-10-06 — noisy Galaxy A10 uplink follow-up
+
+- One active-call `pw-link` check using the repository parser returned
+  `AI_ONLY_FORBIDDEN_LINKS=NONE`; known physical ALSA route contamination was
+  not observed at that instant.
+- The owner reported the handset response remained noisy/unclear even though a
+  pre-Bluetooth outbound TTS ASR transcript was intelligible.
+- The diagnostic is being tightened to compare the same utterance before and
+  after `BluetoothOutboundCodec`, including peak/RMS/near-full-scale metrics.
+- This preserves the no-raw-audio rule and runs ASR verification only after the
+  live call.
