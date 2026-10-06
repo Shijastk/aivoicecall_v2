@@ -1349,3 +1349,19 @@ historical full-suite baseline verification, and `git diff --check`.
 A green repository gate proves the diagnostic plumbing only. The resulting ASR
 transcript is an approximation of the dispatched digital TTS audio. It is not an
 authoritative handset- or remote-caller-heard transcript.
+### Paired outbound codec integrity diagnostic — 2026-10-06
+
+The TTS outbound verifier now records two in-memory representations of each
+successfully dispatched response segment:
+
+1. post-Player G.711 mu-law/8 kHz before `BluetoothOutboundCodec`;
+2. the exact S16LE/16 kHz bytes passed successfully to the Phase-3 playback
+   session after codec conversion.
+
+After call teardown, the isolated IndicConformer verifier transcribes both
+representations. Each side also reports duration, peak, RMS and the ratio of
+samples with absolute amplitude >=32700. No raw audio is persisted.
+
+Hardware-free tests assert that the observer receives the same post-codec bytes
+as the session write, that pre/post buffers share checkpoint/cancel boundaries,
+and that both verifier frame formats expose bounded content-free level metrics.
