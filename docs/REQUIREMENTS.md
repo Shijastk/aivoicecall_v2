@@ -148,3 +148,15 @@ contract with no raw-audio persistence.
 The authorization remains scoped to the isolated Phase-5 development/benchmark
 transport. Manual call control, privacy restrictions, core codec invariants and
 the Phase-6 boundary remain unchanged.
+## Current owner amendment: closed-loop synthetic caller test controller — 2026-09-23
+
+After independent caller-side Android cellular TX and RX qualification, the
+owner authorized an isolated Phase-5 controller that composes those media
+boundaries for deterministic real-cellular conversation testing.
+
+This authorization covers code/tests/docs and a controlled live run only. It
+does not authorize automatic dial/answer/hangup or any Phase-6 lifecycle action.
+Raw audio must remain non-persistent; response transcript text must remain
+process-private for narrow boolean checks; the shared SHUO codec contract remains
+mu-law/8 kHz; and caller-heard latency remains unmeasured unless a separately
+valid external methodology is approved.

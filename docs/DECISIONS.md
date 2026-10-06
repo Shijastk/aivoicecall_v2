@@ -236,3 +236,84 @@ Phase-5 development/benchmark transport, subject to final repository regression
 after the evidence/docs commit. This qualifies only the receive transport
 boundary; it does not automate call control, accept Phase 5, authorize Phase 6,
 or establish caller-heard latency.
+## BT-D32 — compose validated Android RX/TX only behind a live-gated controller — 2026-09-23
+
+The owner authorized direct implementation of the next synthetic-caller layer
+after both Android cellular media directions passed independently.
+
+Decision: compose the existing RX/TX boundaries in a deterministic Phase-5
+dev/benchmark controller, not in production call-control code. Keep call
+establishment/hangup manual, pre-synthesize caller stimuli only in memory, use a
+separate Flux observer at the approved 0.8 threshold, serialize no response
+transcript, and make no caller-heard latency claim.
+
+Repository validation is necessary but not sufficient. The branch must remain
+unmerged until simultaneous real-cellular RX/TX and the scripted pause/barge-in/
+continuity scenario pass on the reference itel/Galaxy/SHUO path.
+
+## 2026-09-26 — Prime first-turn LLM path only by explicit Bluetooth opt-in
+
+Decision: add default-off `--llm-warmup` to the manual Bluetooth runner. It
+warms the Agent's existing streaming LLM client with one static `ping` request
+capped at one generated token. It sends no digital-twin prompt, history or caller
+content and mutates no conversation state. Failure/timeout is fail-open to the
+normal final-EOT path; cancellation propagates.
+
+Reason: owner-supplied logs show a substantially slower first local LLM/TTS
+startup than later turns. Existing prepared-response reuse remains
+evidence-gated and is not enabled as a substitute, especially while Flux
+turn-fragmentation remains unresolved. The warmup is a narrower test of the
+observed first-request cold-path hypothesis and preserves carrier/default
+behavior.
+
+## 2026-09-26 — Pre-arm the synthetic caller before manual call establishment
+
+Decision: add default-off `--prepare-before-call` to the Phase-5 dev controller.
+It pre-synthesizes the fixed Pocket script into process memory and compiles/pushes
+the Android bridges before the real call. It then waits for explicit operator
+Enter after the call is manually established and Terminal 0 is ready, reruns
+strict MODE_IN_CALL preflight, and only then starts TX/RX/observer/scenario.
+
+Reason: owner observation plus source review proved the visible 5-10 second delay
+before the first synthetic question was harness setup after call connection, not
+SHUO first-response latency. The two latency questions must remain separate.
+## BT-D33 — Add local Malayalam STT only as an explicit Bluetooth opt-in — 2026-10-06
+
+Decision: retain Deepgram Flux as the existing/default Bluetooth speech provider
+and add `local-malayalam` only behind an explicit provider selection.
+
+Reason: the previous live Malayalam call was still entering
+`flux-general-en`, while an isolated local IndicConformer benchmark had already
+shown materially better Malayalam recognition. The selected implementation keeps
+Silero/ONNX/IndicConformer dependencies in a separate worker environment instead
+of adding them to SHUO's main runtime dependency set.
+
+The operator must supply `SHUO_LOCAL_STT_PYTHON` and
+`SHUO_MALAYALAM_STT_MODEL_DIR`; source code contains no user-specific default
+paths and fails closed when either is absent.
+
+Reference offline evidence on 2026-10-06 reproduced the same Malayalam sentence
+through direct IndicConformer and through the SHUO mu-law/VAD/worker path, with
+one StartOfTurn and one EndOfTurn. Repository CI rehearsal remained
+historical-baseline clean.
+
+Consequence: this decision authorizes only the opt-in Bluetooth implementation
+and its controlled validation. It does not replace carrier/V2 Flux, accept
+Phase 5, prove live cellular accuracy, authorize Phase 6, or create a
+caller-heard latency claim.
+
+## BT-D34 — Permit main integration after exact repository gate without accepting Phase 5 — 2026-10-06
+
+Owner decision: the current default-off feature implementation may be integrated
+into `main` after its exact head passes the established Python 3.12/3.14
+repository workflow.
+
+This is a source-integration decision only. It does not reinterpret any failed
+live observation, mark Phase 4 or Phase 5 accepted, enable speculative/local
+providers by default, authorize automated call control or Phase 6, or support a
+caller-heard latency claim.
+
+The earlier closed-loop "do not merge from CI alone" hold remains part of the
+historical record. This later owner authorization supersedes only the merge hold,
+subject to the full CI gate and preservation of all existing runtime/safety
+restrictions.

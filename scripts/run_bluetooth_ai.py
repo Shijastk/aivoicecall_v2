@@ -92,6 +92,19 @@ def parse_args() -> argparse.Namespace:
         help="Local trace id only; this is not a carrier call id.",
     )
     parser.add_argument(
+        "--speech-provider",
+        choices=(
+            "deepgram-flux",
+            "local-malayalam",
+        ),
+        default="deepgram-flux",
+        help=(
+            "Bluetooth speech recognition / turn detector. "
+            "Default preserves Deepgram Flux; local-malayalam "
+            "uses isolated Silero VAD + IndicConformer."
+        ),
+    )
+    parser.add_argument(
         "--eager-eot-threshold",
         type=_eager_threshold,
         default=None,
@@ -150,6 +163,14 @@ def parse_args() -> argparse.Namespace:
         help="Phase-4D opt-in: request/log content-free streaming usage timing when supported.",
     )
     parser.add_argument(
+        "--llm-warmup",
+        action="store_true",
+        help=(
+            "Bluetooth-only opt-in: warm the selected LLM streaming path with "
+            "static non-conversation input before caller audio is processed."
+        ),
+    )
+    parser.add_argument(
         "--parallel-startup",
         action="store_true",
         help="Phase-4D opt-in: warm Flux and TTS/Agent concurrently with fail-clean teardown.",
@@ -190,6 +211,7 @@ async def _main(args: argparse.Namespace) -> None:
     await run_production_bluetooth_conversation(
         session,
         persona_id=args.persona,
+        speech_provider=args.speech_provider,
         diagnostics=diagnostics,
         stream_id="bluetooth-manual",
         call_id=args.call_id,
@@ -201,6 +223,7 @@ async def _main(args: argparse.Namespace) -> None:
         tts_phrase_chars=args.tts_phrase_chars,
         llm_history_max_chars=args.llm_history_max_chars,
         llm_provider_timing=args.llm_provider_timing,
+        llm_warmup=args.llm_warmup,
         parallel_startup=args.parallel_startup,
         player_preroll_frames=args.player_preroll_frames,
     )

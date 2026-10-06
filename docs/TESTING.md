@@ -923,3 +923,347 @@ Warnings were 3 on Python 3.12 and 12 on Python 3.14 in the full suite. No new
 failure identity/signature was introduced. This gate used no phone, provider
 secret or raw-audio artifact; the separate itel live probe above is the
 reference-device runtime evidence.
+## Phase 5 real-cellular closed-loop synthetic caller candidate — 2026-09-23
+
+The new `scripts/dev/18_android_cellular_closed_loop.py` composes the already
+reference-qualified Android ADB RX/TX boundaries without adding call control.
+It uses Pocket caller speech prepared entirely in memory and a separate Deepgram
+Flux observer on the real downlink. Response transcripts exist only in memory
+for narrow continuity booleans and are not serialized.
+
+Automated validation run `35853641593` at revision
+`5d40f1817499f4cb117a3054cce75dfb390dbc0e` passed on Python 3.12/3.14:
+
+- CLI smoke: PASS;
+- focused closed-loop + Android RX/TX + codec: **36 passed**;
+- Bluetooth regression: **162 passed**;
+- full root: **1035 passed / exact 4 historical failures**;
+- baseline verifier: `FULL_SUITE_BASELINE_CLEAN`;
+- full branch `git diff --check`: PASS.
+
+The first automated run had exactly one new failure in a test assertion: the
+test report fixture itself contained the word `transcript` in a limitation
+sentence while asserting that word was absent. No runtime code failed. The
+fixture wording was corrected and the full automated gate rerun successfully.
+
+Not yet proven by CI: simultaneous ADB RX + TX on the live reference call,
+real observer-Flux progression, two cellular interruption attempts, real
+thinking-pause behavior, or continuity through the actual SHUO endpoint. Those
+are the required reference runtime gate before merge.
+### Closed-loop live attempt blocked at Galaxy Bluetooth discovery — 2026-09-23
+
+The first combined itel/Galaxy/SHUO live attempt reached the real-device setup
+with the Galaxy A10 paired/trusted/connected at Bluetooth level and the itel
+caller phone visible over ADB in `MODE_IN_CALL`. Starting the Galaxy-side SHUO
+runner then failed before session construction with:
+
+```text
+shuo.bluetooth.pipewire.PipeWireSelectionError:
+no compatible Bluetooth downlink target for 04:BA:8D:42:97:B1
+```
+
+This is a fail-closed discovery result, not a closed-loop controller failure.
+`build_phase3_ai_only_session()` calls fresh `pw-dump` discovery and
+`select_target()`; the downlink selector accepts only the validated HFP
+contract (BlueZ SCO source, headset-audio-gateway profile, mSBC,
+S16LE/16 kHz/mono, matching address). `bluetoothctl Connected: yes` alone does
+not prove that an active compatible SCO call node exists.
+
+No SHUO Bluetooth session, Pocket response path, or closed-loop Android
+controller started in this attempt, so no barge-in/continuity/closed-loop result
+can be inferred. The next step is content-free PipeWire graph inspection while
+the cellular call is active; do not weaken selector requirements until the live
+graph identifies the missing/mismatched property.
+## Phase 5 two-device closed-loop latency instrumentation — 2026-09-24
+
+The real-cellular closed-loop candidate now emits one host-correlated response
+latency sample per deterministic response. The sample boundary is synthetic
+caller paced-TX completion on Ubuntu to the separate itel VOICE_DOWNLINK Flux
+observer's StartOfTurn event. This is suitable for comparing the complete
+two-device test path on one monotonic host clock, but it is not caller-heard
+mouth-to-ear latency and no acceptance threshold is inferred from it.
+
+Expected content-free output includes:
+
+```text
+RESPONSE_LATENCY_01 response_seed_tx_end_to_observer_start_ms=...ms
+...
+RESPONSE_LATENCY_KIND=HOST_CORRELATED_OBSERVER
+RESPONSE_LATENCY_SAMPLES=...
+RESPONSE_STARTED_BEFORE_TX_END=...
+CALLER_HEARD_LATENCY=NOT_MEASURED
+```
+
+A negative individual sample, if ever observed, means the downlink observer
+reported response speech before the controller finished the caller TX boundary;
+it must be investigated rather than clamped or hidden. Min/average/max summary
+metrics are computed from the recorded samples without an invented pass/fail
+threshold.
+
+The latest owner-supplied run before this instrumentation completed 10 observed
+response EOTs in about 105.09 seconds. Closed-loop completion, seed response,
+thinking-pause behavior, both interruption timing checks and the first barge-in
+continuity check passed. The second codeword continuity check and final fruit
+continuity check failed, so the overall supplemental run remained FAIL. Fresh
+hardware evidence is required for the new latency metrics.
+
+## Phase 5 live per-response latency evidence — 2026-09-26
+
+Owner-supplied reference-device run of the latency-instrumented two-device
+controller completed the deterministic scenario with 10 observed response EOTs.
+The raw host-correlated response samples, in milliseconds, were:
+
+```text
+4208.180
+2876.757
+3317.006
+2883.421
+-6238.519
+2948.804
+4274.329
+3279.708
+1707.244
+3323.179
+```
+
+The negative sample means the observed response StartOfTurn occurred before the
+caller paced-TX completion boundary. It is therefore an overlap/turn-order
+diagnostic, not a valid non-negative TX-end-to-response-start latency sample.
+Including it in min/average made the first summary misleading.
+
+For the nine non-overlapping samples only:
+
+```text
+min    1707.244 ms
+avg    3202.070 ms
+median 3279.708 ms
+max    4274.329 ms
+```
+
+The controller now preserves the negative raw sample with status
+`OVERLAP_RESPONSE_STARTED_BEFORE_TX_END`, excludes it from min/average/max,
+reports total and valid sample counts separately, and keeps
+`CALLER_HEARD_LATENCY=NOT_MEASURED`.
+
+The run also reported:
+- closed-loop scenario completion PASS;
+- seed response PASS;
+- 650 ms thinking-pause behavior PASS;
+- barge-in 1 interruption-while-remote-speaking FAIL;
+- barge-in 1 mango continuity PASS;
+- barge-in 2 interruption-while-remote-speaking PASS;
+- barge-in 2 codeword continuity FAIL;
+- final mango continuity PASS;
+- at least ten remote response turns PASS.
+
+No root cause is assigned yet to the overlap or codeword-continuity failure.
+
+## Silent closed-loop rerun and first-turn warmup validation — 2026-09-26
+
+A fresh owner-supplied run with no manual caller speech removed the earlier
+"manual Hi" hypothesis. The seed response was non-overlapping at 3931.488 ms,
+but the scenario still ended FAIL with 11 observed RX EOTs for 10 expected
+responses and three overlap-classified samples: thinking-pause -2963.587 ms,
+barge-in-1 original -6085.002 ms and barge-in-2 replacement -77.566 ms.
+The seven non-overlapping observer samples had min 2592.480 ms, average
+3355.323 ms and max 3931.488 ms. This remains host-correlated observer timing,
+not caller-heard latency.
+
+The paired SHUO content-free log showed Agent turns 1-11 during the scenario and
+multiple rapid Flux EOT/StartOfTurn/cancel sequences, so the extra turn is not
+explained by the itel observer alone. The log also showed first-turn local
+TTS-first-audio around 984 ms versus roughly 339-421 ms on later turns. Treat
+the turn-fragmentation correctness problem and the first-request local latency
+problem as separate issues.
+
+The default-off Bluetooth `--llm-warmup` candidate is covered without provider
+or device access by:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python -m pytest -q \
+  tests/test_bluetooth_phase4d.py \
+  tests/test_bluetooth_production.py \
+  tests/test_bluetooth_phase4c.py \
+  -p no:cacheprovider
+```
+
+Required assertions include: static `ping` only; one-token streaming request;
+no system/persona/history/caller content; no history mutation; no normal
+token/done callback; idempotent repeat warmup; fail-open provider failure; and
+explicit Bluetooth-only wiring. Phase-5 CI additionally compiles the changed
+LLM/Agent/production/runner files, checks the CLI flag, runs focused Android
+closed-loop tests, complete Bluetooth regression and the historical-baseline
+full suite.
+
+Controlled live comparison adds `--llm-warmup --parallel-startup` to the
+existing manual Bluetooth runner while retaining Pocket, EOT 0.8, manual call
+control and content-free diagnostics. Compare `LLMWarmup`, the first real
+`LLMRequest` stream-open/first-token, `TTS first audio` and
+`PlaybackFirstWrite` timestamps. No caller-heard <500 ms claim follows from
+local first-audio timing.
+
+## Automated gate for first-turn LLM warmup candidate — 2026-09-26
+
+GitHub Actions run `36222331133` completed SUCCESS on exact candidate commit
+`ad47766b86b7e74be148d86e7db5250bfd502eeb` for Python 3.12 and 3.14.
+
+- changed-file compile: PASS;
+- Bluetooth runner CLI smoke including `--llm-warmup`: PASS;
+- focused closed-loop/Android/Phase-4 latency set: 71 passed on each matrix;
+- complete Bluetooth regression: 164 passed on each matrix;
+- full repository: 1038 passed plus exactly the four documented historical
+  failures, with `FULL_SUITE_BASELINE_CLEAN` on both matrices;
+- diff validation: PASS.
+
+The historical failures retained their documented identities/signatures:
+the two unsupported async tests in `scripts/test_v2_keys.py` and the two
+`_IncludedRouter.path` isolation-test failures. No provider credential,
+Bluetooth device, Android phone or real cellular call was used by CI. Therefore
+this gate validates implementation/regression behavior only; live first-turn
+latency benefit remains unproven.
+
+## Pre-call closed-loop preparation candidate — 2026-09-26
+
+The observed 5-10 second call-connected delay before the first synthetic caller
+question was traced to benchmark setup, not SHUO response generation. The
+controller prepares 11 Pocket stimuli sequentially and builds/pushes both Android
+bridges before the scenario starts.
+
+The explicit `--prepare-before-call` path moves those operations before the
+real call while retaining caller audio only in memory. Automated coverage asserts
+that pre-call TX/RX preflight uses `require_active_call=False`, preparation
+happens before bridge compilation, and the CLI exposes the readiness marker.
+The existing source-level no-call-control/no-raw-audio assertions remain.
+
+Controlled run order for this mode:
+1. Start Terminal 1 with `--prepare-before-call`.
+2. Wait for `ANDROID_CELLULAR_PRECALL_READY=YES`.
+3. Manually place/answer itel -> Galaxy.
+4. Start Terminal 0 with the validated Bluetooth runner and wait for SHUO ready.
+5. Press Enter in Terminal 1; strict MODE_IN_CALL preflight reruns, then the seed
+   question begins.
+6. Manually hang up before stopping Terminal 0.
+
+This mode changes benchmark orchestration only. It does not change production
+conversation semantics or establish caller-heard latency.
+
+## Automated gate for pre-call preparation — 2026-09-26
+
+Exact candidate commit `671821696292998df6c25cdf7ee03d6f201d77ee`
+passed GitHub Actions run `36223200306` on Python 3.12 and 3.14.
+
+- changed-file compile and CLI smoke: PASS;
+- focused closed-loop/Android/Phase-4 set: 72 passed on each matrix;
+- complete Bluetooth regression: 164 passed on each matrix;
+- full repository: 1039 passed plus exactly the four documented historical
+  failures, with `FULL_SUITE_BASELINE_CLEAN` on both matrices;
+- diff validation: PASS.
+
+CI used no live phones, provider credentials or real cellular call. Therefore the
+new pre-call orchestration is repository/regression validated, while the actual
+call-connected-to-seed delay reduction remains a reference-device runtime gate.
+## Local Malayalam Bluetooth STT candidate — 2026-10-06
+
+The opt-in local Malayalam Bluetooth speech path was validated first outside a
+live cellular call.
+
+Reference utterance:
+
+`ഹലോ, നാളെ മീറ്റിംഗ് റീഷെഡ്യൂൾ ചെയ്യണം.`
+
+Direct IndicConformer result:
+
+`ഹലോ നാളെ മീറ്റിംഗ് റീഷെഡ്യൂൾ ചെയ്യണം`
+
+The same audio through the SHUO-compatible path
+PCM16/16 kHz -> mu-law/8 kHz -> local worker -> PCM16/16 kHz -> Silero VAD ->
+IndicConformer produced the same transcript, with exactly one StartOfTurn and
+one EndOfTurn and `REALTIME_LOCAL_STT=PASS`.
+
+After removal of machine-specific runtime defaults, the local repository CI
+rehearsal produced:
+
+- compile gate: PASS
+- Bluetooth/local CLI smoke: PASS
+- local STT portability guard: PASS
+- focused CI selection: **81 passed, 3 warnings**
+- complete Bluetooth regression: **166 passed, 3 warnings**
+- full repository: **1048 passed, 4 failed, 4 warnings**
+- the four failures matched the exact documented historical failure identities
+  and signatures
+- `FULL_SUITE_BASELINE_CLEAN`: PASS
+- `git diff --check`: PASS
+- `LOCAL_CI_REHEARSAL=PASS`
+
+The four retained historical failures were:
+
+- `scripts/test_v2_keys.py::test_shunya_key`
+- `scripts/test_v2_keys.py::test_azure_key`
+- `tests/test_config_api.py::TestIsolation::test_the_call_server_has_no_config_routes`
+- `tests/test_test_call.py::TestTheProcessSplitSurvives::test_the_call_server_has_no_test_call_routes`
+
+No live Bluetooth device, cellular call, provider credential or caller-heard
+latency measurement was exercised by this repository gate.
+
+## GitHub Actions Python 3.14 ordering-fixture stabilization — 2026-10-06
+
+GitHub Actions run `37423454956` attempt 1 on local-Malayalam candidate
+`2ef44110b1e4cfc64be94f4debcaf7437e96ca71` passed Python 3.12 but the
+Python 3.14 full-suite gate observed one extra failure:
+
+`tests/test_test_call.py::TestActiveCallsMerge::test_an_ended_call_in_the_monitor_lingers_then_goes`
+
+The assertion expected `att-one` before `att-just-ended`, but the fixture
+constructed each summary with a fresh `call_history.now_iso()`. That helper
+records millisecond precision, while production correctly sorts active entries
+by `startedAt` newest-first. If fixture construction crossed a millisecond
+boundary, the second summary was legitimately newer and sorted first.
+
+Evidence that this was intermittent fixture timing rather than a product
+regression:
+
+- the same exact source commit was rerun as workflow run
+  `37423454956` attempt 2 with no code change and both Python 3.12 and 3.14
+  completed successfully;
+- the active-call production implementation was unchanged by the Malayalam STT
+  candidate;
+- the test-only stabilization branch pins distinct `startedAt` timestamps
+  while preserving the same newest-first production contract;
+- pull request #11, workflow run `37424535788`, passed both Python 3.12 and
+  Python 3.14;
+- Python 3.12 on that run: 81 focused tests passed, 166 Bluetooth tests passed,
+  full repository 1048 passed plus exactly the four historical failures, and
+  `FULL_SUITE_BASELINE_CLEAN`;
+- Python 3.14 on that run: 81 focused tests passed, 166 Bluetooth tests passed,
+  full repository 1048 passed plus exactly the four historical failures, and
+  `FULL_SUITE_BASELINE_CLEAN`.
+
+The stabilization changes test fixture timestamps only. No production route,
+call ordering implementation, carrier behavior, Bluetooth/STT path, audio
+contract, state machine, dependency or live-call behavior changed.
+
+## Final feature-branch repository gate before owner-authorized main integration — 2026-10-06
+
+After the Python 3.14 ordering-fixture stabilization was merged into
+`feat/local-malayalam-stt`, GitHub Actions run `37425014945` validated exact
+feature head `6968825ac701c91f975abbe95b0898209820c276`.
+
+Python 3.12:
+- focused CI selection: 81 passed, 3 warnings;
+- complete Bluetooth regression: 166 passed, 3 warnings;
+- full repository: 1048 passed plus exactly the four documented historical
+  failures;
+- `FULL_SUITE_BASELINE_CLEAN`: PASS;
+- branch diff validation against `origin/main...HEAD`: PASS.
+
+Python 3.14:
+- focused CI selection: 81 passed, 2 warnings;
+- complete Bluetooth regression: 166 passed, 2 warnings;
+- full repository: 1048 passed plus exactly the four documented historical
+  failures;
+- `FULL_SUITE_BASELINE_CLEAN`: PASS;
+- branch diff validation against `origin/main...HEAD`: PASS.
+
+No live phone, Bluetooth device, provider credential or cellular call was used
+by this CI gate. The owner separately authorized repository integration after
+this gate; runtime/phase acceptance remains separate.

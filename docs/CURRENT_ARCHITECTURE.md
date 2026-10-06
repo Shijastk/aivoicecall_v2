@@ -398,3 +398,59 @@ The receive bridge remains a dev/benchmark transport boundary. It persists no ra
 audio, performs no call control, and is not imported by default production
 entrypoints. TX and RX are now both reference-validated independently; a higher
 level closed-loop synthetic-human controller is a separate gate.
+## Candidate real-cellular synthetic-human controller — 2026-09-23
+
+The independently validated itel ADB TX and RX transports are now composed by an
+opt-in dev/benchmark controller. It does not change either transport contract.
+
+```text
+itel VOICE_DOWNLINK
+-> ADB RX PCM16/48k/stereo
+-> in-memory mu-law/8k conversion
+-> observer Deepgram Flux (EOT 0.8)
+-> deterministic scenario state
+-> pre-synthesized Pocket caller PCM16/16k/mono
+-> persistent ADB Telephony Tx
+-> itel cellular uplink
+```
+
+The controller uses Flux only to observe the remote SHUO response boundary and
+to perform in-memory boolean continuity checks. It does not write response text
+or raw audio to disk. Dial/answer/hangup remain manual.
+
+Repository-level tests are baseline-clean; simultaneous real-device operation is
+the remaining qualification gate.
+## Opt-in local Malayalam Bluetooth speech path — 2026-10-06
+
+Bluetooth production now has an explicit `speech_provider=local-malayalam`
+option in addition to the existing default `deepgram-flux` path.
+
+The local path is isolated behind `LocalMalayalamSpeechService` and a subprocess
+worker so the main SHUO virtualenv does not need ONNX Runtime, Silero VAD or
+IndicConformer dependencies. The operator must explicitly provide:
+
+- `SHUO_LOCAL_STT_PYTHON`
+- `SHUO_MALAYALAM_STT_MODEL_DIR`
+
+No machine-specific filesystem path is embedded in source. Missing configuration
+fails closed.
+
+The worker accepts the existing SHUO G.711 mu-law/8 kHz inbound boundary,
+converts it in memory to PCM16/16 kHz, applies Silero VAD, and sends completed
+speech to the Malayalam IndicConformer model. It emits start/end turn callbacks
+back through the same structural conversation seam already used by the Bluetooth
+production path. The pure state machine and the carrier/browser paths are
+unchanged.
+
+Reference offline runtime evidence supplied by the task owner:
+
+- direct IndicConformer transcript:
+  `ഹലോ നാളെ മീറ്റിംഗ് റീഷെഡ്യൂൾ ചെയ്യണം`
+- complete SHUO local path transcript:
+  `ഹലോ നാളെ മീറ്റിംഗ് റീഷെഡ്യൂൾ ചെയ്യണം`
+- one StartOfTurn and one EndOfTurn for the controlled utterance
+- `REALTIME_LOCAL_STT=PASS`
+
+This is not live cellular qualification, universal Malayalam accuracy evidence,
+or caller-heard latency evidence. The default Bluetooth provider remains
+`deepgram-flux`; local Malayalam is explicit opt-in only.

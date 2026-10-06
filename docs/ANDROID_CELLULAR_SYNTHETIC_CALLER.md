@@ -209,3 +209,112 @@ content-free evidence, and reached the existing SHUO mu-law/8 kHz boundary
 without persisting raw audio. Together with the already-merged TX path, both
 caller-side cellular media directions are now independently reference-validated.
 Call establishment/hangup remain manual; no latency claim follows.
+## Real-cellular closed-loop synthetic caller candidate — 2026-09-23
+
+With caller-side ADB TX and RX independently reference-qualified, the owner
+authorized the next Phase-5 development layer: a deterministic synthetic caller
+that listens to SHUO over the real cellular downlink and replies over the real
+cellular uplink while call establishment/hangup remain manual.
+
+Repository candidate:
+
+- `shuo/benchmark/android_cellular_loop.py`;
+- `scripts/dev/18_android_cellular_closed_loop.py`;
+- `tests/test_android_cellular_loop.py`.
+
+The controller pre-synthesizes all caller prompts in memory with Pocket before
+the scenario, keeps one TX and one RX helper alive, converts RX PCM into the
+unchanged SHUO mu-law/8 kHz boundary, and sends only that in-memory stream to a
+separate Deepgram Flux observer at final EOT threshold `0.8`.
+
+The deterministic scenario exercises:
+
+- ordinary real-cellular turns;
+- a 650 ms caller thinking pause using already-prepared audio on both sides of
+  the pause so local TTS generation delay is not hidden inside the pause;
+- two interruption attempts sent only after downlink speech has started;
+- caller-provided continuity facts (`mango` and `orbit seven`) scored only
+  in memory;
+- at least ten observed remote response EOTs;
+- a hard 300-second scenario cap.
+
+Response transcript text is never printed or serialized. The optional JSON
+report contains only boolean checks, counts, local timings and limitations. Raw
+audio is never persisted.
+
+Automated repository gate at revision `5d40f1817499f4cb117a3054cce75dfb390dbc0e`,
+GitHub Actions run `35853641593`, passed on Python 3.12 and 3.14:
+
+- focused closed-loop + Android RX/TX + codec: **36 passed**;
+- Bluetooth regression: **162 passed**;
+- full root: **1035 passed / exact 4 historical failures**;
+- `FULL_SUITE_BASELINE_CLEAN` in both jobs;
+- CLI smoke and full branch diff validation: PASS.
+
+The first automated attempt had one new test failure because the report test's
+own limitation string contained the word `transcript`; no production code
+failed. The test fixture wording was corrected and the complete gate rerun.
+
+The controller is **not yet reference-runtime qualified**. Simultaneous TX + RX,
+real Deepgram observer progression, pause behavior and two real-cellular
+interruptions must pass on the itel/Galaxy/SHUO path before merge.
+## Per-response closed-loop latency instrumentation — 2026-09-24
+
+The owner authorized adding a latency finder to the already-authorized two-device
+closed-loop controller, with one sample for every observed SHUO response. The
+measurement intentionally does not invent an acceptance threshold and does not
+rename a host-side observation as caller-heard mouth-to-ear latency.
+
+For each deterministic response, the controller now records:
+
+```text
+host timestamp after the synthetic caller's final paced ADB TX write
+-> itel VOICE_DOWNLINK
+-> separate Deepgram Flux observer StartOfTurn
+```
+
+Samples are emitted for the normal turns, the response after the prepared
+thinking-pause turn, both original barge-in setup responses, both replacement
+responses, and the final continuity turn. Summary min/average/max metrics are
+also reported.
+
+The metric status is `MEASURED_HOST_CORRELATED`. It includes real cellular,
+Galaxy Bluetooth/SHUO processing, return cellular transport, Android downlink
+capture, and observer speech-start detection. It also includes observer detection
+delay and uses a host-side TX completion boundary rather than an acoustic handset
+boundary. Therefore `CALLER_HEARD_LATENCY=NOT_MEASURED` remains mandatory.
+
+While adding this seam, the barge-in replacement baseline was moved to before
+interrupt TX. The previous ordering could miss a fast replacement StartOfTurn
+that arrived while prepared interrupt audio was still being streamed.
+
+Latest owner-supplied pre-instrumentation real-cellular run completed the
+two-device scenario and observed 10 response EOTs. Digital closed-loop progression,
+the 650 ms thinking-pause check, and both interruption-send-while-remote-speaking
+checks passed. `barge_in_2_continuity_codeword` and
+`late_session_continuity_fruit` failed, so the overall supplemental run remained
+FAIL and Phase 5 was not accepted. The new per-response latency instrumentation
+still requires a fresh reference-device runtime run.
+
+## Pre-call controller preparation — 2026-09-26
+
+Owner observation clarified a separate startup delay: after the cellular call was
+already connected, the first synthetic caller question could take roughly
+5-10 seconds to begin. Source review confirmed this was not SHUO response
+latency. The legacy controller performed active-call TX/RX preflight, then
+sequentially pre-synthesized all 11 Pocket caller stimuli, compiled both Android
+bridges, pushed them over ADB, opened TX/RX and the observer, and only then sent
+the seed question. The scenario-duration metric already excluded that setup.
+
+The controller now has an explicit `--prepare-before-call` mode. In that mode
+it performs non-call device/permission preflight, keeps all Pocket caller PCM in
+process memory, compiles/pushes the Android TX/RX helpers, then prints
+`ANDROID_CELLULAR_PRECALL_READY=YES` and waits for the operator. The operator
+manually establishes/answers the call, starts Terminal 0 and waits for SHUO
+readiness, then presses Enter in Terminal 1. Only then does the controller rerun
+strict MODE_IN_CALL preflight and start the scenario.
+
+No caller PCM is written to disk. Android DEX build artifacts remain ordinary
+non-audio dev artifacts under the existing build directory. Dial/answer/hangup
+remain manual; no Phase-6 call control is added. Default legacy behavior remains
+available when the flag is omitted.

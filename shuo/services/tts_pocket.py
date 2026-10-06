@@ -7,6 +7,7 @@ import importlib.util
 import os
 import threading
 import time
+from pathlib import Path
 from typing import Awaitable, Callable, Optional
 
 from ..log import ServiceLogger
@@ -21,6 +22,20 @@ _DEFAULT_VOICE = "alba"
 _AUDIO_QUEUE_CHUNKS = 4
 _WORKER_STOP_TIMEOUT = 1.0
 _NETWORK_TRUE_VALUES = {"1", "true", "yes", "on"}
+
+
+def _configured_model_path() -> Optional[Path]:
+    raw = (os.getenv("POCKET_TTS_CONFIG") or "").strip()
+    if not raw:
+        return None
+    return Path(raw).expanduser()
+
+
+def _quantization_enabled() -> bool:
+    return (
+        (os.getenv("POCKET_TTS_QUANTIZE") or "").strip().lower()
+        in _NETWORK_TRUE_VALUES
+    )
 
 
 def pocket_tts_available() -> bool:
@@ -121,7 +136,19 @@ class _PocketRuntime:
                 # PyTorch/Pocket import or model-download path.
                 from pocket_tts import TTSModel
 
-                self._model = TTSModel.load_model()
+                model_config = _configured_model_path()
+                if model_config is not None:
+                    if not model_config.is_file():
+                        raise RuntimeError(
+                            f"Pocket TTS config does not exist: {model_config}"
+                        )
+                    self._model = TTSModel.load_model(
+                        config=str(model_config),
+                        quantize=_quantization_enabled(),
+                    )
+                else:
+                    self._model = TTSModel.load_model()
+
             if voice_source not in self._voices:
                 self._voices[voice_source] = self._model.get_state_for_audio_prompt(
                     voice_source
@@ -161,7 +188,11 @@ class PocketTTSService:
     Native PCM never leaves this module and no raw audio file is written.
     """
 
-    PHRASE_CHARS = 24
+    # Pocket sounds unnatural when every ~24 chars are synthesised as a
+    # separate utterance. Keep normal short conversational sentences
+    # together; commas may release only after a useful clause length.
+    PHRASE_CHARS = 128
+    PHRASE_MIN_SOFT_CHARS = 80
 
     def __init__(
         self,
@@ -184,7 +215,7 @@ class PocketTTSService:
         self._running = False
         self._fatal_error: Optional[str] = None
         self._warm_idle_started_at: Optional[float] = None
-        self._buffer = BoundedPhraseBuffer(self.PHRASE_CHARS)
+        self._buffer = BoundedPhraseBuffer(self.PHRASE_CHARS, min_soft_chars=self.PHRASE_MIN_SOFT_CHARS)
         self._done_emitted = False
         self._lock = asyncio.Lock()
         self._cancel_event: Optional[threading.Event] = None
@@ -210,7 +241,7 @@ class PocketTTSService:
     ) -> None:
         self._on_audio = on_audio
         self._on_done = on_done
-        self._buffer = BoundedPhraseBuffer(self.PHRASE_CHARS)
+        self._buffer = BoundedPhraseBuffer(self.PHRASE_CHARS, min_soft_chars=self.PHRASE_MIN_SOFT_CHARS)
         self._done_emitted = False
         self._fatal_error = None
         self._cancel_event = None
@@ -225,6 +256,23 @@ class PocketTTSService:
                 "Pocket TTS requested but the optional 'pocket-tts' package is not "
                 "installed. Install requirements-pocket-tts.txt first."
             )
+
+        model_config = _configured_model_path()
+        if model_config is not None and self._runtime is _RUNTIME:
+            if not model_config.is_file():
+                raise RuntimeError(
+                    f"Pocket TTS config does not exist: {model_config}"
+                )
+
+            voice_path = Path(self._voice_source).expanduser()
+            if not voice_path.is_file():
+                raise RuntimeError(
+                    "Custom Pocket TTS model requires a local Malayalam voice "
+                    "prompt. Set POCKET_TTS_VOICE to an existing WAV file. "
+                    f"Resolved value: {voice_path}"
+                )
+
+            self._voice_source = str(voice_path)
 
         cache_only = _configure_hf_cache_resolution()
         try:
@@ -278,7 +326,7 @@ class PocketTTSService:
 
     async def cancel(self) -> None:
         self._running = False
-        self._buffer = BoundedPhraseBuffer(self.PHRASE_CHARS)
+        self._buffer = BoundedPhraseBuffer(self.PHRASE_CHARS, min_soft_chars=self.PHRASE_MIN_SOFT_CHARS)
         cancel_event = self._cancel_event
         if cancel_event is not None:
             cancel_event.set()

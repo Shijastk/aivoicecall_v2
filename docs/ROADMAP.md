@@ -358,3 +358,51 @@ turns and emits TX turns while keeping manual call answer/hangup and all existin
 Phase-5 privacy/acceptance restrictions.
 
 This milestone does not accept Phase 5 or authorize Phase 6.
+## Phase 5 closed-loop real-cellular synthetic caller — 2026-09-23
+
+The next bounded milestone is now implemented on a feature branch: compose the
+reference-qualified Android caller-side RX and TX transports into a deterministic
+real-cellular synthetic caller.
+
+Automated repository validation is baseline-clean. The remaining gate is one
+controlled reference run with the actual itel caller phone, Galaxy/SHUO endpoint,
+manual call setup, observer Deepgram Flux, prepared thinking pause, two
+interruptions and continuity checks.
+
+Do not merge/qualify this controller from CI alone. A successful run still does
+not accept Phase 5, automate call control, authorize Phase 6 or establish
+caller-heard latency.
+## Phase 5 local Malayalam STT candidate — 2026-10-06
+
+An explicit Bluetooth-only `local-malayalam` speech provider is now implemented
+and has passed controlled offline/reference validation plus repository regression
+rehearsal.
+
+The reference Malayalam sentence matched between direct IndicConformer and the
+complete SHUO local worker path. Local CI rehearsal passed compile, CLI,
+portability, focused tests, Bluetooth regression, exact historical full-suite
+baseline verification and diff validation.
+
+This is an implementation/evidence milestone only. Phase 5 remains not accepted.
+The next gate after remote GitHub Actions is a controlled real Bluetooth/cellular
+Malayalam run. Carrier/V2 Malayalam STT, caller-heard latency and the separate
+Pocket-TTS playback/throughput issue remain unresolved.
+
+## Owner-authorized main integration gate — 2026-10-06
+
+The task owner explicitly authorized integrating the currently validated
+default-off feature branch into `main` only after branch-based repository CI is
+green. This is an integration authorization, not a phase-acceptance decision.
+
+The earlier instruction not to merge/qualify the closed-loop controller from CI
+alone is preserved as historical evidence. The 2026-10-06 owner decision
+supersedes only that merge hold for repository integration. It does not convert
+the prior live closed-loop FAIL observations into PASS, does not enable any
+default-off Bluetooth/Phase-4/Phase-5 option, does not accept Phase 5, does not
+authorize Phase 6, and does not establish caller-heard latency or broad hardware
+compatibility.
+
+Required integration gate: exact feature head must pass the existing Python
+3.12/3.14 workflow, including focused tests, full Bluetooth regression, exact
+historical full-suite failure identity/signature verification, portability
+guards and diff validation. If that gate fails, `main` must not move.

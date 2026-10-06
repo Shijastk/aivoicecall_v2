@@ -184,3 +184,66 @@ synthetic-caller media directions are now available for Phase-5 development
 tooling. Manual call control, no raw recording, content-free public diagnostics,
 no caller-heard latency claim, Phase-5-not-accepted status and the Phase-6 block
 all remain unchanged.
+## Closed-loop caller automation candidate — 2026-09-23
+
+A deterministic caller-side controller now composes the independently validated
+itel ADB RX/TX media directions. It keeps the cellular call itself manual and
+uses only in-memory caller audio plus a separate Deepgram Flux observer on the
+real downlink.
+
+The scripted scenario targets the still-useful functional observations: ordinary
+multi-turn continuity, a sub-0.8-second prepared thinking pause, two
+interruptions while remote speech is active, and at least ten observed response
+turns. Response transcript text is not emitted as public evidence; only boolean
+content checks and content-free timings/counts leave the process.
+
+Repository tests have passed, but the controller remains a candidate until the
+combined real-cellular run succeeds. This does not alter the remaining formal
+Phase-5 quantitative latency/echo acceptance gate.
+## Owner amendment — 2026-10-06: opt-in local Malayalam Bluetooth STT
+
+The task owner approved investigation of a free/local Malayalam STT path after
+the existing Bluetooth call path was confirmed to use Deepgram
+`flux-general-en`, which was not suitable evidence for Malayalam recognition.
+
+The resulting candidate is intentionally narrower than a provider migration:
+
+- default Bluetooth behavior remains `deepgram-flux`;
+- `--speech-provider local-malayalam` is explicit opt-in;
+- the local runtime uses Silero VAD plus Malayalam IndicConformer in an isolated
+  subprocess environment;
+- `SHUO_LOCAL_STT_PYTHON` and `SHUO_MALAYALAM_STT_MODEL_DIR` are required;
+- no user-specific filesystem defaults are allowed in source;
+- no raw audio is persisted by the worker;
+- the shared SHUO boundary remains G.711 mu-law/8 kHz;
+- carrier/V2 behavior and the pure state machine remain unchanged;
+- Deepgram-specific speculative/eager controls are rejected in local mode.
+
+Controlled offline evidence on 2026-10-06 produced the same Malayalam transcript
+from direct IndicConformer and the complete SHUO local path, with one
+StartOfTurn and one EndOfTurn. Repository CI rehearsal was historical-baseline
+clean.
+
+This evidence authorizes proceeding only to the next controlled live
+Bluetooth/cellular validation after GitHub Actions passes. It does not establish
+live-call Malayalam accuracy, caller-heard latency, broad compatibility, Phase 5
+acceptance or Phase 6 authorization.
+
+## Owner amendment — 2026-10-06: repository integration without Phase 5 acceptance
+
+The task owner explicitly authorized merging the validated, default-off
+repository implementation into `main` after a clean branch-based CI gate.
+
+This supersedes only the earlier merge hold for the feature branch. All Phase 5
+runtime evidence limits remain unchanged:
+
+- prior combined cellular runs that reported FAIL remain FAIL;
+- live Malayalam Bluetooth/cellular validation remains pending;
+- Phase 5 remains not accepted;
+- Phase 6 remains unauthorized;
+- manual call control and no-raw-audio restrictions remain;
+- no caller-heard latency or universal compatibility claim is created;
+- default-off experimental controls remain default-off.
+
+Repository integration must stop if Python 3.12 or 3.14 produces any failure
+outside the exact documented historical baseline.

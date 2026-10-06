@@ -372,3 +372,99 @@ async def test_shadow_early_production_flag_is_explicit_and_preserves_eager_mode
 async def test_early_requires_shadow_before_creating_any_resources():
     with pytest.raises(ValueError, match="requires shadow_speculation"):
         await run_production_bluetooth_conversation(DummySession(), shadow_early_transcripts=True)
+
+
+@pytest.mark.asyncio
+async def test_local_malayalam_provider_is_opt_in_and_adds_language_policy():
+    FakePool.instances.clear()
+    FakeAgent.instances.clear()
+    captured = {}
+
+    class ForbiddenFlux:
+        def __init__(self, **kwargs):
+            raise AssertionError(
+                "Deepgram Flux must not be constructed"
+            )
+
+    class FakeLocalSpeech:
+        def __init__(
+            self,
+            on_end_of_turn,
+            on_start_of_turn,
+            on_interim,
+        ):
+            captured["local"] = self
+            self.on_end_of_turn = on_end_of_turn
+            self.on_start_of_turn = on_start_of_turn
+            self.on_interim = on_interim
+
+    async def runner(
+        session,
+        *,
+        flux_factory,
+        agent_factory,
+        stream_id,
+        call_id,
+    ):
+        captured["speech"] = flux_factory(
+            lambda text: asyncio.sleep(0),
+            lambda: asyncio.sleep(0),
+            lambda text: asyncio.sleep(0),
+        )
+
+        captured["agent"] = await agent_factory(
+            object(),
+            lambda checkpoint: None,
+        )
+
+    deps = BluetoothProductionDeps(
+        flux_cls=ForbiddenFlux,
+        local_speech_cls=FakeLocalSpeech,
+        tts_pool_cls=FakePool,
+        agent_cls=FakeAgent,
+        tracer_factory=FakeTracer,
+        conversation_runner=runner,
+    )
+
+    await run_production_bluetooth_conversation(
+        DummySession(),
+        speech_provider="local-malayalam",
+        settings=settings(),
+        deps=deps,
+    )
+
+    assert isinstance(
+        captured["speech"],
+        FakeLocalSpeech,
+    )
+
+    prompt = (
+        captured["agent"]
+        .settings
+        .system_prompt
+    )
+
+    assert "natural spoken Malayalam" in prompt
+    assert "Do not invent a personal name" in prompt
+    assert "test prompt" in prompt
+
+    assert (
+        captured["agent"]
+        .settings
+        .prompt_source
+        == "test+local-malayalam"
+    )
+
+
+@pytest.mark.asyncio
+async def test_local_malayalam_rejects_deepgram_shadow_flags():
+    with pytest.raises(
+        ValueError,
+        match="does not support",
+    ):
+        await run_production_bluetooth_conversation(
+            DummySession(),
+            speech_provider="local-malayalam",
+            shadow_speculation=True,
+            eager_eot_threshold=0.3,
+        )

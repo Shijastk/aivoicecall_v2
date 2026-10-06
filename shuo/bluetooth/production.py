@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Callable, Optional, Type
 
 from ..agent import Agent
 from ..runtime_config import CallSettings, load_call_settings
 from ..services.flux import FluxService
+from ..services.local_malayalam_speech import LocalMalayalamSpeechService
 from ..services.llm import ShadowLLMProbe
 from ..services.player import PREROLL_FRAMES
 from ..services.tts_pool import TTSPool
@@ -14,6 +15,33 @@ from .conversation import run_bluetooth_conversation
 from .phase3_session import Phase3AiOnlySession
 from .shuo_media import BluetoothOutboundMedia
 from .speculative import AsyncCapacityGate, SpeculativeTurnCoordinator
+
+
+DEEPGRAM_FLUX_SPEECH_PROVIDER = "deepgram-flux"
+LOCAL_MALAYALAM_SPEECH_PROVIDER = "local-malayalam"
+
+_LOCAL_MALAYALAM_PROMPT_PREFIX = """This Bluetooth call is operating in Malayalam mode.
+Reply in natural spoken Malayalam by default.
+Do not switch to English merely because the system prompt is written in English or because the transcript contains an English-looking word.
+Keep proper nouns, product names, code, URLs, and common technical English terms in English when that is natural in Malayalam speech.
+If the caller explicitly asks to continue in English, you may switch languages.
+Do not invent a personal name or identity that is not present in the configured facts."""
+
+
+def _with_local_malayalam_settings(
+    settings: CallSettings,
+) -> CallSettings:
+    return replace(
+        settings,
+        system_prompt=(
+            _LOCAL_MALAYALAM_PROMPT_PREFIX
+            + "\n\n"
+            + settings.system_prompt
+        ),
+        prompt_source=(
+            f"{settings.prompt_source}+local-malayalam"
+        ),
+    )
 
 
 @dataclass(frozen=True)
@@ -25,6 +53,7 @@ class BluetoothProductionDeps:
     """
 
     flux_cls: Type = FluxService
+    local_speech_cls: Type = LocalMalayalamSpeechService
     shadow_probe_cls: Type = ShadowLLMProbe
     tts_pool_cls: Type = TTSPool
     agent_cls: Type = Agent
@@ -39,6 +68,7 @@ async def run_production_bluetooth_conversation(
     persona_id: str = "default",
     stream_id: str = "bluetooth-local",
     call_id: str = "bluetooth-local",
+    speech_provider: str = DEEPGRAM_FLUX_SPEECH_PROVIDER,
     settings: Optional[CallSettings] = None,
     eager_eot_threshold: Optional[float] = None,
     eot_threshold: Optional[float] = None,
@@ -48,6 +78,7 @@ async def run_production_bluetooth_conversation(
     tts_phrase_chars: Optional[int] = None,
     llm_history_max_chars: Optional[int] = None,
     llm_provider_timing: bool = False,
+    llm_warmup: bool = False,
     parallel_startup: bool = False,
     diagnostics=None,
     player_preroll_frames: int = PREROLL_FRAMES,
@@ -63,8 +94,9 @@ async def run_production_bluetooth_conversation(
       2. Phase-3 Bluetooth session starts inside the orchestrator
       3. real Flux starts inside the orchestrator
       4. async Agent factory starts TTSPool and awaits usable initial readiness
-      5. existing Agent streams LLM -> TTS -> AudioPlayer -> Bluetooth adapter
-      6. teardown always stops the pool and saves the local trace
+      5. optional Bluetooth-only LLM warmup primes the Agent's existing client
+      6. existing Agent streams LLM -> TTS -> AudioPlayer -> Bluetooth adapter
+      7. teardown always stops the pool and saves the local trace
 
     ``eager_eot_threshold`` is Phase-4A measurement-only configuration. It is
     disabled by default and is passed only to Flux; it does not start the agent
@@ -76,6 +108,29 @@ async def run_production_bluetooth_conversation(
     validation session must not create a carrier call-history row or pretend to
     have a provider recording/call id. Local timing trace remains enabled.
     """
+
+    if speech_provider not in {
+        DEEPGRAM_FLUX_SPEECH_PROVIDER,
+        LOCAL_MALAYALAM_SPEECH_PROVIDER,
+    }:
+        raise ValueError(
+            "speech_provider must be 'deepgram-flux' "
+            "or 'local-malayalam'"
+        )
+
+    if (
+        speech_provider == LOCAL_MALAYALAM_SPEECH_PROVIDER
+        and (
+            shadow_speculation
+            or shadow_early_transcripts
+            or prepared_response_reuse
+            or eager_eot_threshold is not None
+        )
+    ):
+        raise ValueError(
+            "local-malayalam speech provider does not support "
+            "Deepgram eager/shadow speculation flags"
+        )
 
     if shadow_early_transcripts and not shadow_speculation:
         raise ValueError("shadow_early_transcripts requires shadow_speculation")
@@ -99,6 +154,12 @@ async def run_production_bluetooth_conversation(
         raise ValueError("player_preroll_frames must be 2 or 3")
 
     resolved = settings or deps.settings_loader()
+
+    if speech_provider == LOCAL_MALAYALAM_SPEECH_PROVIDER:
+        resolved = _with_local_malayalam_settings(
+            resolved
+        )
+
     tracer = deps.tracer_factory()
     shadow_gate = AsyncCapacityGate(1) if shadow_speculation else None
 
@@ -109,7 +170,20 @@ async def run_production_bluetooth_conversation(
     )
     pool_started = False
 
-    def flux_factory(on_eot, on_sot, on_interim, on_eager=None, on_resumed=None):
+    def flux_factory(
+        on_eot,
+        on_sot,
+        on_interim,
+        on_eager=None,
+        on_resumed=None,
+    ):
+        if speech_provider == LOCAL_MALAYALAM_SPEECH_PROVIDER:
+            return deps.local_speech_cls(
+                on_end_of_turn=on_eot,
+                on_start_of_turn=on_sot,
+                on_interim=on_interim,
+            )
+
         kwargs = {
             "on_end_of_turn": on_eot,
             "on_start_of_turn": on_sot,
@@ -161,7 +235,10 @@ async def run_production_bluetooth_conversation(
             agent_kwargs["llm_provider_timing"] = True
         if player_preroll_frames != PREROLL_FRAMES:
             agent_kwargs["player_preroll_frames"] = player_preroll_frames
-        return deps.agent_cls(**agent_kwargs)
+        agent = deps.agent_cls(**agent_kwargs)
+        if llm_warmup:
+            await agent.warmup_llm()
+        return agent
 
     def speculation_factory(agent):
         if shadow_gate is None:
