@@ -10,6 +10,7 @@ from shuo.services.local_malayalam_speech import (
 from shuo.services.local_malayalam_speech_worker import (
     FRAME_BYTES,
     SpeechTurnBuffer,
+    format_end_frame,
 )
 
 
@@ -324,3 +325,26 @@ def test_commit_silence_must_be_positive():
             Recorder().start,
             commit_silence_ms=0,
         )
+
+
+
+def test_worker_end_frame_builder_executes_runtime_metadata_path():
+    speech = b"\x01\x00" * 1600
+    text = "നാളെ മീറ്റിങ് ഉണ്ട്"
+
+    frame = format_end_frame(
+        text,
+        speech,
+        asr_ms=87.25,
+        reason="vad_silence",
+    )
+
+    parts = frame.split("\t")
+    assert parts[0] == "END"
+    assert base64.b64decode(parts[1]).decode("utf-8") == text
+    metadata = dict(field.split("=", 1) for field in parts[2:])
+    assert metadata["buffered_audio_ms"] == "100"
+    assert metadata["asr_ms"] == "87.2"
+    assert metadata["reason"] == "vad_silence"
+    assert int(metadata["peak"]) >= 0
+    assert float(metadata["rms"]) >= 0
