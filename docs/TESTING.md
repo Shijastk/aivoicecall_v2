@@ -1241,3 +1241,29 @@ regression:
 The stabilization changes test fixture timestamps only. No production route,
 call ordering implementation, carrier behavior, Bluetooth/STT path, audio
 contract, state machine, dependency or live-call behavior changed.
+
+## Final feature-branch repository gate before owner-authorized main integration — 2026-10-06
+
+After the Python 3.14 ordering-fixture stabilization was merged into
+`feat/local-malayalam-stt`, GitHub Actions run `37425014945` validated exact
+feature head `6968825ac701c91f975abbe95b0898209820c276`.
+
+Python 3.12:
+- focused CI selection: 81 passed, 3 warnings;
+- complete Bluetooth regression: 166 passed, 3 warnings;
+- full repository: 1048 passed plus exactly the four documented historical
+  failures;
+- `FULL_SUITE_BASELINE_CLEAN`: PASS;
+- branch diff validation against `origin/main...HEAD`: PASS.
+
+Python 3.14:
+- focused CI selection: 81 passed, 2 warnings;
+- complete Bluetooth regression: 166 passed, 2 warnings;
+- full repository: 1048 passed plus exactly the four documented historical
+  failures;
+- `FULL_SUITE_BASELINE_CLEAN`: PASS;
+- branch diff validation against `origin/main...HEAD`: PASS.
+
+No live phone, Bluetooth device, provider credential or cellular call was used
+by this CI gate. The owner separately authorized repository integration after
+this gate; runtime/phase acceptance remains separate.
