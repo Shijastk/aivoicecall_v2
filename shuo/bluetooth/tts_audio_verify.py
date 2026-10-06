@@ -14,7 +14,8 @@ from ..log import ServiceLogger
 
 log = ServiceLogger("TTSOutboundTranscript")
 
-_MAX_SEGMENT_BYTES = 8_000 * 60
+_MAX_MULAW_SEGMENT_BYTES = 8_000 * 60
+_MAX_PCM_SEGMENT_BYTES = 16_000 * 2 * 60
 _MAX_SEGMENTS = 64
 _STARTUP_TIMEOUT_SECONDS = 20.0
 _VERIFY_TIMEOUT_SECONDS = 30.0
@@ -23,7 +24,8 @@ _VERIFY_TIMEOUT_SECONDS = 30.0
 @dataclass
 class _CapturedSegment:
     index: int
-    audio: bytearray
+    mulaw: bytearray
+    pcm16: bytearray
     checkpoint: str = ""
     cancelled: bool = False
     truncated: bool = False
@@ -41,28 +43,44 @@ class OutboundAudioTranscriptCapture:
     def __init__(
         self,
         *,
-        max_segment_bytes: int = _MAX_SEGMENT_BYTES,
+        max_mulaw_segment_bytes: int = _MAX_MULAW_SEGMENT_BYTES,
+        max_pcm_segment_bytes: int = _MAX_PCM_SEGMENT_BYTES,
         max_segments: int = _MAX_SEGMENTS,
     ) -> None:
-        if max_segment_bytes <= 0:
-            raise ValueError("max_segment_bytes must be positive")
+        if max_mulaw_segment_bytes <= 0:
+            raise ValueError("max_mulaw_segment_bytes must be positive")
+        if max_pcm_segment_bytes <= 0:
+            raise ValueError("max_pcm_segment_bytes must be positive")
         if max_segments <= 0:
             raise ValueError("max_segments must be positive")
-        self._max_segment_bytes = max_segment_bytes
+        self._max_mulaw_segment_bytes = max_mulaw_segment_bytes
+        self._max_pcm_segment_bytes = max_pcm_segment_bytes
         self._max_segments = max_segments
         self._segments: list[_CapturedSegment] = []
-        self._current = bytearray()
+        self._current_mulaw = bytearray()
+        self._current_pcm16 = bytearray()
         self._current_truncated = False
 
     def on_dispatched_audio(self, mulaw: bytes) -> None:
         if not mulaw or len(self._segments) >= self._max_segments:
             return
-        remaining = self._max_segment_bytes - len(self._current)
+        remaining = self._max_mulaw_segment_bytes - len(self._current_mulaw)
         if remaining <= 0:
             self._current_truncated = True
             return
-        self._current.extend(mulaw[:remaining])
+        self._current_mulaw.extend(mulaw[:remaining])
         if len(mulaw) > remaining:
+            self._current_truncated = True
+
+    def on_dispatched_pcm(self, pcm16: bytes) -> None:
+        if not pcm16 or len(self._segments) >= self._max_segments:
+            return
+        remaining = self._max_pcm_segment_bytes - len(self._current_pcm16)
+        if remaining <= 0:
+            self._current_truncated = True
+            return
+        self._current_pcm16.extend(pcm16[:remaining])
+        if len(pcm16) > remaining:
             self._current_truncated = True
 
     def on_checkpoint(self, checkpoint: str) -> None:
@@ -80,7 +98,7 @@ class OutboundAudioTranscriptCapture:
     def finish(self) -> None:
         # Teardown with uncheckpointed dispatched audio is an interrupted
         # segment. Preserve its transcript evidence but never call it complete.
-        if self._current:
+        if self._current_mulaw or self._current_pcm16:
             self._finalize(
                 checkpoint="",
                 cancelled=True,
@@ -92,23 +110,26 @@ class OutboundAudioTranscriptCapture:
         checkpoint: str,
         cancelled: bool,
     ) -> None:
-        if not self._current:
+        if not self._current_mulaw and not self._current_pcm16:
             self._current_truncated = False
             return
         if len(self._segments) >= self._max_segments:
-            self._current.clear()
+            self._current_mulaw.clear()
+            self._current_pcm16.clear()
             self._current_truncated = False
             return
         self._segments.append(
             _CapturedSegment(
                 index=len(self._segments) + 1,
-                audio=self._current,
+                mulaw=self._current_mulaw,
+                pcm16=self._current_pcm16,
                 checkpoint=checkpoint,
                 cancelled=cancelled,
                 truncated=self._current_truncated,
             )
         )
-        self._current = bytearray()
+        self._current_mulaw = bytearray()
+        self._current_pcm16 = bytearray()
         self._current_truncated = False
 
     @property
@@ -177,17 +198,14 @@ class OutboundAudioTranscriptCapture:
                     "TTS transcript verifier did not become ready"
                 )
 
-            for segment in self._segments:
-                payload = base64.b64encode(
-                    bytes(segment.audio)
-                ).decode("ascii")
+            async def verify(kind: str, segment_id: int, audio: bytes):
+                payload = base64.b64encode(audio).decode("ascii")
                 proc.stdin.write(
                     (
-                        f"V\t{segment.index}\t{payload}\n"
+                        f"{kind}\t{segment_id}\t{payload}\n"
                     ).encode("ascii")
                 )
                 await proc.stdin.drain()
-
                 raw = await asyncio.wait_for(
                     proc.stdout.readline(),
                     timeout=_VERIFY_TIMEOUT_SECONDS,
@@ -197,11 +215,11 @@ class OutboundAudioTranscriptCapture:
                     errors="replace",
                 ).rstrip("\n")
                 parts = line.split("\t")
-                if len(parts) < 4 or parts[0] != "VERIFY":
+                if len(parts) < 7 or parts[0] != "VERIFY":
                     raise RuntimeError(
                         "TTS transcript verifier returned invalid protocol"
                     )
-                if int(parts[1]) != segment.index:
+                if int(parts[1]) != segment_id:
                     raise RuntimeError(
                         "TTS transcript verifier returned wrong segment"
                     )
@@ -209,14 +227,31 @@ class OutboundAudioTranscriptCapture:
                     parts[2],
                     validate=True,
                 ).decode("utf-8")
-
                 metadata = dict(
                     field.split("=", 1)
                     for field in parts[3:]
                     if "=" in field
                 )
-                buffered_audio_ms = int(
-                    metadata["buffered_audio_ms"]
+                return {
+                    "transcript": transcript,
+                    "buffered_audio_ms": int(metadata["buffered_audio_ms"]),
+                    "peak": int(metadata["peak"]),
+                    "rms": float(metadata["rms"]),
+                    "near_full_scale_ratio": float(
+                        metadata["near_full_scale_ratio"]
+                    ),
+                }
+
+            for segment in self._segments:
+                pre = await verify(
+                    "V",
+                    segment.index,
+                    bytes(segment.mulaw),
+                )
+                post = await verify(
+                    "P",
+                    segment.index,
+                    bytes(segment.pcm16),
                 )
 
                 results.append(
@@ -225,13 +260,14 @@ class OutboundAudioTranscriptCapture:
                         "checkpoint": segment.checkpoint,
                         "cancelled": segment.cancelled,
                         "truncated": segment.truncated,
-                        "buffered_audio_ms": buffered_audio_ms,
-                        "transcript": transcript,
+                        "pre_codec": pre,
+                        "post_codec": post,
                     }
                 )
 
                 # Raw bytes are no longer needed after this segment verifies.
-                segment.audio.clear()
+                segment.mulaw.clear()
+                segment.pcm16.clear()
 
             proc.stdin.write(b"Q\n")
             await proc.stdin.drain()
@@ -244,8 +280,10 @@ class OutboundAudioTranscriptCapture:
 
         finally:
             for segment in self._segments:
-                segment.audio.clear()
-            self._current.clear()
+                segment.mulaw.clear()
+                segment.pcm16.clear()
+            self._current_mulaw.clear()
+            self._current_pcm16.clear()
             if proc.returncode is None:
                 proc.kill()
                 await proc.wait()
@@ -268,7 +306,7 @@ class OutboundAudioTranscriptCapture:
                 {
                     "call_id": call_id,
                     "boundary": (
-                        "post-player-mulaw8k-pre-bluetooth-codec"
+                        "paired-post-player-mulaw8k-and-post-codec-s16le16k"
                     ),
                     "segments": results,
                 },
