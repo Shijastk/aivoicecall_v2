@@ -711,3 +711,23 @@ required property differs.
   after `BluetoothOutboundCodec`, including peak/RMS/near-full-scale metrics.
 - This preserves the no-raw-audio rule and runs ASR verification only after the
   live call.
+
+
+### 2026-10-06 — Pocket clarity root cause narrowed to provider anti-aliasing
+
+- Known-clean Malayalam WAV -> direct 16 kHz HFP was clear.
+- Pocket native PCM -> direct 16 kHz HFP was clear.
+- Pocket's existing direct 24 kHz -> 8 kHz `audioop.ratecv` -> mu-law ->
+  Bluetooth path was audibly unclear.
+- The known-clean WAV stayed clear through the same 24 kHz -> 8 kHz -> mu-law ->
+  Bluetooth round trip, so the locked mu-law/8 kHz contract itself was not the
+  reproduced defect.
+- Pocket became clear when explicit anti-aliased 24 kHz -> 8 kHz resampling was
+  inserted before the unchanged mu-law path.
+- Decision: retain BT-D05 and rules.md C1/C2; do not introduce a Bluetooth-native
+  PCM core path. Correct only the Pocket provider conversion with a bounded
+  streaming NumPy FIR anti-alias stage.
+- Candidate code head `5d65ed3d172bc7fe1a58004b53aa42bc7396a424`
+  passed both push and PR CI on Python 3.12/3.14 before this docs amendment:
+  113 focused, 171 Bluetooth, 1067 full passes plus exactly the four historical
+  failures on each matrix, with `FULL_SUITE_BASELINE_CLEAN`.
