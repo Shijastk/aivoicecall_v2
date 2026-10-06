@@ -156,6 +156,36 @@ def _segment_metrics(pcm: bytes):
     return buffered_audio_ms, peak, rms
 
 
+def transcribe_mulaw8(model, mulaw: bytes) -> str:
+    pcm8 = audioop.ulaw2lin(mulaw, 2)
+    pcm16, _ = audioop.ratecv(
+        pcm8,
+        2,
+        1,
+        8000,
+        16000,
+        None,
+    )
+    return transcribe(model, pcm16)
+
+
+def format_verify_frame(
+    segment_id: str,
+    transcript: str,
+    mulaw: bytes,
+) -> str:
+    encoded = base64.b64encode(
+        transcript.encode("utf-8")
+    ).decode("ascii")
+    buffered_audio_ms = round(
+        len(mulaw) / 8000 * 1000
+    )
+    return (
+        f"VERIFY\t{segment_id}\t{encoded}"
+        f"\tbuffered_audio_ms={buffered_audio_ms}"
+    )
+
+
 def format_end_frame(
     transcript: str,
     speech: bytes,
@@ -224,25 +254,16 @@ def main() -> int:
             except Exception:
                 continue
 
-            pcm8 = audioop.ulaw2lin(mulaw, 2)
-            pcm16, _ = audioop.ratecv(
-                pcm8,
-                2,
-                1,
-                8000,
-                16000,
-                None,
-            )
-            transcript = transcribe(asr, pcm16)
-            encoded = base64.b64encode(
-                transcript.encode("utf-8")
-            ).decode("ascii")
-            buffered_audio_ms = round(
-                len(mulaw) / 8000 * 1000
+            transcript = transcribe_mulaw8(
+                asr,
+                mulaw,
             )
             emit(
-                f"VERIFY\t{segment_id}\t{encoded}"
-                f"\tbuffered_audio_ms={buffered_audio_ms}"
+                format_verify_frame(
+                    segment_id,
+                    transcript,
+                    mulaw,
+                )
             )
         return 0
 
