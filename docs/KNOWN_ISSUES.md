@@ -449,3 +449,23 @@ because it is captured before Bluetooth codec/HFP/cellular transport it cannot
 by itself localize corruption introduced after that boundary. The verifier also
 uses the same IndicConformer family as the local STT path, so code-mixed
 recognition limitations must be considered when interpreting its transcript.
+## 2026-10-06 live Galaxy A10 noisy-uplink diagnosis narrowed
+
+During an active-call observation on the Galaxy A10 HFP path, the repository
+`pw-link` parser reported `AI_ONLY_FORBIDDEN_LINKS=NONE`. That single live
+sample did not show the previously documented physical ALSA microphone -> selected
+Bluetooth uplink or selected Bluetooth downlink -> physical speaker contamination.
+It does not prove those links can never reappear later in a call.
+
+The preceding outbound TTS verification had already produced an intelligible
+post-Player/pre-codec transcript for at least one complete response while the
+remote handset audio was reported as noisy/unclear. The candidate therefore now
+captures the same dispatched utterance at two bounded in-memory boundaries:
+post-Player G.711 mu-law/8 kHz and the exact S16LE/16 kHz bytes accepted by
+`Phase3AiOnlySession.write()` after `BluetoothOutboundCodec`. Post-call ASR
+plus peak/RMS/near-full-scale metrics are persisted as text/metadata only.
+
+Interpretation remains evidence-bound: matching clean pre/post codec transcripts
+with sane levels would move suspicion downstream toward PipeWire/BlueZ/HFP/cellular
+transport; divergence or clipping after the codec would localize the defect before
+that boundary.
