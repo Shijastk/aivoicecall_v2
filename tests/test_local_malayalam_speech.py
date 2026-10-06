@@ -684,3 +684,58 @@ def test_barge_probe_durations_must_be_unique_ascending_and_bounded():
             Recorder().start,
             barge_in_probe_ms=(384, 256),
         )
+
+
+@pytest.mark.asyncio
+async def test_stop_allows_stdout_reader_to_drain_after_worker_exit():
+    rec = Recorder()
+    service = LocalMalayalamSpeechService(
+        rec.end,
+        rec.start,
+        stop_timeout_seconds=0.5,
+    )
+
+    class FakeStdin:
+        def write(self, data):
+            assert data == b"Q\n"
+
+        async def drain(self):
+            return None
+
+        def close(self):
+            return None
+
+        async def wait_closed(self):
+            return None
+
+    class FakeProc:
+        def __init__(self):
+            self.stdin = FakeStdin()
+            self.returncode = None
+
+        async def wait(self):
+            self.returncode = 0
+            return 0
+
+        def terminate(self):
+            raise AssertionError("terminate should not be needed")
+
+        def kill(self):
+            raise AssertionError("kill should not be needed")
+
+    drained = asyncio.Event()
+
+    async def reader():
+        await asyncio.sleep(0)
+        drained.set()
+
+    service._proc = FakeProc()
+    service._reader_task = asyncio.create_task(reader())
+    service._stderr_task = None
+    service._running = True
+    service._ready.set()
+
+    await service.stop()
+
+    assert drained.is_set()
+    assert service._reader_task is None
