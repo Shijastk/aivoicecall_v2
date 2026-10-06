@@ -89,6 +89,7 @@ async def run_production_bluetooth_conversation(
     player_preroll_frames: int = PREROLL_FRAMES,
     verify_tts_audio_transcript: bool = False,
     diagnose_local_barge_in_probes: bool = False,
+    diagnose_agent_text: bool = False,
     deps: BluetoothProductionDeps = BluetoothProductionDeps(),
 ) -> None:
     """Wire the real SHUO services to an already-built Bluetooth session.
@@ -175,6 +176,14 @@ async def run_production_bluetooth_conversation(
             "diagnose_local_barge_in_probes requires "
             "speech_provider=local-malayalam"
         )
+    if (
+        diagnose_agent_text
+        and speech_provider != LOCAL_MALAYALAM_SPEECH_PROVIDER
+    ):
+        raise ValueError(
+            "diagnose_agent_text requires "
+            "speech_provider=local-malayalam"
+        )
 
     resolved = settings or deps.settings_loader()
 
@@ -184,6 +193,8 @@ async def run_production_bluetooth_conversation(
         )
 
     tracer = deps.tracer_factory()
+    if diagnose_agent_text:
+        tracer.enable_agent_text_capture()
     tts_audio_capture = (
         deps.tts_audio_capture_cls()
         if verify_tts_audio_transcript
