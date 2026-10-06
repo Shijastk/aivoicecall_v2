@@ -1204,3 +1204,40 @@ The four retained historical failures were:
 
 No live Bluetooth device, cellular call, provider credential or caller-heard
 latency measurement was exercised by this repository gate.
+
+## GitHub Actions Python 3.14 ordering-fixture stabilization — 2026-10-06
+
+GitHub Actions run `37423454956` attempt 1 on local-Malayalam candidate
+`2ef44110b1e4cfc64be94f4debcaf7437e96ca71` passed Python 3.12 but the
+Python 3.14 full-suite gate observed one extra failure:
+
+`tests/test_test_call.py::TestActiveCallsMerge::test_an_ended_call_in_the_monitor_lingers_then_goes`
+
+The assertion expected `att-one` before `att-just-ended`, but the fixture
+constructed each summary with a fresh `call_history.now_iso()`. That helper
+records millisecond precision, while production correctly sorts active entries
+by `startedAt` newest-first. If fixture construction crossed a millisecond
+boundary, the second summary was legitimately newer and sorted first.
+
+Evidence that this was intermittent fixture timing rather than a product
+regression:
+
+- the same exact source commit was rerun as workflow run
+  `37423454956` attempt 2 with no code change and both Python 3.12 and 3.14
+  completed successfully;
+- the active-call production implementation was unchanged by the Malayalam STT
+  candidate;
+- the test-only stabilization branch pins distinct `startedAt` timestamps
+  while preserving the same newest-first production contract;
+- pull request #11, workflow run `37424535788`, passed both Python 3.12 and
+  Python 3.14;
+- Python 3.12 on that run: 81 focused tests passed, 166 Bluetooth tests passed,
+  full repository 1048 passed plus exactly the four historical failures, and
+  `FULL_SUITE_BASELINE_CLEAN`;
+- Python 3.14 on that run: 81 focused tests passed, 166 Bluetooth tests passed,
+  full repository 1048 passed plus exactly the four historical failures, and
+  `FULL_SUITE_BASELINE_CLEAN`.
+
+The stabilization changes test fixture timestamps only. No production route,
+call ordering implementation, carrier behavior, Bluetooth/STT path, audio
+contract, state machine, dependency or live-call behavior changed.

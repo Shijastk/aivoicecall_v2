@@ -559,14 +559,22 @@ class TestActiveCallsMerge:
         across a hangup needs; the one that ended a minute ago belongs in the
         history table, which is a different screen reading a different route.
         """
+        # Pin distinct start times. `live_summary()` otherwise samples
+        # millisecond timestamps separately, so crossing a millisecond boundary
+        # can legitimately make the just-ended fixture sort ahead of att-one
+        # even though this test is about grace-window membership, not clock speed.
         call_server.body = {
             "calls": [
-                live_summary("att-one"),
+                live_summary(
+                    "att-one",
+                    startedAt=call_history.now_iso(),
+                ),
                 live_summary(
                     "att-just-ended",
                     live=False,
                     state="ended",
                     status="completed",
+                    startedAt=_ago(1),
                     endedAt=call_history.now_iso(),
                 ),
                 live_summary(
@@ -574,6 +582,7 @@ class TestActiveCallsMerge:
                     live=False,
                     state="ended",
                     status="completed",
+                    startedAt=_ago(config_api.TERMINAL_GRACE_SECONDS + 60),
                     endedAt=_ago(config_api.TERMINAL_GRACE_SECONDS + 30),
                 ),
             ]
