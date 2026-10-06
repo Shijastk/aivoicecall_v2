@@ -531,3 +531,58 @@ async def test_tts_audio_transcript_probe_rejects_non_local_speech_provider():
             speech_provider="deepgram-flux",
             verify_tts_audio_transcript=True,
         )
+
+
+@pytest.mark.asyncio
+async def test_local_barge_probe_diagnostic_wires_only_local_prefixes():
+    captured = {}
+
+    class FakeLocalSpeech:
+        def __init__(
+            self,
+            on_end_of_turn,
+            on_start_of_turn,
+            on_interim,
+            **kwargs,
+        ):
+            captured["kwargs"] = kwargs
+
+    async def runner(session, *, flux_factory, **kwargs):
+        flux_factory(
+            lambda text: asyncio.sleep(0),
+            lambda: asyncio.sleep(0),
+            lambda text: asyncio.sleep(0),
+        )
+
+    await run_production_bluetooth_conversation(
+        DummySession(),
+        speech_provider="local-malayalam",
+        diagnose_local_barge_in_probes=True,
+        settings=settings(),
+        deps=BluetoothProductionDeps(
+            local_speech_cls=FakeLocalSpeech,
+            tts_pool_cls=FakePool,
+            agent_cls=FakeAgent,
+            tracer_factory=FakeTracer,
+            conversation_runner=runner,
+        ),
+    )
+
+    assert captured["kwargs"]["barge_in_probe_ms"] == (
+        256,
+        384,
+        512,
+    )
+
+
+@pytest.mark.asyncio
+async def test_local_barge_probe_rejects_non_local_provider():
+    with pytest.raises(
+        ValueError,
+        match="diagnose_local_barge_in_probes requires",
+    ):
+        await run_production_bluetooth_conversation(
+            DummySession(),
+            speech_provider="deepgram-flux",
+            diagnose_local_barge_in_probes=True,
+        )
