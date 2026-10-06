@@ -1321,3 +1321,13 @@ Automated success is not live-call proof. A follow-up reference call must inspec
 segment `buffered_audio_ms/asr_ms/peak/rms/reason`, transcript-bearing local trace, Agent
 TTFT/TTS-first-audio, playback first-write timing and cancellation behavior.
 \n
+### Live-discovered END-frame regression coverage — 2026-10-06
+
+The first live candidate run found an undefined worker-local metadata variable
+that `py_compile` could not detect and prior tests did not execute. The fix
+adds `test_worker_end_frame_builder_executes_runtime_metadata_path`, which calls
+the same pure END-frame formatter used by the worker after ASR and validates the
+base64 transcript plus content-free buffered-duration/ASR/energy/end-reason
+metadata. The corrected branch head must pass the full Python 3.12/3.14 workflow
+again; earlier green runs do not qualify the corrected head.
+
