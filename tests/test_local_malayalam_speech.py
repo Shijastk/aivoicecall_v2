@@ -349,7 +349,6 @@ def test_worker_end_frame_builder_executes_runtime_metadata_path():
     assert metadata["buffered_audio_ms"] == "100"
     assert int(metadata["peak"]) >= 0
     assert float(metadata["rms"]) >= 0
-    assert float(metadata["near_full_scale_ratio"]) >= 0
     assert metadata["asr_ms"] == "87.2"
     assert metadata["reason"] == "vad_silence"
     assert int(metadata["peak"]) >= 0
@@ -373,6 +372,9 @@ def test_tts_verify_frame_builder_executes_runtime_protocol_path():
     assert base64.b64decode(parts[2]).decode("utf-8") == text
     metadata = dict(field.split("=", 1) for field in parts[3:])
     assert metadata["buffered_audio_ms"] == "100"
+    assert int(metadata["peak"]) >= 0
+    assert float(metadata["rms"]) >= 0
+    assert float(metadata["near_full_scale_ratio"]) >= 0
 
 
 def test_tts_verify_mulaw_path_calls_asr_at_16khz():
