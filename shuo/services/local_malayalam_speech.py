@@ -459,7 +459,7 @@ class LocalMalayalamSpeechService:
                 log.info(
                     "Local Malayalam EndOfTurn "
                     f"transcript_chars={len(transcript)} "
-                    f"buffered_audio_ms={audio_ms} "
+                    f"buffered_audio_ms={buffered_audio_ms} "
                     f"asr_ms={asr_ms:.1f} "
                     f"peak={peak} "
                     f"rms={rms:.1f} "
