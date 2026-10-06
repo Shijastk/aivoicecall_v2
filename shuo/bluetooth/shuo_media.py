@@ -33,9 +33,11 @@ class BluetoothOutboundMedia(OutboundMediaSession):
         session: Phase3AiOnlySession,
         *,
         codec: Optional[BluetoothOutboundCodec] = None,
+        observer=None,
     ) -> None:
         self._session = session
         self._codec = codec or BluetoothOutboundCodec()
+        self._observer = observer
         self._last_checkpoint: Optional[str] = None
         self._dispatch_chunks = 0
 
@@ -54,6 +56,8 @@ class BluetoothOutboundMedia(OutboundMediaSession):
             if self._dispatch_chunks == 0:
                 _log.info("BTLifecycle: event=PlaybackFirstWrite_begin")
             await self._session.write(pcm)
+            if self._observer is not None:
+                self._observer.on_dispatched_audio(mulaw)
             self._dispatch_chunks += 1
             if self._dispatch_chunks == 1:
                 _log.info("BTLifecycle: event=PlaybackFirstWrite_returned pcm_bytes=%d", len(pcm))
@@ -65,6 +69,8 @@ class BluetoothOutboundMedia(OutboundMediaSession):
         started = time.perf_counter()
         _log.info("BTLifecycle: event=PlaybackClear_begin dispatched_chunks=%d", self._dispatch_chunks)
         await self._session.clear()
+        if self._observer is not None:
+            self._observer.on_clear()
         _log.info("BTLifecycle: event=PlaybackClear_returned elapsed_ms=%.1f", (time.perf_counter() - started) * 1000)
         self._dispatch_chunks = 0
 
@@ -76,6 +82,8 @@ class BluetoothOutboundMedia(OutboundMediaSession):
     async def checkpoint(self, name: str) -> None:
         # There is intentionally no fabricated PlaybackMarkEvent here.
         self._last_checkpoint = name
+        if self._observer is not None:
+            self._observer.on_checkpoint(name)
         _log.info("BTLifecycle: event=PlaybackDispatch_complete dispatched_chunks=%d", self._dispatch_chunks)
         self._dispatch_chunks = 0
 
