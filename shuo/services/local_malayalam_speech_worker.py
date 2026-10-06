@@ -198,6 +198,7 @@ def main() -> int:
         default=DEFAULT_COMMIT_SILENCE_MS,
     )
     parser.add_argument("--max-speech-seconds", type=float, default=45.0)
+    parser.add_argument("--verify-only", action="store_true")
     args = parser.parse_args()
 
     asr = onnx_asr.load_model(
@@ -205,6 +206,45 @@ def main() -> int:
         path=args.model_dir,
         providers=["CPUExecutionProvider"],
     )
+
+    if args.verify_only:
+        emit("READY")
+        for raw in sys.stdin:
+            line = raw.rstrip("\n")
+            if line == "Q":
+                break
+            if not line.startswith("V\t"):
+                continue
+            try:
+                _, segment_id, encoded_audio = line.split("\t", 2)
+                mulaw = base64.b64decode(
+                    encoded_audio,
+                    validate=True,
+                )
+            except Exception:
+                continue
+
+            pcm8 = audioop.ulaw2lin(mulaw, 2)
+            pcm16, _ = audioop.ratecv(
+                pcm8,
+                2,
+                1,
+                8000,
+                16000,
+                None,
+            )
+            transcript = transcribe(asr, pcm16)
+            encoded = base64.b64encode(
+                transcript.encode("utf-8")
+            ).decode("ascii")
+            buffered_audio_ms = round(
+                len(mulaw) / 8000 * 1000
+            )
+            emit(
+                f"VERIFY\t{segment_id}\t{encoded}"
+                f"\tbuffered_audio_ms={buffered_audio_ms}"
+            )
+        return 0
 
     silero_model = load_silero_vad(
         onnx=True,
