@@ -29,6 +29,8 @@ FRAME_SAMPLES = 512          # Silero 16 kHz frame = 32 ms
 FRAME_BYTES = FRAME_SAMPLES * 2
 FRAME_MS = FRAME_SAMPLES / 16000 * 1000.0
 DEFAULT_COMMIT_SILENCE_MS = 320
+DEFAULT_START_QUALIFY_MS = 128
+DEFAULT_START_MIN_RMS = 500
 
 
 def emit(line: str) -> None:
@@ -55,20 +57,34 @@ class SpeechTurnBuffer:
         *,
         preroll_frames: int,
         commit_silence_ms: int,
+        start_qualify_ms: int = DEFAULT_START_QUALIFY_MS,
+        start_min_rms: int = DEFAULT_START_MIN_RMS,
     ) -> None:
         if preroll_frames <= 0:
             raise ValueError("preroll_frames must be positive")
         if commit_silence_ms <= 0:
             raise ValueError("commit_silence_ms must be positive")
+        if start_qualify_ms <= 0:
+            raise ValueError("start_qualify_ms must be positive")
+        if start_min_rms < 0:
+            raise ValueError("start_min_rms must be non-negative")
 
         self.preroll = deque(maxlen=preroll_frames)
         self.commit_frames = max(
             1,
             math.ceil(commit_silence_ms / FRAME_MS),
         )
+        self.start_qualify_frames = max(
+            1,
+            math.ceil(start_qualify_ms / FRAME_MS),
+        )
+        self.start_min_rms = start_min_rms
         self.speech = bytearray()
         self.in_speech = False
         self.pending_end_frames = None
+        self.start_emitted = False
+        self.start_window = deque(maxlen=self.start_qualify_frames)
+        self.best_start_rms = 0
 
     def feed(
         self,
@@ -86,10 +102,31 @@ class SpeechTurnBuffer:
                 )
                 self.preroll.clear()
                 self.pending_end_frames = None
-                return "start", None
+                self.start_emitted = False
+                self.start_window.clear()
+                self.start_window.append(frame)
+                self.best_start_rms = 0
+                return None, None
             return None, None
 
         self.speech.extend(frame)
+
+        if not self.start_emitted:
+            self.start_window.append(frame)
+            if len(self.start_window) >= self.start_qualify_frames:
+                start_rms = int(
+                    audioop.rms(
+                        b"".join(self.start_window),
+                        2,
+                    )
+                )
+                self.best_start_rms = max(
+                    self.best_start_rms,
+                    start_rms,
+                )
+                if start_rms >= self.start_min_rms:
+                    self.start_emitted = True
+                    return "start", None
 
         if len(self.speech) >= max_speech_bytes:
             return "commit", (
@@ -122,6 +159,9 @@ class SpeechTurnBuffer:
         self.speech.clear()
         self.in_speech = False
         self.pending_end_frames = None
+        self.start_emitted = False
+        self.start_window.clear()
+        self.best_start_rms = 0
 
 
 def pcm16_to_tensor(frame: bytes):
@@ -258,6 +298,8 @@ def format_end_frame(
     *,
     asr_ms: float,
     reason: str,
+    start_qualified: bool = True,
+    start_rms: int = 0,
 ) -> str:
     """Build the worker END protocol frame without exposing raw audio."""
     buffered_audio_ms, peak, rms = _segment_metrics(speech)
@@ -271,6 +313,8 @@ def format_end_frame(
         f"\tpeak={peak}"
         f"\trms={rms}"
         f"\treason={reason}"
+        f"\tstart_qualified={int(start_qualified)}"
+        f"\tstart_rms={int(start_rms)}"
     )
 
 
@@ -292,6 +336,16 @@ def main() -> int:
         "--commit-silence-ms",
         type=int,
         default=DEFAULT_COMMIT_SILENCE_MS,
+    )
+    parser.add_argument(
+        "--start-qualify-ms",
+        type=int,
+        default=DEFAULT_START_QUALIFY_MS,
+    )
+    parser.add_argument(
+        "--start-min-rms",
+        type=int,
+        default=DEFAULT_START_MIN_RMS,
     )
     parser.add_argument("--max-speech-seconds", type=float, default=45.0)
     parser.add_argument("--verify-only", action="store_true")
@@ -362,6 +416,8 @@ def main() -> int:
     turn = SpeechTurnBuffer(
         preroll_frames=args.preroll_frames,
         commit_silence_ms=args.commit_silence_ms,
+        start_qualify_ms=args.start_qualify_ms,
+        start_min_rms=args.start_min_rms,
     )
 
     rate_state = None
@@ -446,6 +502,8 @@ def main() -> int:
                     speech,
                     asr_ms=asr_ms,
                     reason=reason,
+                    start_qualified=turn.start_emitted,
+                    start_rms=turn.best_start_rms,
                 )
             )
 
