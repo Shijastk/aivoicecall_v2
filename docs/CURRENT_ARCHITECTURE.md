@@ -453,4 +453,22 @@ Reference offline runtime evidence supplied by the task owner:
 
 This is not live cellular qualification, universal Malayalam accuracy evidence,
 or caller-heard latency evidence. The default Bluetooth provider remains
-`deepgram-flux`; local Malayalam is explicit opt-in only.
+`deepgram-flux`; local Malayalam is explicit opt-in only.\n## Candidate local-Malayalam conversational commit and Pocket first phrase — 2026-10-06
+
+On branch `feat/local-malayalam-stt-tts-latency`, the opt-in local speech worker
+still accepts SHUO mu-law/8 kHz, converts to PCM16/16 kHz and uses Silero plus the
+same IndicConformer model. The architectural change is at the boundary between
+acoustic VAD and conversational turn commit: a Silero end starts a bounded commit
+window instead of immediately invoking ASR/EndOfTurn. A resumed Silero start
+inside that window continues the same in-memory speech buffer.
+
+Committed segments include only content-free metadata
+(`audio_ms`, `asr_ms`, `peak`, `rms`, `reason`) in normal logs; transcript
+text continues through the existing private callback/trace path. No raw audio is
+written.
+
+Pocket remains behind the existing TTS provider/router and TTSPool. Its first
+phrase uses a tighter streaming bound, then the same service returns to the
+existing steady-state phrase limits. Native Pocket PCM remains inside
+`tts_pocket.py`; only mono G.711 mu-law/8 kHz leaves the provider boundary.
+\n
