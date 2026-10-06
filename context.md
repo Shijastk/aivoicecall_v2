@@ -771,3 +771,19 @@ required property differs.
 - Next controlled run must include a period where the caller deliberately stays
   silent while AI speech plays. Only that can distinguish user interruption
   from system/self-generated false starts without guessing.
+
+
+### 2026-10-06 — exact text boundary added for foreign-language-like TTS symptom
+
+- fix-7 caller ASR was meaningful Malayalam.
+- The affected cancelled outbound segment had identical heavily garbled ASR at
+  pre-codec and post-codec boundaries, ruling out BluetoothOutboundCodec for
+  that reproduced segment.
+- Because that segment was cancelled and exact LLM text was not persisted, the
+  evidence does not yet choose between LLM text and Pocket synthesis.
+- Added local-only opt-in `--diagnose-agent-text`; generated Agent text is
+  stored only in the existing local /tmp/shuo trace when explicitly enabled.
+- Fixed a post-call stdout-drain race that could hide BargeProbe lines.
+- Pre-doc head `bfb752f84c100e1649f81ac8ed8cc6bbcfe4b75f` passed Python
+  3.12/3.14 CI with 127 focused, 176 Bluetooth, 1081 full passes plus exactly
+  the historical four failures and `FULL_SUITE_BASELINE_CLEAN`.
