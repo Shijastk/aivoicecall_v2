@@ -252,7 +252,8 @@ def test_turn_buffer_merges_resume_before_conversational_commit():
     assert action == "commit"
     reason, speech = payload
     assert reason == "vad_silence"
-    assert len(speech) == FRAME_BYTES * 9
+    # One extra frame is intentionally buffered while START is qualified.
+    assert len(speech) == FRAME_BYTES * 10
 
 
 def test_turn_buffer_forced_max_speech_commit_is_immediate():
