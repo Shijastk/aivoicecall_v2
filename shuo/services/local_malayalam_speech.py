@@ -396,6 +396,25 @@ class LocalMalayalamSpeechService:
                         proc.kill()
                         await proc.wait()
 
+            # The diagnostic worker may emit post-call PROBE lines immediately
+            # before exiting.  Give the stdout reader a bounded chance to drain
+            # those already-produced lines after process EOF; cancelling it
+            # immediately here races the final pipe reads and can lose evidence.
+            if (
+                self._reader_task is not None
+                and not self._reader_task.done()
+            ):
+                try:
+                    await asyncio.wait_for(
+                        asyncio.shield(self._reader_task),
+                        timeout=self._stop_timeout_seconds,
+                    )
+                except (
+                    asyncio.TimeoutError,
+                    Exception,
+                ):
+                    pass
+
         for task in (
             self._reader_task,
             self._stderr_task,
