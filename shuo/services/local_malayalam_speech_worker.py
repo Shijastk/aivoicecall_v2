@@ -20,6 +20,7 @@ import audioop
 import base64
 from collections import deque
 import math
+import struct
 import sys
 import time
 
@@ -169,20 +170,85 @@ def transcribe_mulaw8(model, mulaw: bytes) -> str:
     return transcribe(model, pcm16)
 
 
-def format_verify_frame(
+def _verify_pcm_metrics(
+    pcm: bytes,
+    *,
+    sample_rate: int,
+):
+    usable = pcm[: len(pcm) - (len(pcm) % 2)]
+    samples = len(usable) // 2
+    if not samples:
+        return 0, 0, 0.0, 0.0
+    peak = int(audioop.max(usable, 2))
+    rms = float(audioop.rms(usable, 2))
+    near_full = sum(
+        1
+        for (sample,) in struct.iter_unpack("<h", usable)
+        if abs(sample) >= 32700
+    )
+    buffered_audio_ms = round(
+        samples / sample_rate * 1000
+    )
+    return (
+        buffered_audio_ms,
+        peak,
+        rms,
+        near_full / samples,
+    )
+
+
+def _format_verify_frame(
     segment_id: str,
     transcript: str,
-    mulaw: bytes,
+    pcm: bytes,
+    *,
+    sample_rate: int,
 ) -> str:
     encoded = base64.b64encode(
         transcript.encode("utf-8")
     ).decode("ascii")
-    buffered_audio_ms = round(
-        len(mulaw) / 8000 * 1000
+    (
+        buffered_audio_ms,
+        peak,
+        rms,
+        near_full_scale_ratio,
+    ) = _verify_pcm_metrics(
+        pcm,
+        sample_rate=sample_rate,
     )
     return (
         f"VERIFY\t{segment_id}\t{encoded}"
         f"\tbuffered_audio_ms={buffered_audio_ms}"
+        f"\tpeak={peak}"
+        f"\trms={rms:.1f}"
+        f"\tnear_full_scale_ratio={near_full_scale_ratio:.8f}"
+    )
+
+
+def format_verify_mulaw_frame(
+    segment_id: str,
+    transcript: str,
+    mulaw: bytes,
+) -> str:
+    pcm8 = audioop.ulaw2lin(mulaw, 2)
+    return _format_verify_frame(
+        segment_id,
+        transcript,
+        pcm8,
+        sample_rate=8000,
+    )
+
+
+def format_verify_pcm_frame(
+    segment_id: str,
+    transcript: str,
+    pcm16: bytes,
+) -> str:
+    return _format_verify_frame(
+        segment_id,
+        transcript,
+        pcm16,
+        sample_rate=16000,
     )
 
 
@@ -243,28 +309,41 @@ def main() -> int:
             line = raw.rstrip("\n")
             if line == "Q":
                 break
-            if not line.startswith("V\t"):
+            if not (
+                line.startswith("V\t")
+                or line.startswith("P\t")
+            ):
                 continue
             try:
-                _, segment_id, encoded_audio = line.split("\t", 2)
-                mulaw = base64.b64decode(
+                kind, segment_id, encoded_audio = line.split("\t", 2)
+                audio = base64.b64decode(
                     encoded_audio,
                     validate=True,
                 )
             except Exception:
                 continue
 
-            transcript = transcribe_mulaw8(
-                asr,
-                mulaw,
-            )
-            emit(
-                format_verify_frame(
+            if kind == "V":
+                transcript = transcribe_mulaw8(
+                    asr,
+                    audio,
+                )
+                frame = format_verify_mulaw_frame(
                     segment_id,
                     transcript,
-                    mulaw,
+                    audio,
                 )
-            )
+            else:
+                transcript = transcribe(
+                    asr,
+                    audio,
+                )
+                frame = format_verify_pcm_frame(
+                    segment_id,
+                    transcript,
+                    audio,
+                )
+            emit(frame)
         return 0
 
     silero_model = load_silero_vad(
