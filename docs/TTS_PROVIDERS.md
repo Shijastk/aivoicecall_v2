@@ -199,4 +199,23 @@ Automated provider regression, even when baseline-clean, proves only code-path, 
 - Phase 5 acceptance; or
 - Phase 6 readiness.
 
-Those items require the separately authorized reference-device/manual evidence. Phase 6 remains blocked.
+Those items require the separately authorized reference-device/manual evidence. Phase 6 remains blocked.\n## Pocket first-phrase latency candidate — 2026-10-06
+
+Live local-Malayalam call evidence showed several host-side final-EOT to first
+Bluetooth playback-write intervals below 500 ms, but at least one first turn was
+materially slower. Source review found that Pocket's internal phrase buffer could
+wait up to 128 characters before starting synthesis when no earlier hard
+punctuation arrived, despite the upstream LLM already streaming tokens.
+
+The current latency candidate preserves Pocket's steady-state
+`PHRASE_CHARS=128` / soft-boundary 80 behavior, but gives only the first phrase
+of each bound Pocket service a tighter 48-character hard cap and 32-character
+soft-punctuation minimum. After the first emitted phrase the buffer returns to
+the existing 128/80 policy. This keeps token-level streaming and avoids changing
+later phrase quality policy more broadly than the observed startup problem
+requires.
+
+This is repository behavior to be validated, not caller-heard latency evidence.
+CI can prove exact-text preservation, bounds and regressions; it cannot prove
+Malayalam voice quality, cellular audio quality, or a mouth-to-ear target.
+\n
