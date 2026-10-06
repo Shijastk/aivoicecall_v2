@@ -1297,4 +1297,27 @@ GitHub merged PR #13 with merge commit
 
 This is repository integration evidence only. Phase 5 remains not accepted,
 prior live FAIL observations remain FAIL, Phase 6 remains unauthorized, and no
-caller-heard latency or broad compatibility claim is created.
+caller-heard latency or broad compatibility claim is created.\n## Local Malayalam segmentation + Pocket startup-latency candidate — 2026-10-06
+
+Candidate branch: `feat/local-malayalam-stt-tts-latency`.
+
+The branch adds hardware-free regression coverage for:
+
+- merging a Silero end followed by resumed speech inside the bounded
+  conversational commit window into one caller turn;
+- preserving a single START across that resumed segment;
+- immediate bounded commit at maximum speech duration;
+- content-free worker metadata parsing and fail-closed end-reason validation;
+- a first-only tighter `BoundedPhraseBuffer` cap followed by the original
+  steady-state cap;
+- Pocket first-synthesis input remaining inside that first-phrase bound.
+
+The Phase-5 workflow now compiles the modified local STT/Pocket/phrase-buffer
+files, runs `tests/test_tts_pocket.py` in the focused matrix, then retains the
+existing complete Bluetooth regression, exact four-failure historical-baseline
+verification and `git diff --check` on Python 3.12 and 3.14.
+
+Automated success is not live-call proof. A follow-up reference call must inspect
+segment `audio_ms/asr_ms/peak/rms/reason`, transcript-bearing local trace, Agent
+TTFT/TTS-first-audio, playback first-write timing and cancellation behavior.
+\n
