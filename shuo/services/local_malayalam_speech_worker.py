@@ -150,10 +150,32 @@ def _segment_metrics(pcm: bytes):
     if not pcm:
         return 0, 0, 0
     samples = len(pcm) // 2
-    audio_ms = round(samples / 16000 * 1000)
+    buffered_audio_ms = round(samples / 16000 * 1000)
     peak = int(audioop.max(pcm, 2))
     rms = int(audioop.rms(pcm, 2))
-    return audio_ms, peak, rms
+    return buffered_audio_ms, peak, rms
+
+
+def format_end_frame(
+    transcript: str,
+    speech: bytes,
+    *,
+    asr_ms: float,
+    reason: str,
+) -> str:
+    """Build the worker END protocol frame without exposing raw audio."""
+    buffered_audio_ms, peak, rms = _segment_metrics(speech)
+    encoded = base64.b64encode(
+        transcript.encode("utf-8")
+    ).decode("ascii")
+    return (
+        f"END\t{encoded}"
+        f"\tbuffered_audio_ms={buffered_audio_ms}"
+        f"\tasr_ms={asr_ms:.1f}"
+        f"\tpeak={peak}"
+        f"\trms={rms}"
+        f"\treason={reason}"
+    )
 
 
 def main() -> int:
@@ -268,9 +290,6 @@ def main() -> int:
                 continue
 
             reason, speech = payload
-            audio_ms, peak, rms = _segment_metrics(
-                speech
-            )
 
             asr_started = time.perf_counter()
             transcript = transcribe(
@@ -281,17 +300,13 @@ def main() -> int:
                 time.perf_counter() - asr_started
             ) * 1000.0
 
-            encoded = base64.b64encode(
-                transcript.encode("utf-8")
-            ).decode("ascii")
-
             emit(
-                f"END\t{encoded}"
-                f"\tbuffered_audio_ms={buffered_audio_ms}"
-                f"\tasr_ms={asr_ms:.1f}"
-                f"\tpeak={peak}"
-                f"\trms={rms}"
-                f"\treason={reason}"
+                format_end_frame(
+                    transcript,
+                    speech,
+                    asr_ms=asr_ms,
+                    reason=reason,
+                )
             )
 
             turn.reset()
