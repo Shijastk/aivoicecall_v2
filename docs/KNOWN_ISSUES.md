@@ -435,3 +435,18 @@ The candidate now centralizes END-frame construction in a pure
 `format_end_frame` helper and executes that exact path in
 `tests/test_local_malayalam_speech.py`. The prior green CI run is retained as
 historical repository evidence but is not sufficient for the corrected head.
+## Pocket TTS audible-response diagnosis lacked audio-derived transcript — 2026-10-06
+
+The manual Bluetooth trace historically persisted caller ASR and timings but not
+an audio-derived transcript of the generated response. This made it impossible
+to distinguish a semantically correct LLM response from a Pocket TTS
+pronunciation/rendering problem after the call had ended.
+
+The current candidate adds an explicit post-call verifier over the exact
+post-Player mu-law frames dispatched toward Bluetooth. It stores no raw audio.
+The resulting transcript is useful evidence about Pocket/Player output, but
+because it is captured before Bluetooth codec/HFP/cellular transport it cannot
+by itself localize corruption introduced after that boundary. The verifier also
+uses the same IndicConformer family as the local STT path, so code-mixed
+recognition limitations must be considered when interpreting its transcript.
+
