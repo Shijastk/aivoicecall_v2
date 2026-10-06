@@ -384,4 +384,35 @@ This does not resolve:
 - the previously observed real-call turn fragmentation problem.
 
 Treat the Bluetooth local path as reference-offline validated and live-cellular
-pending, not as a global Malayalam-STT resolution.
+pending, not as a global Malayalam-STT resolution.\n## Live local-Malayalam segmentation and code-mixed accuracy — 2026-10-06
+
+The first real Bluetooth/cellular run with the opt-in local Malayalam provider
+produced transcript-bearing local trace evidence showing both useful full
+Malayalam recognition and repeated premature conversational segmentation.
+
+Representative local-only trace results included a complete turn such as
+`നാളെ ഒരു മീറ്റിങ് ഉണ്ട് അത് വൈകുന്നേരത്തേക്ക് മാറ്റണം`, while the same
+conversation also produced adjacent partial turns such as `നാളെ` followed by
+`ഒരു മീറ്റിഗ ഉണ്ട് അത് വൈകുന്നേരത്തേക്ക് മാറ്റണം`. Several one-character or
+very short turns were also promoted to Agent turns. This supports a turn-boundary
+problem in the local VAD/worker path; it does not prove that every short turn was
+noise or that character-count filtering would be safe.
+
+A separate accuracy limitation remains visible on Malayalam/English code-mixed
+speech. IndicConformer can return understandable but degraded phonetic Malayalam
+for English words such as meeting/reschedule/evening. No model/provider swap is
+made in the current candidate because the available evidence does not establish
+a better replacement on the actual HFP/cellular input.
+
+Candidate branch `feat/local-malayalam-stt-tts-latency` therefore keeps the
+existing model but stops promoting the first Silero acoustic end directly to a
+conversational EndOfTurn. After the existing 200 ms Silero silence decision, the
+worker holds a bounded 320 ms commit window; speech resuming inside that window
+continues the same buffered turn without a second START. The worker also emits
+content-free segment duration, ASR time, peak, RMS and end-reason metadata. No
+raw audio is persisted and transcript text remains local-only.
+
+The 320 ms commit window is a controlled candidate, not a proven optimal value.
+Live cellular validation is still required. Phase 5 remains unaccepted and no
+caller-heard latency claim follows.
+\n
