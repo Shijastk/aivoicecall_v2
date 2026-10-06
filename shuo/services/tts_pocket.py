@@ -23,6 +23,14 @@ _AUDIO_QUEUE_CHUNKS = 4
 _WORKER_STOP_TIMEOUT = 1.0
 _NETWORK_TRUE_VALUES = {"1", "true", "yes", "on"}
 
+# Pocket's native 24 kHz speech needs an explicit anti-aliasing stage before
+# SHUO's locked G.711 mu-law/8 kHz boundary.  A direct audioop.ratecv() 24k->8k
+# downsample was live-observed to make Pocket speech noticeably unclear, while
+# the same Pocket audio stayed clear with an anti-aliased 24k->8k resampler.
+# Keep this provider-local: carrier/browser contracts remain mu-law/8 kHz.
+_ANTIALIAS_TAPS = 63
+_ANTIALIAS_CUTOFF_HZ = 3_400.0
+
 
 def _configured_model_path() -> Optional[Path]:
     raw = (os.getenv("POCKET_TTS_CONFIG") or "").strip()
@@ -70,16 +78,79 @@ def _configure_hf_cache_resolution() -> bool:
     return True
 
 
+class _PocketResampleState:
+    """Opaque streaming state for Pocket's provider-local 8 kHz conversion."""
+
+    def __init__(self, sample_rate: int, tail, rate_state=None) -> None:
+        self.sample_rate = sample_rate
+        self.tail = tail
+        self.rate_state = rate_state
+
+
+def _antialias_kernel(sample_rate: int):
+    import numpy as np
+
+    if sample_rate <= 8_000:
+        return None
+
+    # Windowed-sinc FIR.  3.4 kHz preserves the useful telephony speech band
+    # while providing a real transition band before the 4 kHz Nyquist limit
+    # of SHUO's fixed 8 kHz representation.
+    n = (
+        np.arange(_ANTIALIAS_TAPS, dtype=np.float64)
+        - (_ANTIALIAS_TAPS - 1) / 2
+    )
+    normalized = _ANTIALIAS_CUTOFF_HZ / float(sample_rate)
+    kernel = (
+        2.0
+        * normalized
+        * np.sinc(2.0 * normalized * n)
+        * np.hamming(_ANTIALIAS_TAPS)
+    )
+    kernel /= kernel.sum()
+    return kernel.astype(np.float32)
+
+
+def _antialias_stream(array, sample_rate: int, state):
+    import numpy as np
+
+    kernel = _antialias_kernel(sample_rate)
+    if kernel is None:
+        return array, state
+
+    if state is None:
+        state = _PocketResampleState(
+            sample_rate,
+            np.zeros(_ANTIALIAS_TAPS - 1, dtype=np.float32),
+        )
+    elif not isinstance(state, _PocketResampleState):
+        raise RuntimeError("invalid Pocket resampler state")
+    elif state.sample_rate != sample_rate:
+        raise RuntimeError(
+            "Pocket sample rate changed inside one streaming phrase"
+        )
+
+    extended = np.concatenate((state.tail, array))
+    filtered = np.convolve(
+        extended,
+        kernel,
+        mode="valid",
+    ).astype(np.float32, copy=False)
+    state.tail = extended[-(_ANTIALIAS_TAPS - 1):].copy()
+    return filtered, state
+
+
 def float_audio_to_mulaw_8k(
     samples,
     sample_rate: int,
     rate_state=None,
 ):
-    """Convert a Pocket float audio chunk to SHUO's mono G.711 mu-law/8 kHz.
+    """Convert Pocket float audio to SHUO's mono G.711 mu-law/8 kHz.
 
-    The helper intentionally keeps Pocket's native PCM inside this provider
-    boundary. ``rate_state`` is returned so native streaming chunks can share
-    resampler state within one generated phrase.
+    Downsampling above 8 kHz is explicitly anti-aliased before audioop.ratecv.
+    The returned opaque state carries both FIR history and rate-converter state
+    so chunk boundaries do not create discontinuities.  No native PCM leaves
+    this provider boundary.
     """
     if sample_rate <= 0:
         raise RuntimeError(f"invalid Pocket TTS sample rate: {sample_rate}")
@@ -101,17 +172,34 @@ def float_audio_to_mulaw_8k(
         return b"", rate_state
 
     array = np.clip(array, -1.0, 1.0)
+    array, state = _antialias_stream(
+        array,
+        sample_rate,
+        rate_state,
+    )
+
     pcm16 = (array * 32767.0).astype("<i2", copy=False).tobytes()
+
     if sample_rate != 8_000:
-        pcm16, rate_state = audioop.ratecv(
+        audioop_state = (
+            state.rate_state
+            if isinstance(state, _PocketResampleState)
+            else state
+        )
+        pcm16, audioop_state = audioop.ratecv(
             pcm16,
             2,
             1,
             sample_rate,
             8_000,
-            rate_state,
+            audioop_state,
         )
-    return audioop.lin2ulaw(pcm16, 2), rate_state
+        if isinstance(state, _PocketResampleState):
+            state.rate_state = audioop_state
+        else:
+            state = audioop_state
+
+    return audioop.lin2ulaw(pcm16, 2), state
 
 
 class _PocketRuntime:
@@ -189,8 +277,11 @@ class PocketTTSService:
     """
 
     # Pocket sounds unnatural when every ~24 chars are synthesised as a
-    # separate utterance. Keep normal short conversational sentences
-    # together; commas may release only after a useful clause length.
+    # separate utterance. Keep steady-state conversational sentences together,
+    # but bound only the first phrase more tightly so token streaming can reach
+    # native synthesis without waiting for a 128-character prefix.
+    FIRST_PHRASE_CHARS = 48
+    FIRST_PHRASE_MIN_SOFT_CHARS = 32
     PHRASE_CHARS = 128
     PHRASE_MIN_SOFT_CHARS = 80
 
@@ -215,7 +306,12 @@ class PocketTTSService:
         self._running = False
         self._fatal_error: Optional[str] = None
         self._warm_idle_started_at: Optional[float] = None
-        self._buffer = BoundedPhraseBuffer(self.PHRASE_CHARS, min_soft_chars=self.PHRASE_MIN_SOFT_CHARS)
+        self._buffer = BoundedPhraseBuffer(
+            self.PHRASE_CHARS,
+            min_soft_chars=self.PHRASE_MIN_SOFT_CHARS,
+            first_max_chars=self.FIRST_PHRASE_CHARS,
+            first_min_soft_chars=self.FIRST_PHRASE_MIN_SOFT_CHARS,
+        )
         self._done_emitted = False
         self._lock = asyncio.Lock()
         self._cancel_event: Optional[threading.Event] = None
@@ -241,7 +337,12 @@ class PocketTTSService:
     ) -> None:
         self._on_audio = on_audio
         self._on_done = on_done
-        self._buffer = BoundedPhraseBuffer(self.PHRASE_CHARS, min_soft_chars=self.PHRASE_MIN_SOFT_CHARS)
+        self._buffer = BoundedPhraseBuffer(
+            self.PHRASE_CHARS,
+            min_soft_chars=self.PHRASE_MIN_SOFT_CHARS,
+            first_max_chars=self.FIRST_PHRASE_CHARS,
+            first_min_soft_chars=self.FIRST_PHRASE_MIN_SOFT_CHARS,
+        )
         self._done_emitted = False
         self._fatal_error = None
         self._cancel_event = None
@@ -326,7 +427,12 @@ class PocketTTSService:
 
     async def cancel(self) -> None:
         self._running = False
-        self._buffer = BoundedPhraseBuffer(self.PHRASE_CHARS, min_soft_chars=self.PHRASE_MIN_SOFT_CHARS)
+        self._buffer = BoundedPhraseBuffer(
+            self.PHRASE_CHARS,
+            min_soft_chars=self.PHRASE_MIN_SOFT_CHARS,
+            first_max_chars=self.FIRST_PHRASE_CHARS,
+            first_min_soft_chars=self.FIRST_PHRASE_MIN_SOFT_CHARS,
+        )
         cancel_event = self._cancel_event
         if cancel_event is not None:
             cancel_event.set()

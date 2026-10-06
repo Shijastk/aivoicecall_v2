@@ -246,4 +246,53 @@ runtime evidence limits remain unchanged:
 - default-off experimental controls remain default-off.
 
 Repository integration must stop if Python 3.12 or 3.14 produces any failure
-outside the exact documented historical baseline.
+outside the exact documented historical baseline.\n## Owner-directed local STT/TTS correctness and latency candidate — 2026-10-06
+
+After the first transcript-bearing live local-Malayalam call, the owner directed
+the next Phase-5 work to address STT, TTS and measurable latency while preserving
+the repository evidence rules and CI/CD gate.
+
+The candidate remains inside the existing manual Bluetooth/local-Malayalam path:
+
+- no automatic dial/answer/hangup and no Phase-6 lifecycle work;
+- no raw audio persistence;
+- carrier/shared-core G.711 mu-law/8 kHz unchanged;
+- no change to the pure state machine;
+- no ASR provider/model replacement without comparative evidence;
+- a bounded local conversational EOT merge window after Silero acoustic end;
+- content-free per-buffered-segment duration/ASR-time/energy/end-reason diagnostics;
+- a first-only tighter Pocket phrase bound while keeping steady-state phrasing;
+- Python 3.12/3.14 CI with focused tests, Bluetooth regression and exact
+  historical full-suite baseline verification.
+
+The requested `<500 ms` goal is treated only as a measurement target for
+defined host-side milestones such as final EOT to first playback write until a
+separate external-clock methodology exists. This candidate must not be described
+as caller mouth-to-ear `<500 ms` from SHUO-local timestamps.
+
+Before integration, repository CI must be clean. Before Phase-5 acceptance or a
+runtime performance claim, a controlled manual reference call must show that
+fragmentation is reduced without swallowing legitimate short speech, Pocket
+audio/cancellation remains correct, mixed-language ASR limitations are recorded,
+and the relevant host-side timing distribution is measured rather than inferred.
+\n
+## Owner-requested TTS heard-output diagnostic — 2026-10-06
+
+To distinguish a correct LLM answer from a Pocket TTS pronunciation/rendering
+problem, the current candidate adds an explicit local diagnostic that
+ASR-transcribes the actual outbound TTS audio after the call rather than saving
+the generated LLM text.
+
+The diagnostic remains within Phase-5 restrictions:
+
+- manual call control only;
+- no raw audio file;
+- bounded in-memory audio only;
+- text-only local result artifact;
+- no carrier/shared-core codec change;
+- no state-machine change;
+- verifier execution only after live call teardown;
+- no claim that pre-Bluetooth digital audio equals remote caller-heard audio.
+
+Use this together with the existing caller-ASR trace to compare what SHUO heard
+from the caller with what Pocket actually rendered into the outbound audio path.

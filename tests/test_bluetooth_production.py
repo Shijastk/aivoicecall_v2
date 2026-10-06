@@ -1,4 +1,5 @@
 import asyncio
+import json
 from dataclasses import dataclass
 
 import pytest
@@ -9,6 +10,7 @@ from shuo.bluetooth.production import (
 )
 from shuo.runtime_config import CallSettings
 from shuo.services.tts_pool import TTSPool
+from shuo.tracer import Tracer
 
 
 class FakeTracer:
@@ -468,3 +470,206 @@ async def test_local_malayalam_rejects_deepgram_shadow_flags():
             shadow_speculation=True,
             eager_eot_threshold=0.3,
         )
+
+
+
+class FakeTTSAudioCapture:
+    instances = []
+
+    def __init__(self):
+        self.saved = []
+        FakeTTSAudioCapture.instances.append(self)
+
+    async def transcribe_and_save(self, call_id):
+        self.saved.append(call_id)
+        return None
+
+
+@pytest.mark.asyncio
+async def test_local_malayalam_can_enable_post_call_tts_audio_transcript():
+    FakeTTSAudioCapture.instances.clear()
+    captured = {}
+
+    class FakeLocalSpeech:
+        def __init__(self, on_end_of_turn, on_start_of_turn, on_interim):
+            self.on_end_of_turn = on_end_of_turn
+            self.on_start_of_turn = on_start_of_turn
+            self.on_interim = on_interim
+
+    async def runner(session, *, outbound_audio_observer=None, **kwargs):
+        captured["observer"] = outbound_audio_observer
+
+    deps = BluetoothProductionDeps(
+        local_speech_cls=FakeLocalSpeech,
+        tts_pool_cls=FakePool,
+        agent_cls=FakeAgent,
+        tracer_factory=FakeTracer,
+        settings_loader=settings,
+        conversation_runner=runner,
+        tts_audio_capture_cls=FakeTTSAudioCapture,
+    )
+
+    await run_production_bluetooth_conversation(
+        DummySession(),
+        speech_provider="local-malayalam",
+        call_id="tts-audio-probe",
+        verify_tts_audio_transcript=True,
+        deps=deps,
+    )
+
+    probe = FakeTTSAudioCapture.instances[0]
+    assert captured["observer"] is probe
+    assert probe.saved == ["tts-audio-probe"]
+
+
+@pytest.mark.asyncio
+async def test_tts_audio_transcript_probe_rejects_non_local_speech_provider():
+    with pytest.raises(
+        ValueError,
+        match="requires speech_provider=local-malayalam",
+    ):
+        await run_production_bluetooth_conversation(
+            DummySession(),
+            speech_provider="deepgram-flux",
+            verify_tts_audio_transcript=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_local_barge_probe_diagnostic_wires_only_local_prefixes():
+    captured = {}
+
+    class FakeLocalSpeech:
+        def __init__(
+            self,
+            on_end_of_turn,
+            on_start_of_turn,
+            on_interim,
+            **kwargs,
+        ):
+            captured["kwargs"] = kwargs
+
+    async def runner(session, *, flux_factory, **kwargs):
+        flux_factory(
+            lambda text: asyncio.sleep(0),
+            lambda: asyncio.sleep(0),
+            lambda text: asyncio.sleep(0),
+        )
+
+    await run_production_bluetooth_conversation(
+        DummySession(),
+        speech_provider="local-malayalam",
+        diagnose_local_barge_in_probes=True,
+        settings=settings(),
+        deps=BluetoothProductionDeps(
+            local_speech_cls=FakeLocalSpeech,
+            tts_pool_cls=FakePool,
+            agent_cls=FakeAgent,
+            tracer_factory=FakeTracer,
+            conversation_runner=runner,
+        ),
+    )
+
+    assert captured["kwargs"]["barge_in_probe_ms"] == (
+        256,
+        384,
+        512,
+    )
+
+
+@pytest.mark.asyncio
+async def test_local_barge_probe_rejects_non_local_provider():
+    with pytest.raises(
+        ValueError,
+        match="diagnose_local_barge_in_probes requires",
+    ):
+        await run_production_bluetooth_conversation(
+            DummySession(),
+            speech_provider="deepgram-flux",
+            diagnose_local_barge_in_probes=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_local_agent_text_diagnostic_enables_tracer_capture_only_when_opted_in():
+    captured = {}
+
+    class CapturingTracer(FakeTracer):
+        def __init__(self):
+            super().__init__()
+            self.agent_text_capture_enabled = 0
+
+        def enable_agent_text_capture(self):
+            self.agent_text_capture_enabled += 1
+
+    tracer = CapturingTracer()
+
+    class FakeLocalSpeech:
+        def __init__(self, on_end_of_turn, on_start_of_turn, on_interim, **kwargs):
+            pass
+
+    async def runner(session, *, flux_factory, **kwargs):
+        flux_factory(
+            lambda text: asyncio.sleep(0),
+            lambda: asyncio.sleep(0),
+            lambda text: asyncio.sleep(0),
+        )
+
+    await run_production_bluetooth_conversation(
+        DummySession(),
+        speech_provider="local-malayalam",
+        diagnose_agent_text=True,
+        settings=settings(),
+        deps=BluetoothProductionDeps(
+            local_speech_cls=FakeLocalSpeech,
+            tts_pool_cls=FakePool,
+            agent_cls=FakeAgent,
+            tracer_factory=lambda: tracer,
+            conversation_runner=runner,
+        ),
+    )
+
+    assert tracer.agent_text_capture_enabled == 1
+
+
+@pytest.mark.asyncio
+async def test_agent_text_diagnostic_rejects_non_local_provider():
+    with pytest.raises(
+        ValueError,
+        match="diagnose_agent_text requires",
+    ):
+        await run_production_bluetooth_conversation(
+            DummySession(),
+            speech_provider="deepgram-flux",
+            diagnose_agent_text=True,
+        )
+
+
+def test_agent_text_trace_capture_is_strictly_opt_in(monkeypatch, tmp_path):
+    monkeypatch.setattr("shuo.tracer.TRACE_DIR", tmp_path)
+
+    default_tracer = Tracer()
+    default_turn = default_tracer.begin_turn("caller")
+    default_tracer.set_agent_text(
+        default_turn,
+        "generated",
+        interrupted=False,
+    )
+    default_path = default_tracer.save("default-agent-text")
+    default_data = json.loads(default_path.read_text())
+    assert "agent_text" not in default_data["turns"][0]
+    assert "agent_interrupted" not in default_data["turns"][0]
+
+    diagnostic_tracer = Tracer()
+    diagnostic_tracer.enable_agent_text_capture()
+    diagnostic_turn = diagnostic_tracer.begin_turn("caller")
+    diagnostic_tracer.set_agent_text(
+        diagnostic_turn,
+        "generated",
+        interrupted=True,
+    )
+    diagnostic_path = diagnostic_tracer.save("enabled-agent-text")
+    diagnostic_data = json.loads(diagnostic_path.read_text())
+    turn = diagnostic_data["turns"][0]
+    assert turn["agent_text"] == "generated"
+    assert turn["agent_interrupted"] is True

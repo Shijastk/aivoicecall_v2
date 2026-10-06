@@ -11,6 +11,8 @@ from ..services.llm import ShadowLLMProbe
 from ..services.player import PREROLL_FRAMES
 from ..services.tts_pool import TTSPool
 from ..tracer import Tracer
+from ..log import ServiceLogger
+from .tts_audio_verify import OutboundAudioTranscriptCapture
 from .conversation import run_bluetooth_conversation
 from .phase3_session import Phase3AiOnlySession
 from .shuo_media import BluetoothOutboundMedia
@@ -19,6 +21,8 @@ from .speculative import AsyncCapacityGate, SpeculativeTurnCoordinator
 
 DEEPGRAM_FLUX_SPEECH_PROVIDER = "deepgram-flux"
 LOCAL_MALAYALAM_SPEECH_PROVIDER = "local-malayalam"
+
+log = ServiceLogger("BluetoothProduction")
 
 _LOCAL_MALAYALAM_PROMPT_PREFIX = """This Bluetooth call is operating in Malayalam mode.
 Reply in natural spoken Malayalam by default.
@@ -60,6 +64,7 @@ class BluetoothProductionDeps:
     tracer_factory: Callable[[], Tracer] = Tracer
     settings_loader: Callable[[], CallSettings] = load_call_settings
     conversation_runner: Callable = run_bluetooth_conversation
+    tts_audio_capture_cls: Type = OutboundAudioTranscriptCapture
 
 
 async def run_production_bluetooth_conversation(
@@ -82,6 +87,9 @@ async def run_production_bluetooth_conversation(
     parallel_startup: bool = False,
     diagnostics=None,
     player_preroll_frames: int = PREROLL_FRAMES,
+    verify_tts_audio_transcript: bool = False,
+    diagnose_local_barge_in_probes: bool = False,
+    diagnose_agent_text: bool = False,
     deps: BluetoothProductionDeps = BluetoothProductionDeps(),
 ) -> None:
     """Wire the real SHUO services to an already-built Bluetooth session.
@@ -152,6 +160,30 @@ async def run_production_bluetooth_conversation(
         raise ValueError("llm_history_max_chars must be a positive integer")
     if player_preroll_frames not in (2, 3):
         raise ValueError("player_preroll_frames must be 2 or 3")
+    if (
+        verify_tts_audio_transcript
+        and speech_provider != LOCAL_MALAYALAM_SPEECH_PROVIDER
+    ):
+        raise ValueError(
+            "verify_tts_audio_transcript requires "
+            "speech_provider=local-malayalam"
+        )
+    if (
+        diagnose_local_barge_in_probes
+        and speech_provider != LOCAL_MALAYALAM_SPEECH_PROVIDER
+    ):
+        raise ValueError(
+            "diagnose_local_barge_in_probes requires "
+            "speech_provider=local-malayalam"
+        )
+    if (
+        diagnose_agent_text
+        and speech_provider != LOCAL_MALAYALAM_SPEECH_PROVIDER
+    ):
+        raise ValueError(
+            "diagnose_agent_text requires "
+            "speech_provider=local-malayalam"
+        )
 
     resolved = settings or deps.settings_loader()
 
@@ -161,6 +193,13 @@ async def run_production_bluetooth_conversation(
         )
 
     tracer = deps.tracer_factory()
+    if diagnose_agent_text:
+        tracer.enable_agent_text_capture()
+    tts_audio_capture = (
+        deps.tts_audio_capture_cls()
+        if verify_tts_audio_transcript
+        else None
+    )
     shadow_gate = AsyncCapacityGate(1) if shadow_speculation else None
 
     pool = deps.tts_pool_cls(
@@ -178,11 +217,18 @@ async def run_production_bluetooth_conversation(
         on_resumed=None,
     ):
         if speech_provider == LOCAL_MALAYALAM_SPEECH_PROVIDER:
-            return deps.local_speech_cls(
-                on_end_of_turn=on_eot,
-                on_start_of_turn=on_sot,
-                on_interim=on_interim,
-            )
+            kwargs = {
+                "on_end_of_turn": on_eot,
+                "on_start_of_turn": on_sot,
+                "on_interim": on_interim,
+            }
+            if diagnose_local_barge_in_probes:
+                kwargs["barge_in_probe_ms"] = (
+                    256,
+                    384,
+                    512,
+                )
+            return deps.local_speech_cls(**kwargs)
 
         kwargs = {
             "on_end_of_turn": on_eot,
@@ -269,10 +315,29 @@ async def run_production_bluetooth_conversation(
             runner_kwargs["speculation_factory"] = speculation_factory
         if diagnostics is not None:
             runner_kwargs["diagnostics"] = diagnostics
+        if tts_audio_capture is not None:
+            runner_kwargs["outbound_audio_observer"] = tts_audio_capture
         if parallel_startup:
             runner_kwargs["parallel_service_startup"] = True
         await deps.conversation_runner(session, **runner_kwargs)
     finally:
         if pool_started:
             await pool.stop()
+        if tts_audio_capture is not None:
+            try:
+                path = await tts_audio_capture.transcribe_and_save(
+                    call_id
+                )
+                if path is not None:
+                    log.info(
+                        "TTS outbound transcript verification "
+                        f"saved path={path}"
+                    )
+            except Exception as exc:
+                # Diagnostic-only: never turn a completed/failed live call into
+                # a different failure because post-call verification failed.
+                log.error(
+                    "TTS outbound transcript verification failed "
+                    f"({type(exc).__name__})"
+                )
         tracer.save(call_id)

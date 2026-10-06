@@ -1297,4 +1297,210 @@ GitHub merged PR #13 with merge commit
 
 This is repository integration evidence only. Phase 5 remains not accepted,
 prior live FAIL observations remain FAIL, Phase 6 remains unauthorized, and no
-caller-heard latency or broad compatibility claim is created.
+caller-heard latency or broad compatibility claim is created.\n## Local Malayalam segmentation + Pocket startup-latency candidate — 2026-10-06
+
+Candidate branch: `feat/local-malayalam-stt-tts-latency`.
+
+The branch adds hardware-free regression coverage for:
+
+- merging a Silero end followed by resumed speech inside the bounded
+  conversational commit window into one caller turn;
+- preserving a single START across that resumed segment;
+- immediate bounded commit at maximum speech duration;
+- content-free worker metadata parsing and fail-closed end-reason validation;
+- a first-only tighter `BoundedPhraseBuffer` cap followed by the original
+  steady-state cap;
+- Pocket first-synthesis input remaining inside that first-phrase bound.
+
+The Phase-5 workflow now compiles the modified local STT/Pocket/phrase-buffer
+files, runs `tests/test_tts_pocket.py` in the focused matrix, then retains the
+existing complete Bluetooth regression, exact four-failure historical-baseline
+verification and `git diff --check` on Python 3.12 and 3.14.
+
+Automated success is not live-call proof. A follow-up reference call must inspect
+segment `buffered_audio_ms/asr_ms/peak/rms/reason`, transcript-bearing local trace, Agent
+TTFT/TTS-first-audio, playback first-write timing and cancellation behavior.
+\n
+### Live-discovered END-frame regression coverage — 2026-10-06
+
+The first live candidate run found an undefined worker-local metadata variable
+that `py_compile` could not detect and prior tests did not execute. The fix
+adds `test_worker_end_frame_builder_executes_runtime_metadata_path`, which calls
+the same pure END-frame formatter used by the worker after ASR and validates the
+base64 transcript plus content-free buffered-duration/ASR/energy/end-reason
+metadata. The corrected branch head must pass the full Python 3.12/3.14 workflow
+again; earlier green runs do not qualify the corrected head.
+## Outbound TTS audio transcript diagnostic gate — 2026-10-06
+
+The candidate adds hardware-free coverage for:
+
+- observing only successfully dispatched mu-law frames at the Bluetooth outbound
+  adapter;
+- checkpoint and barge-in/clear segment boundaries;
+- bounded in-memory capture and truncation marking;
+- the fileless TTS verifier protocol and 8 kHz mu-law -> 16 kHz ASR input path;
+- production wiring and rejection outside the explicit local-Malayalam path;
+- CLI presence of `--verify-tts-audio-transcript`.
+
+The Phase-5 Python 3.12/3.14 workflow compiles the new observer/verifier path,
+runs its focused tests, then preserves the existing Bluetooth regression, exact
+historical full-suite baseline verification, and `git diff --check`.
+
+A green repository gate proves the diagnostic plumbing only. The resulting ASR
+transcript is an approximation of the dispatched digital TTS audio. It is not an
+authoritative handset- or remote-caller-heard transcript.
+### Paired outbound codec integrity diagnostic — 2026-10-06
+
+The TTS outbound verifier now records two in-memory representations of each
+successfully dispatched response segment:
+
+1. post-Player G.711 mu-law/8 kHz before `BluetoothOutboundCodec`;
+2. the exact S16LE/16 kHz bytes passed successfully to the Phase-3 playback
+   session after codec conversion.
+
+After call teardown, the isolated IndicConformer verifier transcribes both
+representations. Each side also reports duration, peak, RMS and the ratio of
+samples with absolute amplitude >=32700. No raw audio is persisted.
+
+Hardware-free tests assert that the observer receives the same post-codec bytes
+as the session write, that pre/post buffers share checkpoint/cancel boundaries,
+and that both verifier frame formats expose bounded content-free level metrics.
+
+
+### Pocket anti-alias regression gate — 2026-10-06
+
+The Pocket conversion regression now pins two properties that the prior duration
+test did not cover:
+
+1. splitting one 24 kHz Pocket waveform across arbitrary streaming chunk
+   boundaries must produce byte-identical mu-law output to converting the same
+   waveform as one chunk;
+2. a 6 kHz input component, which is above the 4 kHz Nyquist limit of the locked
+   8 kHz SHUO representation, must be strongly attenuated relative to an in-band
+   1 kHz component before mu-law encoding.
+
+Exact candidate head before this documentation amendment:
+`5d65ed3d172bc7fe1a58004b53aa42bc7396a424`.
+
+GitHub Actions push run `37447949940` and PR run `37447956114` both completed
+successfully. PR-run evidence:
+
+- Python 3.12: 113 focused passed, 171 Bluetooth passed, full repository 1067
+  passed plus exactly the four documented historical failures,
+  `FULL_SUITE_BASELINE_CLEAN`;
+- Python 3.14: 113 focused passed, 171 Bluetooth passed, full repository 1067
+  passed plus exactly the four documented historical failures,
+  `FULL_SUITE_BASELINE_CLEAN`.
+
+A fresh exact-head gate is still required after documentation changes before the
+next live call.
+
+
+### Local Malayalam false-barge-in regression gate — 2026-10-06
+
+The local-STT focused tests now cover:
+
+- tentative acoustic START not immediately becoming conversational START;
+- minimum duration/energy qualification before START;
+- low-energy segments committing without being promoted to an Agent turn;
+- post-EndOfTurn residual START plus its matching END being suppressed;
+- legitimate START after the guard window still being forwarded;
+- max-speech safety commit retaining priority over START qualification.
+
+Exact code/test head before documentation amendment:
+`9d3500685a68696c2cbed3b796df3a060c23ae77`.
+
+Push run `37450035665` and PR run `37450040531` both passed. PR evidence:
+
+- Python 3.12: 118 focused passed, 171 Bluetooth passed, 1072 full passes plus
+  exactly the four historical failures, `FULL_SUITE_BASELINE_CLEAN`;
+- Python 3.14: 118 focused passed, 171 Bluetooth passed, 1072 full passes plus
+  exactly the four historical failures, `FULL_SUITE_BASELINE_CLEAN`;
+- `git diff --check origin/main...HEAD`: PASS.
+
+A fresh exact-head workflow is still required after documentation changes.
+
+
+### Local barge-in prefix shadow diagnostic — 2026-10-06
+
+The candidate adds an opt-in diagnostic only:
+
+`--diagnose-local-barge-in-probes`
+
+When local Malayalam STT is selected, the worker retains at most 32 bounded
+speech prefixes in memory. On worker shutdown, after the live call is already
+ending, the existing IndicConformer probes 256/384/512 ms prefixes and emits
+content-free metadata only: final transcript character count, start
+qualification/RMS, prefix transcript character counts, and probe ASR timings.
+
+No prefix transcript text or raw audio is persisted. The diagnostic is rejected
+outside `speech-provider=local-malayalam`.
+
+Exact pre-documentation head `9fa8febe13275f572e483ca1769efd382939564e`
+passed the PR workflow on Python 3.12 and 3.14:
+
+- Python 3.12: 123 focused, 173 Bluetooth, 1077 full passes plus exactly the
+  four historical failures, `FULL_SUITE_BASELINE_CLEAN`;
+- Python 3.14: 123 focused, 173 Bluetooth, 1077 full passes plus exactly the
+  four historical failures, `FULL_SUITE_BASELINE_CLEAN`;
+- diff validation passed.
+
+This gate validates diagnostic plumbing only. It does not establish the best
+barge-in threshold, prove echo, or justify an ASR/VAD/AEC replacement.
+
+
+### Agent-text / outbound-audio localization diagnostic — 2026-10-06
+
+New opt-in flag:
+
+`--diagnose-agent-text`
+
+For local Malayalam calls only, this enables generated Agent text in the
+existing local timing trace. Without the flag, `agent_text` and
+`agent_interrupted` are absent from the JSON schema. The capture occurs only
+when a turn publishes its joined response, outside the token hot path.
+
+The local speech-service teardown now also waits boundedly for its stdout reader
+after worker exit so post-call BargeProbe frames are not cancelled before being
+parsed.
+
+Exact pre-documentation head
+`bfb752f84c100e1649f81ac8ed8cc6bbcfe4b75f` passed PR CI:
+
+- Python 3.12: 127 focused, 176 Bluetooth, 1081 full passes plus exactly the
+  four historical failures, `FULL_SUITE_BASELINE_CLEAN`;
+- Python 3.14: 127 focused, 176 Bluetooth, 1081 full passes plus exactly the
+  four historical failures, `FULL_SUITE_BASELINE_CLEAN`;
+- diff validation passed.
+
+The next evidence run must include at least one completed, non-interrupted
+multi-sentence response so exact Agent text can be compared with pre/post-codec
+audio ASR without cancellation as a confounder.
+
+
+### Qwen reasoning-output regression gate — 2026-10-06
+
+Provider-specific LLM request controls are now centralized in
+`_provider_extra_body(model)`.
+
+For `qwen/qwen3.6-27b` and `qwen/qwen3.8-27b`, CI pins:
+
+- `reasoning_effort = "none"`
+- `reasoning_format = "hidden"`
+
+The existing speculative-path request test was updated to require the same
+hidden-reasoning body, preventing drift between normal and prepared paths.
+
+Exact pre-documentation head:
+`7414ac836cdc318d54205675bcbadf72942260c9`.
+
+PR workflow `37457529936` passed:
+
+- Python 3.12: 131 focused passed, 176 Bluetooth passed, 1085 full passes plus
+  exactly the four historical failures, `FULL_SUITE_BASELINE_CLEAN`;
+- Python 3.14: 131 focused passed, 176 Bluetooth passed, 1085 full passes plus
+  exactly the four historical failures, `FULL_SUITE_BASELINE_CLEAN`;
+- `git diff --check origin/main...HEAD`: PASS.
+
+CI proves request construction and regressions only. A real Groq/Qwen call is
+still required to prove that no `<think>` content reaches Agent/TTS.

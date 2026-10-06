@@ -77,3 +77,66 @@ def test_bluetooth_outbound_adapter_exposes_no_capture_method():
     media = BluetoothOutboundMedia(FakePhase3Session())
 
     assert not hasattr(media, "read")
+
+
+
+class RecordingObserver:
+    def __init__(self):
+        self.audio = []
+        self.pcm = []
+        self.clears = 0
+        self.checkpoints = []
+
+    def on_dispatched_audio(self, mulaw):
+        self.audio.append(bytes(mulaw))
+
+    def on_dispatched_pcm(self, pcm):
+        self.pcm.append(bytes(pcm))
+
+    def on_clear(self):
+        self.clears += 1
+
+    def on_checkpoint(self, name):
+        self.checkpoints.append(name)
+
+
+@pytest.mark.asyncio
+async def test_outbound_observer_sees_only_successfully_dispatched_mulaw():
+    session = FakePhase3Session()
+    observer = RecordingObserver()
+    media = BluetoothOutboundMedia(
+        session,
+        observer=observer,
+    )
+    raw = b"\xff" * 160
+    payload = base64.b64encode(raw).decode("ascii")
+
+    await media.play_audio(payload)
+    await media.checkpoint("turn-1")
+
+    assert observer.audio == [raw]
+    assert observer.pcm == session.writes
+    assert len(observer.pcm[0]) == 638
+    assert observer.checkpoints == ["turn-1"]
+    assert observer.clears == 0
+
+
+@pytest.mark.asyncio
+async def test_outbound_observer_marks_barge_in_clear_boundary():
+    session = FakePhase3Session()
+    observer = RecordingObserver()
+    media = BluetoothOutboundMedia(
+        session,
+        observer=observer,
+    )
+    payload = base64.b64encode(
+        b"\xff" * 160
+    ).decode("ascii")
+
+    await media.play_audio(payload)
+    await media.clear_audio()
+
+    assert observer.audio
+    assert observer.pcm == session.writes
+    assert observer.clears == 1
+    assert observer.checkpoints == []

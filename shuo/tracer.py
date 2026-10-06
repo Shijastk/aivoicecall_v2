@@ -67,6 +67,8 @@ class Turn:
     spans: List[Span] = field(default_factory=list)
     markers: List[Marker] = field(default_factory=list)
     cancelled: bool = False
+    agent_text: Optional[str] = None
+    agent_interrupted: Optional[bool] = None
 
 
 class Tracer:
@@ -79,6 +81,11 @@ class Tracer:
     def __init__(self) -> None:
         self._turns: Dict[int, Turn] = {}
         self._turn_counter = 0
+        self._capture_agent_text = False
+
+    def enable_agent_text_capture(self) -> None:
+        """Opt in to local trace capture of generated Agent text."""
+        self._capture_agent_text = True
 
     def begin_turn(self, transcript: str) -> int:
         """Start a new turn, returns turn number."""
@@ -130,6 +137,22 @@ class Tracer:
             if span.end_ms is None:
                 span.end_ms = ms
 
+    def set_agent_text(
+        self,
+        turn: int,
+        text: str,
+        *,
+        interrupted: bool,
+    ) -> None:
+        """Capture generated text only when explicitly enabled."""
+        if not self._capture_agent_text:
+            return
+        t = self._turns.get(turn)
+        if not t:
+            return
+        t.agent_text = text
+        t.agent_interrupted = interrupted
+
     def save(self, call_id: str) -> Optional[Path]:
         """Write trace data to <tempdir>/shuo/<call_id>.json."""
         if not self._turns:
@@ -147,6 +170,14 @@ class Tracer:
                     "turn": t.turn_number,
                     "transcript": t.transcript,
                     "cancelled": t.cancelled,
+                    **(
+                        {
+                            "agent_text": t.agent_text,
+                            "agent_interrupted": t.agent_interrupted,
+                        }
+                        if t.agent_text is not None
+                        else {}
+                    ),
                     "spans": [asdict(s) for s in t.spans],
                     "markers": [asdict(m) for m in t.markers],
                 }

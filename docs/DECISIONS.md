@@ -316,4 +316,35 @@ caller-heard latency claim.
 The earlier closed-loop "do not merge from CI alone" hold remains part of the
 historical record. This later owner authorization supersedes only the merge hold,
 subject to the full CI gate and preservation of all existing runtime/safety
-restrictions.
+restrictions.\n## BT-D35 — Separate acoustic VAD end from conversational local-STT EOT — 2026-10-06
+
+Decision: in the opt-in local Malayalam worker, retain Silero as the acoustic
+speech detector but add a bounded 320 ms conversational commit window after its
+end event. If Silero reports speech again inside that window, keep buffering the
+same caller turn and do not emit a second START. Only stable silence or the
+existing maximum-speech bound commits ASR/EndOfTurn.
+
+Reason: the first live local-Malayalam trace contained adjacent partial
+transcripts that recombined into a later complete sentence, while longer buffered
+segments produced useful Malayalam text. The previous implementation promoted
+each Silero acoustic segment directly to SHUO EndOfTurn. Character-count
+suppression was rejected because short Malayalam acknowledgements can be valid.
+
+Consequence: this change intentionally trades a bounded amount of end detection
+delay for fewer premature conversational commits. The selected window is a
+candidate requiring live validation, not an optimality claim.
+
+## BT-D36 — Reduce only Pocket's first phrase startup bound — 2026-10-06
+
+Decision: retain Pocket's existing 128/80 steady-state phrase policy but apply a
+48-character first hard cap and 32-character first soft-punctuation threshold.
+
+Reason: source review identified first-phrase buffering as a local delay source
+that can hide upstream token streaming. Limiting only the first phrase narrows
+the behavioral change while preserving the established longer steady-state
+phrasing after first audio begins.
+
+Consequence: no provider swap, codec change, full-response buffering or state
+machine change is introduced. Live voice quality and end-to-end latency remain
+separate evidence gates.
+\n

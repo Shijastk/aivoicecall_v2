@@ -384,4 +384,204 @@ This does not resolve:
 - the previously observed real-call turn fragmentation problem.
 
 Treat the Bluetooth local path as reference-offline validated and live-cellular
-pending, not as a global Malayalam-STT resolution.
+pending, not as a global Malayalam-STT resolution.\n## Live local-Malayalam segmentation and code-mixed accuracy — 2026-10-06
+
+The first real Bluetooth/cellular run with the opt-in local Malayalam provider
+produced transcript-bearing local trace evidence showing both useful full
+Malayalam recognition and repeated premature conversational segmentation.
+
+Representative local-only trace results included a complete turn such as
+`നാളെ ഒരു മീറ്റിങ് ഉണ്ട് അത് വൈകുന്നേരത്തേക്ക് മാറ്റണം`, while the same
+conversation also produced adjacent partial turns such as `നാളെ` followed by
+`ഒരു മീറ്റിഗ ഉണ്ട് അത് വൈകുന്നേരത്തേക്ക് മാറ്റണം`. Several one-character or
+very short turns were also promoted to Agent turns. This supports a turn-boundary
+problem in the local VAD/worker path; it does not prove that every short turn was
+noise or that character-count filtering would be safe.
+
+A separate accuracy limitation remains visible on Malayalam/English code-mixed
+speech. IndicConformer can return understandable but degraded phonetic Malayalam
+for English words such as meeting/reschedule/evening. No model/provider swap is
+made in the current candidate because the available evidence does not establish
+a better replacement on the actual HFP/cellular input.
+
+Candidate branch `feat/local-malayalam-stt-tts-latency` therefore keeps the
+existing model but stops promoting the first Silero acoustic end directly to a
+conversational EndOfTurn. After the existing 200 ms Silero silence decision, the
+worker holds a bounded 320 ms commit window; speech resuming inside that window
+continues the same buffered turn without a second START. The worker also emits
+content-free buffered-segment duration, ASR time, peak, RMS and end-reason metadata. No
+raw audio is persisted and transcript text remains local-only.
+
+The 320 ms commit window is a controlled candidate, not a proven optimal value.
+Live cellular validation is still required. Phase 5 remains unaccepted and no
+caller-heard latency claim follows.
+\n
+## Local STT END-frame NameError escaped repository CI — 2026-10-06
+
+The first live run of the segmentation/latency candidate exposed a worker-only
+runtime defect that the initial repository gate did not execute. The worker
+assigned the buffered segment duration to `audio_ms` but formatted the emitted
+END protocol frame using `buffered_audio_ms`. Python compilation succeeds with
+an unresolved local name, so `py_compile` did not detect the defect. Existing
+unit coverage exercised `SpeechTurnBuffer` and the parent metadata parser but
+did not execute the worker END-frame construction path.
+
+Observed live sequence: the worker reached READY and emitted START for real HFP
+speech, then exited at the first attempted committed END frame. The parent
+correctly failed closed on the next send with
+`LocalMalayalamSpeechError: Local Malayalam STT is not active`.
+
+The candidate now centralizes END-frame construction in a pure
+`format_end_frame` helper and executes that exact path in
+`tests/test_local_malayalam_speech.py`. The prior green CI run is retained as
+historical repository evidence but is not sufficient for the corrected head.
+## Pocket TTS audible-response diagnosis lacked audio-derived transcript — 2026-10-06
+
+The manual Bluetooth trace historically persisted caller ASR and timings but not
+an audio-derived transcript of the generated response. This made it impossible
+to distinguish a semantically correct LLM response from a Pocket TTS
+pronunciation/rendering problem after the call had ended.
+
+The current candidate adds an explicit post-call verifier over the exact
+post-Player mu-law frames dispatched toward Bluetooth. It stores no raw audio.
+The resulting transcript is useful evidence about Pocket/Player output, but
+because it is captured before Bluetooth codec/HFP/cellular transport it cannot
+by itself localize corruption introduced after that boundary. The verifier also
+uses the same IndicConformer family as the local STT path, so code-mixed
+recognition limitations must be considered when interpreting its transcript.
+## 2026-10-06 live Galaxy A10 noisy-uplink diagnosis narrowed
+
+During an active-call observation on the Galaxy A10 HFP path, the repository
+`pw-link` parser reported `AI_ONLY_FORBIDDEN_LINKS=NONE`. That single live
+sample did not show the previously documented physical ALSA microphone -> selected
+Bluetooth uplink or selected Bluetooth downlink -> physical speaker contamination.
+It does not prove those links can never reappear later in a call.
+
+The preceding outbound TTS verification had already produced an intelligible
+post-Player/pre-codec transcript for at least one complete response while the
+remote handset audio was reported as noisy/unclear. The candidate therefore now
+captures the same dispatched utterance at two bounded in-memory boundaries:
+post-Player G.711 mu-law/8 kHz and the exact S16LE/16 kHz bytes accepted by
+`Phase3AiOnlySession.write()` after `BluetoothOutboundCodec`. Post-call ASR
+plus peak/RMS/near-full-scale metrics are persisted as text/metadata only.
+
+Interpretation remains evidence-bound: matching clean pre/post codec transcripts
+with sane levels would move suspicion downstream toward PipeWire/BlueZ/HFP/cellular
+transport; divergence or clipping after the codec would localize the defect before
+that boundary.
+
+
+## Pocket-only 24 kHz downsampling clarity defect localized — 2026-10-06
+
+The earlier noisy/unclear remote Pocket voice was not reproduced by a known-clean
+WAV or by Pocket native PCM when either was sent directly as S16LE/16 kHz through
+the same pw-cat/BlueZ/HFP/cellular path. The known-clean WAV also remained clear
+after an 8 kHz G.711 mu-law round trip. Pocket alone became clear when an explicit
+anti-aliased resampler was used before the existing 8 kHz mu-law boundary.
+
+This evidence rules out a general HFP transport failure, a general G.711
+mu-law/8 kHz intelligibility failure, clipping, and the previously documented
+physical-route contamination as sufficient explanations for this reproduced
+defect. It localizes the fix to Pocket's native-to-8 kHz conversion path.
+
+The candidate now applies a provider-local streaming FIR anti-alias filter before
+`audioop.ratecv`. Live end-to-end SHUO validation of the corrected repository
+head is still required; repository CI alone does not establish caller-heard
+quality.
+
+
+## Local Malayalam false barge-in confirmed — 2026-10-06
+
+Live call `phase5-local-ml-stt-tts-fix-5` confirmed that acoustic VAD starts
+were being promoted too early to conversational interruption:
+
+- turn 1 was cancelled about 8 ms after Agent start by a new local START;
+- turn 2 was cancelled about 26 ms after Agent start by another START;
+- a later Agent turn was cancelled by a START whose following EndOfTurn had an
+  empty transcript and very low RMS;
+- a low-energy one-character caller segment also became a full Agent turn.
+
+The local provider now treats Silero START as tentative. A conversational START
+is emitted only after a bounded 128 ms rolling voiced window reaches RMS 500.
+The worker records `start_qualified` and `start_rms` in content-free END
+metadata. Unqualified turns are not promoted to the SHUO state machine.
+
+A separate local-only 200 ms post-EndOfTurn guard suppresses a newly-qualified
+residual START immediately following a committed local turn and suppresses its
+matching END. This addresses the measured 8/26 ms residual-start pattern without
+changing `state.py`, Deepgram Flux behavior, carrier behavior or shared barge-in
+semantics.
+
+These thresholds are evidence-driven candidates for the reference HFP path, not
+universal hardware claims. A controlled live retest is required before declaring
+voice-cut behavior fixed.
+
+
+## High-energy false barge-in source still unproven — shadow probe added
+
+The fix-6 live run showed that duration+RMS qualification removes several
+low-energy false starts, but it does not distinguish all false interruptions.
+Some Agent cancellations were followed by final local-ASR transcript length 0
+despite start RMS values well above the current qualification threshold.
+
+This does not, by itself, prove acoustic echo, background noise, or caller speech.
+The candidate therefore does not raise the RMS threshold, replace Silero, replace
+IndicConformer, or enable AEC based on that observation alone.
+
+An explicit local-only diagnostic,
+`--diagnose-local-barge-in-probes`, now retains only bounded 256/384/512 ms
+speech prefixes in worker memory and runs the existing IndicConformer on those
+prefixes only after the operator stops the call. It emits only content-free
+prefix transcript character counts and ASR timings. Raw prefix audio is never
+written to disk and the diagnostic does not delay live call processing.
+
+The goal is to measure whether the current offline IndicConformer can reliably
+separate genuine caller interruptions from the false-start population early
+enough to justify semantic barge-in qualification. A controlled silence-during-
+AI-speech call is also required before calling the false starts echo.
+
+
+## Non-Malayalam-like outbound segment remains upstream of Bluetooth codec
+
+In controlled call `phase5-local-ml-stt-tts-fix-7`, caller ASR was meaningful
+Malayalam for the affected turn, while the captured outbound TTS audio for the
+cancelled response produced the same heavily garbled Malayalam-like ASR text at
+both the pre-codec mu-law boundary and the post-codec PCM boundary.
+
+That rules out `BluetoothOutboundCodec` as the source of that reproduced
+segment's corruption. It does **not** yet distinguish an incorrect LLM response
+from Pocket synthesis/phrase behavior, because the affected segment was
+cancelled and the exact generated Agent text was not persisted in that run.
+
+The candidate therefore adds opt-in local Agent-text capture to the existing
+`/tmp/shuo/<call>.json` trace. Default traces remain unchanged. This is
+diagnostic-only and local-Malayalam-only.
+
+The post-call barge-prefix diagnostic also had a teardown race: the worker could
+emit final PROBE lines immediately before process exit while the parent
+cancelled its stdout reader. Stop now gives that reader a bounded chance to
+drain already-produced output after worker EOF.
+
+
+## Qwen reasoning text leaked into spoken output — 2026-10-06
+
+Controlled call `phase5-local-ml-stt-tts-fix-8` captured exact generated Agent
+text and both TTS audio boundaries. Turns 1-3 generated Malayalam Agent text and
+produced recognizable Malayalam at both pre-codec and post-codec ASR boundaries.
+Turn 4 generated content beginning with a literal `<think>` block followed by
+English reasoning prose before the response was cancelled.
+
+Therefore the reproduced non-Malayalam-like speech is upstream of Pocket TTS and
+Bluetooth codec for that turn: reasoning text entered the ordinary
+`delta.content -> Agent -> TTS` streaming path.
+
+The active model was verified from runtime logs as `qwen/qwen3.8-27b`.
+The existing request already set `reasoning_effort="none"`, but that alone did
+not prevent the observed content leak. Groq documents
+`reasoning_format="hidden"` as returning only the final answer for supported
+reasoning models. The candidate now sends both controls for Qwen 3.6/3.8 through
+one shared provider-request helper used by warmup, normal generation and
+shadow/prepared request creation.
+
+No generic token regex/filter has been added yet. A live validation must first
+show whether the provider-native hidden output control is sufficient.
