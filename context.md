@@ -674,3 +674,18 @@ required property differs.
   mouth-to-ear timing exists. Phase 5 remains not accepted and Phase 6 remains
   unauthorized.
 \n
+### 2026-10-06 — first candidate live run exposed worker END-frame CI gap
+
+- The candidate reached real HFP node selection, local STT READY, Pocket warm
+  readiness and LLM warmup, then received a real local STT START.
+- At the first attempted committed END frame the worker exited; the parent then
+  failed closed with `Local Malayalam STT is not active`.
+- Source review identified an exact runtime `NameError`: the worker assigned
+  `audio_ms` but formatted `buffered_audio_ms`.
+- This escaped the earlier green CI because unresolved local names are valid at
+  `py_compile` time and the existing tests did not execute worker END-frame
+  formatting.
+- The correction introduces a pure `format_end_frame` seam and an exact
+  regression test. All CI evidence before this correction is historical only;
+  the corrected exact head requires a fresh Python 3.12/3.14 gate.
+
