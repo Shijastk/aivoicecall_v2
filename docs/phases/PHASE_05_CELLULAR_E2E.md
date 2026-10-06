@@ -260,7 +260,7 @@ The candidate remains inside the existing manual Bluetooth/local-Malayalam path:
 - no change to the pure state machine;
 - no ASR provider/model replacement without comparative evidence;
 - a bounded local conversational EOT merge window after Silero acoustic end;
-- content-free per-segment duration/ASR-time/energy/end-reason diagnostics;
+- content-free per-buffered-segment duration/ASR-time/energy/end-reason diagnostics;
 - a first-only tighter Pocket phrase bound while keeping steady-state phrasing;
 - Python 3.12/3.14 CI with focused tests, Bluetooth regression and exact
   historical full-suite baseline verification.
