@@ -67,6 +67,7 @@ jobs:
           grep -q "local-malayalam" /tmp/bt-help.txt
           grep -q "verify-tts-audio-transcript" /tmp/bt-help.txt
           grep -q "diagnose-local-barge-in-probes" /tmp/bt-help.txt
+          grep -q "diagnose-agent-text" /tmp/bt-help.txt
           grep -q "CALL" /tmp/loop-help.txt || true
 
       - name: Local Malayalam STT portability guard
