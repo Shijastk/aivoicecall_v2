@@ -1476,3 +1476,31 @@ Exact pre-documentation head
 The next evidence run must include at least one completed, non-interrupted
 multi-sentence response so exact Agent text can be compared with pre/post-codec
 audio ASR without cancellation as a confounder.
+
+
+### Qwen reasoning-output regression gate — 2026-10-06
+
+Provider-specific LLM request controls are now centralized in
+`_provider_extra_body(model)`.
+
+For `qwen/qwen3.6-27b` and `qwen/qwen3.8-27b`, CI pins:
+
+- `reasoning_effort = "none"`
+- `reasoning_format = "hidden"`
+
+The existing speculative-path request test was updated to require the same
+hidden-reasoning body, preventing drift between normal and prepared paths.
+
+Exact pre-documentation head:
+`7414ac836cdc318d54205675bcbadf72942260c9`.
+
+PR workflow `37457529936` passed:
+
+- Python 3.12: 131 focused passed, 176 Bluetooth passed, 1085 full passes plus
+  exactly the four historical failures, `FULL_SUITE_BASELINE_CLEAN`;
+- Python 3.14: 131 focused passed, 176 Bluetooth passed, 1085 full passes plus
+  exactly the four historical failures, `FULL_SUITE_BASELINE_CLEAN`;
+- `git diff --check origin/main...HEAD`: PASS.
+
+CI proves request construction and regressions only. A real Groq/Qwen call is
+still required to prove that no `<think>` content reaches Agent/TTS.
