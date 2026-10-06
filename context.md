@@ -688,4 +688,3 @@ required property differs.
 - The correction introduces a pure `format_end_frame` seam and an exact
   regression test. All CI evidence before this correction is historical only;
   the corrected exact head requires a fresh Python 3.12/3.14 gate.
-
