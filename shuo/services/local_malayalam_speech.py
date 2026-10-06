@@ -202,6 +202,8 @@ class LocalMalayalamSpeechService:
 
         self._validate_runtime()
         self._ready.clear()
+        self._last_worker_end_at = None
+        self._suppress_current_turn = False
 
         self._proc = (
             await asyncio.create_subprocess_exec(
@@ -392,6 +394,7 @@ class LocalMalayalamSpeechService:
         self._reader_task = None
         self._stderr_task = None
         self._ready.clear()
+        self._suppress_current_turn = False
 
     async def _read_stdout(self) -> None:
         assert self._proc is not None
