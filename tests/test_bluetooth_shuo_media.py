@@ -83,11 +83,15 @@ def test_bluetooth_outbound_adapter_exposes_no_capture_method():
 class RecordingObserver:
     def __init__(self):
         self.audio = []
+        self.pcm = []
         self.clears = 0
         self.checkpoints = []
 
     def on_dispatched_audio(self, mulaw):
         self.audio.append(bytes(mulaw))
+
+    def on_dispatched_pcm(self, pcm):
+        self.pcm.append(bytes(pcm))
 
     def on_clear(self):
         self.clears += 1
@@ -111,6 +115,8 @@ async def test_outbound_observer_sees_only_successfully_dispatched_mulaw():
     await media.checkpoint("turn-1")
 
     assert observer.audio == [raw]
+    assert observer.pcm == session.writes
+    assert len(observer.pcm[0]) == 638
     assert observer.checkpoints == ["turn-1"]
     assert observer.clears == 0
 
@@ -131,5 +137,6 @@ async def test_outbound_observer_marks_barge_in_clear_boundary():
     await media.clear_audio()
 
     assert observer.audio
+    assert observer.pcm == session.writes
     assert observer.clears == 1
     assert observer.checkpoints == []
