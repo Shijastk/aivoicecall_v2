@@ -586,3 +586,58 @@ async def test_local_barge_probe_rejects_non_local_provider():
             speech_provider="deepgram-flux",
             diagnose_local_barge_in_probes=True,
         )
+
+
+@pytest.mark.asyncio
+async def test_local_agent_text_diagnostic_enables_tracer_capture_only_when_opted_in():
+    captured = {}
+
+    class CapturingTracer(FakeTracer):
+        def __init__(self):
+            super().__init__()
+            self.agent_text_capture_enabled = 0
+
+        def enable_agent_text_capture(self):
+            self.agent_text_capture_enabled += 1
+
+    tracer = CapturingTracer()
+
+    class FakeLocalSpeech:
+        def __init__(self, on_end_of_turn, on_start_of_turn, on_interim, **kwargs):
+            pass
+
+    async def runner(session, *, flux_factory, **kwargs):
+        flux_factory(
+            lambda text: asyncio.sleep(0),
+            lambda: asyncio.sleep(0),
+            lambda text: asyncio.sleep(0),
+        )
+
+    await run_production_bluetooth_conversation(
+        DummySession(),
+        speech_provider="local-malayalam",
+        diagnose_agent_text=True,
+        settings=settings(),
+        deps=BluetoothProductionDeps(
+            local_speech_cls=FakeLocalSpeech,
+            tts_pool_cls=FakePool,
+            agent_cls=FakeAgent,
+            tracer_factory=lambda: tracer,
+            conversation_runner=runner,
+        ),
+    )
+
+    assert tracer.agent_text_capture_enabled == 1
+
+
+@pytest.mark.asyncio
+async def test_agent_text_diagnostic_rejects_non_local_provider():
+    with pytest.raises(
+        ValueError,
+        match="diagnose_agent_text requires",
+    ):
+        await run_production_bluetooth_conversation(
+            DummySession(),
+            speech_provider="deepgram-flux",
+            diagnose_agent_text=True,
+        )
