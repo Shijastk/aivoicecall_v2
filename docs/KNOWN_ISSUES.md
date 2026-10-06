@@ -488,3 +488,30 @@ The candidate now applies a provider-local streaming FIR anti-alias filter befor
 `audioop.ratecv`. Live end-to-end SHUO validation of the corrected repository
 head is still required; repository CI alone does not establish caller-heard
 quality.
+
+
+## Local Malayalam false barge-in confirmed — 2026-10-06
+
+Live call `phase5-local-ml-stt-tts-fix-5` confirmed that acoustic VAD starts
+were being promoted too early to conversational interruption:
+
+- turn 1 was cancelled about 8 ms after Agent start by a new local START;
+- turn 2 was cancelled about 26 ms after Agent start by another START;
+- a later Agent turn was cancelled by a START whose following EndOfTurn had an
+  empty transcript and very low RMS;
+- a low-energy one-character caller segment also became a full Agent turn.
+
+The local provider now treats Silero START as tentative. A conversational START
+is emitted only after a bounded 128 ms rolling voiced window reaches RMS 500.
+The worker records `start_qualified` and `start_rms` in content-free END
+metadata. Unqualified turns are not promoted to the SHUO state machine.
+
+A separate local-only 200 ms post-EndOfTurn guard suppresses a newly-qualified
+residual START immediately following a committed local turn and suppresses its
+matching END. This addresses the measured 8/26 ms residual-start pattern without
+changing `state.py`, Deepgram Flux behavior, carrier behavior or shared barge-in
+semantics.
+
+These thresholds are evidence-driven candidates for the reference HFP path, not
+universal hardware claims. A controlled live retest is required before declaring
+voice-cut behavior fixed.
