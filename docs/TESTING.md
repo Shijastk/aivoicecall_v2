@@ -1318,6 +1318,6 @@ existing complete Bluetooth regression, exact four-failure historical-baseline
 verification and `git diff --check` on Python 3.12 and 3.14.
 
 Automated success is not live-call proof. A follow-up reference call must inspect
-segment `audio_ms/asr_ms/peak/rms/reason`, transcript-bearing local trace, Agent
+segment `buffered_audio_ms/asr_ms/peak/rms/reason`, transcript-bearing local trace, Agent
 TTFT/TTS-first-audio, playback first-write timing and cancellation behavior.
 \n
