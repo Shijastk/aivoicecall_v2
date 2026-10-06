@@ -1447,3 +1447,32 @@ passed the PR workflow on Python 3.12 and 3.14:
 
 This gate validates diagnostic plumbing only. It does not establish the best
 barge-in threshold, prove echo, or justify an ASR/VAD/AEC replacement.
+
+
+### Agent-text / outbound-audio localization diagnostic — 2026-10-06
+
+New opt-in flag:
+
+`--diagnose-agent-text`
+
+For local Malayalam calls only, this enables generated Agent text in the
+existing local timing trace. Without the flag, `agent_text` and
+`agent_interrupted` are absent from the JSON schema. The capture occurs only
+when a turn publishes its joined response, outside the token hot path.
+
+The local speech-service teardown now also waits boundedly for its stdout reader
+after worker exit so post-call BargeProbe frames are not cancelled before being
+parsed.
+
+Exact pre-documentation head
+`bfb752f84c100e1649f81ac8ed8cc6bbcfe4b75f` passed PR CI:
+
+- Python 3.12: 127 focused, 176 Bluetooth, 1081 full passes plus exactly the
+  four historical failures, `FULL_SUITE_BASELINE_CLEAN`;
+- Python 3.14: 127 focused, 176 Bluetooth, 1081 full passes plus exactly the
+  four historical failures, `FULL_SUITE_BASELINE_CLEAN`;
+- diff validation passed.
+
+The next evidence run must include at least one completed, non-interrupted
+multi-sentence response so exact Agent text can be compared with pre/post-codec
+audio ASR without cancellation as a confounder.
