@@ -468,3 +468,66 @@ async def test_local_malayalam_rejects_deepgram_shadow_flags():
             shadow_speculation=True,
             eager_eot_threshold=0.3,
         )
+
+
+
+class FakeTTSAudioCapture:
+    instances = []
+
+    def __init__(self):
+        self.saved = []
+        FakeTTSAudioCapture.instances.append(self)
+
+    async def transcribe_and_save(self, call_id):
+        self.saved.append(call_id)
+        return None
+
+
+@pytest.mark.asyncio
+async def test_local_malayalam_can_enable_post_call_tts_audio_transcript():
+    FakeTTSAudioCapture.instances.clear()
+    captured = {}
+
+    class FakeLocalSpeech:
+        def __init__(self, on_end_of_turn, on_start_of_turn, on_interim):
+            self.on_end_of_turn = on_end_of_turn
+            self.on_start_of_turn = on_start_of_turn
+            self.on_interim = on_interim
+
+    async def runner(session, *, outbound_audio_observer=None, **kwargs):
+        captured["observer"] = outbound_audio_observer
+
+    deps = BluetoothProductionDeps(
+        local_speech_cls=FakeLocalSpeech,
+        tts_pool_cls=FakePool,
+        agent_cls=FakeAgent,
+        tracer_factory=FakeTracer,
+        settings_loader=settings,
+        conversation_runner=runner,
+        tts_audio_capture_cls=FakeTTSAudioCapture,
+    )
+
+    await run_production_bluetooth_conversation(
+        DummySession(),
+        speech_provider="local-malayalam",
+        call_id="tts-audio-probe",
+        verify_tts_audio_transcript=True,
+        deps=deps,
+    )
+
+    probe = FakeTTSAudioCapture.instances[0]
+    assert captured["observer"] is probe
+    assert probe.saved == ["tts-audio-probe"]
+
+
+@pytest.mark.asyncio
+async def test_tts_audio_transcript_probe_rejects_non_local_speech_provider():
+    with pytest.raises(
+        ValueError,
+        match="requires speech_provider=local-malayalam",
+    ):
+        await run_production_bluetooth_conversation(
+            DummySession(),
+            speech_provider="deepgram-flux",
+            verify_tts_audio_transcript=True,
+        )
