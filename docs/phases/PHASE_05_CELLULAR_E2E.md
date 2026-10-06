@@ -228,3 +228,22 @@ This evidence authorizes proceeding only to the next controlled live
 Bluetooth/cellular validation after GitHub Actions passes. It does not establish
 live-call Malayalam accuracy, caller-heard latency, broad compatibility, Phase 5
 acceptance or Phase 6 authorization.
+
+## Owner amendment — 2026-10-06: repository integration without Phase 5 acceptance
+
+The task owner explicitly authorized merging the validated, default-off
+repository implementation into `main` after a clean branch-based CI gate.
+
+This supersedes only the earlier merge hold for the feature branch. All Phase 5
+runtime evidence limits remain unchanged:
+
+- prior combined cellular runs that reported FAIL remain FAIL;
+- live Malayalam Bluetooth/cellular validation remains pending;
+- Phase 5 remains not accepted;
+- Phase 6 remains unauthorized;
+- manual call control and no-raw-audio restrictions remain;
+- no caller-heard latency or universal compatibility claim is created;
+- default-off experimental controls remain default-off.
+
+Repository integration must stop if Python 3.12 or 3.14 produces any failure
+outside the exact documented historical baseline.
