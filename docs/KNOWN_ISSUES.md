@@ -409,7 +409,7 @@ existing model but stops promoting the first Silero acoustic end directly to a
 conversational EndOfTurn. After the existing 200 ms Silero silence decision, the
 worker holds a bounded 320 ms commit window; speech resuming inside that window
 continues the same buffered turn without a second START. The worker also emits
-content-free segment duration, ASR time, peak, RMS and end-reason metadata. No
+content-free buffered-segment duration, ASR time, peak, RMS and end-reason metadata. No
 raw audio is persisted and transcript text remains local-only.
 
 The 320 ms commit window is a controlled candidate, not a proven optimal value.
