@@ -1330,4 +1330,3 @@ the same pure END-frame formatter used by the worker after ASR and validates the
 base64 transcript plus content-free buffered-duration/ASR/energy/end-reason
 metadata. The corrected branch head must pass the full Python 3.12/3.14 workflow
 again; earlier green runs do not qualify the corrected head.
-
