@@ -751,3 +751,23 @@ required property differs.
   the historical four failures and `FULL_SUITE_BASELINE_CLEAN`.
 - Latency tuning remains intentionally separate until the cut fix passes a live
   retest. Phase 5 remains not accepted and Phase 6 remains unauthorized.
+
+
+### 2026-10-06 — barge-in decision moved to shadow evidence
+
+- Current source inspection confirmed Silero runs at 16 kHz / 512 samples
+  (32 ms), matching its documented streaming geometry.
+- The current Malayalam IndicConformer integration uses the offline
+  `onnx_asr.recognize` path, not a proven streaming partial-ASR interface.
+- High-energy false STARTs therefore do not justify blindly raising RMS,
+  swapping VAD/STT, or enabling AEC.
+- Added opt-in `--diagnose-local-barge-in-probes`: bounded 256/384/512 ms
+  prefixes are retained in worker memory and ASR-probed only at shutdown.
+  Only content-free character counts/timings are logged; no raw audio is
+  persisted and live timing is unchanged.
+- Pre-doc head `9fa8febe13275f572e483ca1769efd382939564e` passed
+  Python 3.12/3.14 with 123 focused, 173 Bluetooth, 1077 full passes plus
+  exactly the historical four failures and `FULL_SUITE_BASELINE_CLEAN`.
+- Next controlled run must include a period where the caller deliberately stays
+  silent while AI speech plays. Only that can distinguish user interruption
+  from system/self-generated false starts without guessing.
