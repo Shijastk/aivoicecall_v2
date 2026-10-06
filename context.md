@@ -626,3 +626,18 @@ required property differs.
 - PR #11 workflow run `37424535788` passed Python 3.12 and 3.14: 81 focused,
   166 Bluetooth, and 1048 full-suite passes plus the exact four historical
   failures on each matrix, with `FULL_SUITE_BASELINE_CLEAN`.
+
+### 2026-10-06 — owner-authorized main integration gate
+
+- Owner explicitly authorized repository integration into `main` after exact
+  branch CI succeeds, while requiring all documentation restrictions and
+  evidence boundaries to remain intact.
+- Final feature head before the integration-document amendment:
+  `6968825ac701c91f975abbe95b0898209820c276`.
+- GitHub Actions run `37425014945` passed Python 3.12 and 3.14: 81 focused,
+  166 Bluetooth, and 1048 full-suite passes plus the exact four historical
+  failures on each matrix, with `FULL_SUITE_BASELINE_CLEAN` and diff
+  validation.
+- This authorization supersedes only the historical merge hold. Phase 5 remains
+  not accepted, Phase 6 remains unauthorized, failed live observations remain
+  failed, and caller-heard latency remains unmeasured.

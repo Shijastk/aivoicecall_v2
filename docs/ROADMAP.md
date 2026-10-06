@@ -387,3 +387,22 @@ This is an implementation/evidence milestone only. Phase 5 remains not accepted.
 The next gate after remote GitHub Actions is a controlled real Bluetooth/cellular
 Malayalam run. Carrier/V2 Malayalam STT, caller-heard latency and the separate
 Pocket-TTS playback/throughput issue remain unresolved.
+
+## Owner-authorized main integration gate — 2026-10-06
+
+The task owner explicitly authorized integrating the currently validated
+default-off feature branch into `main` only after branch-based repository CI is
+green. This is an integration authorization, not a phase-acceptance decision.
+
+The earlier instruction not to merge/qualify the closed-loop controller from CI
+alone is preserved as historical evidence. The 2026-10-06 owner decision
+supersedes only that merge hold for repository integration. It does not convert
+the prior live closed-loop FAIL observations into PASS, does not enable any
+default-off Bluetooth/Phase-4/Phase-5 option, does not accept Phase 5, does not
+authorize Phase 6, and does not establish caller-heard latency or broad hardware
+compatibility.
+
+Required integration gate: exact feature head must pass the existing Python
+3.12/3.14 workflow, including focused tests, full Bluetooth regression, exact
+historical full-suite failure identity/signature verification, portability
+guards and diff validation. If that gate fails, `main` must not move.
