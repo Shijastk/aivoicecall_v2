@@ -182,6 +182,15 @@ def parse_args() -> argparse.Namespace:
         default=3,
         help="Phase-4D controlled A/B knob; rules.md C5 permits only 2 or 3 frames.",
     )
+    parser.add_argument(
+        "--verify-tts-audio-transcript",
+        action="store_true",
+        help=(
+            "Bluetooth local-Malayalam diagnostic: keep dispatched TTS audio "
+            "in memory only, then ASR-transcribe it after the call; no raw "
+            "audio file is written."
+        ),
+    )
     args = parser.parse_args()
     if args.shadow_early_transcripts and not args.shadow_speculation:
         parser.error("--shadow-early-transcripts requires --shadow-speculation")
@@ -226,6 +235,7 @@ async def _main(args: argparse.Namespace) -> None:
         llm_warmup=args.llm_warmup,
         parallel_startup=args.parallel_startup,
         player_preroll_frames=args.player_preroll_frames,
+        verify_tts_audio_transcript=args.verify_tts_audio_transcript,
     )
 
 
