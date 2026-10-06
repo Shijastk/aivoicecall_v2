@@ -1330,3 +1330,23 @@ the same pure END-frame formatter used by the worker after ASR and validates the
 base64 transcript plus content-free buffered-duration/ASR/energy/end-reason
 metadata. The corrected branch head must pass the full Python 3.12/3.14 workflow
 again; earlier green runs do not qualify the corrected head.
+## Outbound TTS audio transcript diagnostic gate — 2026-10-06
+
+The candidate adds hardware-free coverage for:
+
+- observing only successfully dispatched mu-law frames at the Bluetooth outbound
+  adapter;
+- checkpoint and barge-in/clear segment boundaries;
+- bounded in-memory capture and truncation marking;
+- the fileless TTS verifier protocol and 8 kHz mu-law -> 16 kHz ASR input path;
+- production wiring and rejection outside the explicit local-Malayalam path;
+- CLI presence of `--verify-tts-audio-transcript`.
+
+The Phase-5 Python 3.12/3.14 workflow compiles the new observer/verifier path,
+runs its focused tests, then preserves the existing Bluetooth regression, exact
+historical full-suite baseline verification, and `git diff --check`.
+
+A green repository gate proves the diagnostic plumbing only. The resulting ASR
+transcript is an approximation of the dispatched digital TTS audio. It is not an
+authoritative handset- or remote-caller-heard transcript.
+
