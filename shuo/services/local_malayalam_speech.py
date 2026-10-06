@@ -61,6 +61,7 @@ class LocalMalayalamSpeechService:
         start_qualify_ms: int = 128,
         start_min_rms: int = 500,
         post_end_start_guard_ms: int = 200,
+        barge_in_probe_ms: tuple[int, ...] = (),
         startup_timeout_seconds: float = 20.0,
         stop_timeout_seconds: float = 2.0,
     ) -> None:
@@ -96,6 +97,14 @@ class LocalMalayalamSpeechService:
             raise ValueError(
                 "post_end_start_guard_ms must be non-negative"
             )
+        if (
+            tuple(sorted(set(barge_in_probe_ms))) != barge_in_probe_ms
+            or any(value <= 0 or value > 2000 for value in barge_in_probe_ms)
+        ):
+            raise ValueError(
+                "barge_in_probe_ms must contain unique ascending "
+                "values between 1 and 2000"
+            )
 
         self._on_end_of_turn = on_end_of_turn
         self._on_start_of_turn = on_start_of_turn
@@ -122,6 +131,7 @@ class LocalMalayalamSpeechService:
         self._start_qualify_ms = start_qualify_ms
         self._start_min_rms = start_min_rms
         self._post_end_start_guard_ms = post_end_start_guard_ms
+        self._barge_in_probe_ms = barge_in_probe_ms
         self._last_worker_end_at = None
         self._suppress_current_turn = False
         self._startup_timeout_seconds = (
@@ -205,27 +215,41 @@ class LocalMalayalamSpeechService:
         self._last_worker_end_at = None
         self._suppress_current_turn = False
 
+        worker_args = [
+            self._worker_python,
+            "-u",
+            str(self._worker_path()),
+            "--model-dir",
+            self._model_dir,
+            "--threshold",
+            str(self._threshold),
+            "--min-silence-ms",
+            str(self._min_silence_ms),
+            "--speech-pad-ms",
+            str(self._speech_pad_ms),
+            "--preroll-frames",
+            str(self._preroll_frames),
+            "--commit-silence-ms",
+            str(self._commit_silence_ms),
+            "--start-qualify-ms",
+            str(self._start_qualify_ms),
+            "--start-min-rms",
+            str(self._start_min_rms),
+        ]
+        if self._barge_in_probe_ms:
+            worker_args.extend(
+                (
+                    "--barge-in-probe-ms",
+                    ",".join(
+                        str(value)
+                        for value in self._barge_in_probe_ms
+                    ),
+                )
+            )
+
         self._proc = (
             await asyncio.create_subprocess_exec(
-                self._worker_python,
-                "-u",
-                str(self._worker_path()),
-                "--model-dir",
-                self._model_dir,
-                "--threshold",
-                str(self._threshold),
-                "--min-silence-ms",
-                str(self._min_silence_ms),
-                "--speech-pad-ms",
-                str(self._speech_pad_ms),
-                "--preroll-frames",
-                str(self._preroll_frames),
-                "--commit-silence-ms",
-                str(self._commit_silence_ms),
-                "--start-qualify-ms",
-                str(self._start_qualify_ms),
-                "--start-min-rms",
-                str(self._start_min_rms),
+                *worker_args,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -553,6 +577,52 @@ class LocalMalayalamSpeechService:
 
             await self._on_end_of_turn(
                 transcript
+            )
+            return
+
+        if line.startswith("PROBE\t"):
+            metadata = {}
+            for field in line.split("\t")[1:]:
+                if "=" not in field:
+                    raise LocalMalayalamSpeechError(
+                        "Local STT worker returned "
+                        "invalid barge-in probe metadata"
+                    )
+                key, value = field.split("=", 1)
+                metadata[key] = value
+
+            try:
+                segment = int(metadata["segment"])
+                final_chars = int(metadata["final_chars"])
+                start_qualified = int(
+                    metadata["start_qualified"]
+                )
+                start_rms = int(metadata["start_rms"])
+                probe_parts = []
+                for duration in self._barge_in_probe_ms:
+                    chars = int(
+                        metadata[f"p{duration}_chars"]
+                    )
+                    asr_ms = float(
+                        metadata[f"p{duration}_asr_ms"]
+                    )
+                    probe_parts.append(
+                        f"p{duration}_chars={chars} "
+                        f"p{duration}_asr_ms={asr_ms:.1f}"
+                    )
+            except (KeyError, ValueError) as exc:
+                raise LocalMalayalamSpeechError(
+                    "Local STT worker returned "
+                    "invalid barge-in probe metadata"
+                ) from exc
+
+            log.info(
+                "Local Malayalam BargeProbe "
+                f"segment={segment} "
+                f"final_chars={final_chars} "
+                f"start_qualified={start_qualified} "
+                f"start_rms={start_rms} "
+                + " ".join(probe_parts)
             )
             return
 
