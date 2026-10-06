@@ -10,13 +10,41 @@ class BoundedPhraseBuffer:
     No timer/task is created, so cancellation has no background ownership.
     """
 
-    def __init__(self, max_chars: int, *, min_soft_chars: int = 24):
+    def __init__(
+        self,
+        max_chars: int,
+        *,
+        min_soft_chars: int = 24,
+        first_max_chars: int | None = None,
+        first_min_soft_chars: int | None = None,
+    ):
         if isinstance(max_chars, bool) or not isinstance(max_chars, int) or max_chars <= 0:
             raise ValueError("max_chars must be a positive integer")
         if isinstance(min_soft_chars, bool) or not isinstance(min_soft_chars, int) or min_soft_chars <= 0:
             raise ValueError("min_soft_chars must be a positive integer")
-        self._max_chars = max_chars
-        self._min_soft_chars = min(min_soft_chars, max_chars)
+        if first_max_chars is not None and (
+            isinstance(first_max_chars, bool)
+            or not isinstance(first_max_chars, int)
+            or first_max_chars <= 0
+        ):
+            raise ValueError("first_max_chars must be a positive integer")
+        if first_min_soft_chars is not None and (
+            isinstance(first_min_soft_chars, bool)
+            or not isinstance(first_min_soft_chars, int)
+            or first_min_soft_chars <= 0
+        ):
+            raise ValueError("first_min_soft_chars must be a positive integer")
+
+        self._steady_max_chars = max_chars
+        self._steady_min_soft_chars = min(min_soft_chars, max_chars)
+        self._first_mode = first_max_chars is not None
+        self._max_chars = first_max_chars or max_chars
+        first_soft = (
+            first_min_soft_chars
+            if first_min_soft_chars is not None
+            else min_soft_chars
+        )
+        self._min_soft_chars = min(first_soft, self._max_chars)
         self._buffer = ""
 
     @property
@@ -54,6 +82,10 @@ class BoundedPhraseBuffer:
     def _take(self, cut: int) -> str:
         text = self._buffer[:cut]
         self._buffer = self._buffer[cut:]
+        if self._first_mode:
+            self._first_mode = False
+            self._max_chars = self._steady_max_chars
+            self._min_soft_chars = self._steady_min_soft_chars
         return text
 
     def _find_hard_boundary(self):
