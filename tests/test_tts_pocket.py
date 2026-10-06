@@ -134,7 +134,7 @@ async def test_pocket_streams_native_chunks_without_writing_a_full_response():
 
     # More than PHRASE_CHARS forces one bounded phrase before flush; the
     # remainder stays bounded rather than waiting for the complete response.
-    text = "This is a deliberately bounded streaming phrase for Pocket TTS."
+    text = ("This is a deliberately bounded streaming phrase for Pocket TTS " * 3).strip()
     await service.send(text)
     assert heard, "first bounded phrase produced no streaming audio"
     assert service.is_active
@@ -165,7 +165,7 @@ async def test_pocket_cancel_stops_cooperative_inference_and_suppresses_late_aud
     await service.start()
 
     send_task = asyncio.create_task(
-        service.send("This sentence is long enough to trigger synthesis immediately.")
+        service.send(("This sentence is long enough to trigger Pocket synthesis immediately " * 3).strip())
     )
 
     for _ in range(100):
