@@ -1,4 +1,5 @@
 import asyncio
+import json
 from dataclasses import dataclass
 
 import pytest
@@ -9,6 +10,7 @@ from shuo.bluetooth.production import (
 )
 from shuo.runtime_config import CallSettings
 from shuo.services.tts_pool import TTSPool
+from shuo.tracer import Tracer
 
 
 class FakeTracer:
@@ -641,3 +643,33 @@ async def test_agent_text_diagnostic_rejects_non_local_provider():
             speech_provider="deepgram-flux",
             diagnose_agent_text=True,
         )
+
+
+def test_agent_text_trace_capture_is_strictly_opt_in(monkeypatch, tmp_path):
+    monkeypatch.setattr("shuo.tracer.TRACE_DIR", tmp_path)
+
+    default_tracer = Tracer()
+    default_turn = default_tracer.begin_turn("caller")
+    default_tracer.set_agent_text(
+        default_turn,
+        "generated",
+        interrupted=False,
+    )
+    default_path = default_tracer.save("default-agent-text")
+    default_data = json.loads(default_path.read_text())
+    assert "agent_text" not in default_data["turns"][0]
+    assert "agent_interrupted" not in default_data["turns"][0]
+
+    diagnostic_tracer = Tracer()
+    diagnostic_tracer.enable_agent_text_capture()
+    diagnostic_turn = diagnostic_tracer.begin_turn("caller")
+    diagnostic_tracer.set_agent_text(
+        diagnostic_turn,
+        "generated",
+        interrupted=True,
+    )
+    diagnostic_path = diagnostic_tracer.save("enabled-agent-text")
+    diagnostic_data = json.loads(diagnostic_path.read_text())
+    turn = diagnostic_data["turns"][0]
+    assert turn["agent_text"] == "generated"
+    assert turn["agent_interrupted"] is True
