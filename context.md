@@ -787,3 +787,24 @@ required property differs.
 - Pre-doc head `bfb752f84c100e1649f81ac8ed8cc6bbcfe4b75f` passed Python
   3.12/3.14 CI with 127 focused, 176 Bluetooth, 1081 full passes plus exactly
   the historical four failures and `FULL_SUITE_BASELINE_CLEAN`.
+
+
+### 2026-10-06 — Qwen reasoning leak localized before TTS
+
+- fix-8 exact Agent-text capture showed turn 4 beginning with `<think>` and
+  English reasoning prose.
+- The active runtime model was `qwen/qwen3.8-27b`.
+- Turns 1-3 demonstrated the normal control path: Malayalam Agent text ->
+  recognizable Malayalam pre/post-codec audio ASR.
+- Thus the reproduced foreign-language-like turn was not created by
+  BluetoothOutboundCodec, and Pocket was receiving upstream reasoning content.
+- Existing code already sent `reasoning_effort="none"`; this was not
+  sufficient in the observed live run.
+- Candidate now additionally sends Groq's documented
+  `reasoning_format="hidden"` for Qwen 3.6/3.8, centralized across warmup,
+  normal and shadow/prepared request paths.
+- No regex reasoning stripper has been introduced; provider-native suppression
+  gets a controlled live validation first.
+- Pre-doc head `7414ac836cdc318d54205675bcbadf72942260c9` passed Python
+  3.12/3.14 CI with 131 focused, 176 Bluetooth and 1085 full passes plus
+  exactly the historical four failures and `FULL_SUITE_BASELINE_CLEAN`.
