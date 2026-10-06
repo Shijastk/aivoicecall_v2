@@ -191,6 +191,15 @@ def parse_args() -> argparse.Namespace:
             "audio file is written."
         ),
     )
+    parser.add_argument(
+        "--diagnose-local-barge-in-probes",
+        action="store_true",
+        help=(
+            "Local-Malayalam diagnostic only: retain bounded speech prefixes "
+            "in worker memory and ASR-probe 256/384/512 ms after Q. "
+            "No raw audio is written and live call timing is unchanged."
+        ),
+    )
     args = parser.parse_args()
     if args.shadow_early_transcripts and not args.shadow_speculation:
         parser.error("--shadow-early-transcripts requires --shadow-speculation")
@@ -198,6 +207,14 @@ def parse_args() -> argparse.Namespace:
         parser.error("--prepared-response-reuse requires --shadow-speculation")
     if args.shadow_speculation and args.eager_eot_threshold is None:
         parser.error("--shadow-speculation requires --eager-eot-threshold")
+    if (
+        args.diagnose_local_barge_in_probes
+        and args.speech_provider != "local-malayalam"
+    ):
+        parser.error(
+            "--diagnose-local-barge-in-probes requires "
+            "--speech-provider local-malayalam"
+        )
     return args
 
 
@@ -236,6 +253,7 @@ async def _main(args: argparse.Namespace) -> None:
         parallel_startup=args.parallel_startup,
         player_preroll_frames=args.player_preroll_frames,
         verify_tts_audio_transcript=args.verify_tts_audio_transcript,
+        diagnose_local_barge_in_probes=args.diagnose_local_barge_in_probes,
     )
 
 
