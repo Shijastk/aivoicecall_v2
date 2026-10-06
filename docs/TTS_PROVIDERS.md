@@ -219,3 +219,30 @@ This is repository behavior to be validated, not caller-heard latency evidence.
 CI can prove exact-text preservation, bounds and regressions; it cannot prove
 Malayalam voice quality, cellular audio quality, or a mouth-to-ear target.
 \n
+
+## Pocket 24 kHz -> SHUO 8 kHz anti-alias correction — 2026-10-06
+
+Controlled reference-call A/B testing localized the audible Pocket degradation
+without changing the SHUO/carrier audio contract:
+
+- a known-clean Malayalam WAV converted to S16LE/16 kHz and sent directly to the
+  selected Galaxy A10 HFP uplink was clear;
+- Pocket native PCM converted directly to S16LE/16 kHz and sent to the same HFP
+  uplink was clear;
+- the existing Pocket provider path using direct `audioop.ratecv` 24 kHz ->
+  8 kHz followed by G.711 mu-law was audibly unclear;
+- the known-clean WAV remained clear through the same 24 kHz -> 8 kHz ->
+  mu-law -> Bluetooth 16 kHz round trip, so G.711 mu-law/8 kHz itself is not
+  sufficient to explain the Pocket-only degradation;
+- Pocket native PCM became clear when an explicit anti-aliased 24 kHz -> 8 kHz
+  resampling stage was inserted before the unchanged mu-law/Bluetooth path.
+
+The provider therefore keeps SHUO's existing mono G.711 mu-law/8 kHz output
+contract and adds a bounded streaming 63-tap windowed-sinc low-pass FIR before
+downsampling Pocket audio above 8 kHz. The FIR uses only the already-required
+NumPy dependency, keeps state across native Pocket chunks, and does not buffer a
+complete phrase or utterance. Vobiz, Twilio, ElevenLabs, AudioPlayer and
+BluetoothOutboundCodec contracts are unchanged.
+
+The correction is provider-local. It does not authorize a Bluetooth-native PCM
+core path or weaken rules.md C1/C2 or decision BT-D05.
