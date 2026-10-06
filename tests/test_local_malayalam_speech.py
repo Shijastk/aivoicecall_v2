@@ -280,7 +280,7 @@ async def test_worker_end_metadata_is_content_free_and_transcript_still_forwards
     await service._handle_worker_line(
         "END\t"
         + encoded
-        + "\taudio_ms=1824"
+        + "\tbuffered_audio_ms=1824"
         + "\tasr_ms=91.4"
         + "\tpeak=12000"
         + "\trms=850"
@@ -306,7 +306,7 @@ async def test_worker_end_rejects_unknown_end_reason():
         await service._handle_worker_line(
             "END\t"
             + encoded
-            + "\taudio_ms=320"
+            + "\tbuffered_audio_ms=320"
             + "\tasr_ms=20.0"
             + "\tpeak=10"
             + "\trms=2"
