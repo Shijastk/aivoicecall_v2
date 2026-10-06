@@ -19,6 +19,7 @@ import base64
 import os
 from pathlib import Path
 import sys
+import time
 from typing import Awaitable, Callable, Optional
 
 from ..log import ServiceLogger
@@ -57,6 +58,9 @@ class LocalMalayalamSpeechService:
         speech_pad_ms: int = 30,
         preroll_frames: int = 8,
         commit_silence_ms: int = 320,
+        start_qualify_ms: int = 128,
+        start_min_rms: int = 500,
+        post_end_start_guard_ms: int = 200,
         startup_timeout_seconds: float = 20.0,
         stop_timeout_seconds: float = 2.0,
     ) -> None:
@@ -79,6 +83,18 @@ class LocalMalayalamSpeechService:
         if commit_silence_ms <= 0:
             raise ValueError(
                 "commit_silence_ms must be positive"
+            )
+        if start_qualify_ms <= 0:
+            raise ValueError(
+                "start_qualify_ms must be positive"
+            )
+        if start_min_rms < 0:
+            raise ValueError(
+                "start_min_rms must be non-negative"
+            )
+        if post_end_start_guard_ms < 0:
+            raise ValueError(
+                "post_end_start_guard_ms must be non-negative"
             )
 
         self._on_end_of_turn = on_end_of_turn
@@ -103,6 +119,11 @@ class LocalMalayalamSpeechService:
         self._speech_pad_ms = speech_pad_ms
         self._preroll_frames = preroll_frames
         self._commit_silence_ms = commit_silence_ms
+        self._start_qualify_ms = start_qualify_ms
+        self._start_min_rms = start_min_rms
+        self._post_end_start_guard_ms = post_end_start_guard_ms
+        self._last_worker_end_at = None
+        self._suppress_current_turn = False
         self._startup_timeout_seconds = (
             startup_timeout_seconds
         )
@@ -199,6 +220,10 @@ class LocalMalayalamSpeechService:
                 str(self._preroll_frames),
                 "--commit-silence-ms",
                 str(self._commit_silence_ms),
+                "--start-qualify-ms",
+                str(self._start_qualify_ms),
+                "--start-min-rms",
+                str(self._start_min_rms),
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -396,6 +421,20 @@ class LocalMalayalamSpeechService:
             return
 
         if line == "START":
+            now = time.perf_counter()
+            if (
+                self._last_worker_end_at is not None
+                and (
+                    now - self._last_worker_end_at
+                ) * 1000.0 < self._post_end_start_guard_ms
+            ):
+                self._suppress_current_turn = True
+                log.info(
+                    "Local Malayalam StartOfTurn suppressed "
+                    "reason=post_end_guard"
+                )
+                return
+            self._suppress_current_turn = False
             await self._on_start_of_turn()
             return
 
@@ -441,6 +480,12 @@ class LocalMalayalamSpeechService:
                     peak = int(metadata["peak"])
                     rms = float(metadata["rms"])
                     reason = metadata["reason"]
+                    start_qualified = int(
+                        metadata.get("start_qualified", "1")
+                    )
+                    start_rms = int(
+                        metadata.get("start_rms", "0")
+                    )
                 except (KeyError, ValueError) as exc:
                     raise LocalMalayalamSpeechError(
                         "Local STT worker returned "
@@ -455,6 +500,16 @@ class LocalMalayalamSpeechService:
                         "Local STT worker returned "
                         "invalid end reason"
                     )
+                if start_qualified not in (0, 1):
+                    raise LocalMalayalamSpeechError(
+                        "Local STT worker returned "
+                        "invalid start qualification"
+                    )
+                if start_rms < 0:
+                    raise LocalMalayalamSpeechError(
+                        "Local STT worker returned "
+                        "invalid start RMS"
+                    )
 
                 log.info(
                     "Local Malayalam EndOfTurn "
@@ -463,7 +518,9 @@ class LocalMalayalamSpeechService:
                     f"asr_ms={asr_ms:.1f} "
                     f"peak={peak} "
                     f"rms={rms:.1f} "
-                    f"reason={reason}"
+                    f"reason={reason} "
+                    f"start_qualified={start_qualified} "
+                    f"start_rms={start_rms}"
                 )
             else:
                 # Backward-compatible protocol handling for injected tests and
@@ -472,6 +529,24 @@ class LocalMalayalamSpeechService:
                     "Local Malayalam EndOfTurn "
                     f"transcript_chars={len(transcript)}"
                 )
+
+            self._last_worker_end_at = time.perf_counter()
+
+            if self._suppress_current_turn:
+                self._suppress_current_turn = False
+                log.info(
+                    "Local Malayalam EndOfTurn suppressed "
+                    "reason=post_end_guard"
+                )
+                return
+
+            if metadata and start_qualified == 0:
+                log.info(
+                    "Local Malayalam EndOfTurn suppressed "
+                    "reason=unqualified_start "
+                    f"transcript_chars={len(transcript)}"
+                )
+                return
 
             await self._on_end_of_turn(
                 transcript
