@@ -21,6 +21,26 @@ log = ServiceLogger("LLM")
 SYSTEM_PROMPT = """You are a helpful voice assistant. Keep your responses concise and conversational, as they will be spoken aloud. Avoid using markdown, bullet points, or other formatting that doesn't work well in speech. Be friendly and natural."""
 
 
+def _provider_extra_body(model: str) -> Dict:
+    """Provider-specific request controls shared by every LLM request path."""
+    if model.startswith("openai/gpt-oss"):
+        return {
+            "reasoning_effort": "low",
+            "include_reasoning": False,
+        }
+    if model in {
+        "qwen/qwen3.6-27b",
+        "qwen/qwen3.8-27b",
+    }:
+        # Groq documents reasoning_effort=none as non-thinking mode and
+        # reasoning_format=hidden as returning only the final answer.
+        return {
+            "reasoning_effort": "none",
+            "reasoning_format": "hidden",
+        }
+    return {}
+
+
 def _read_usage_field(value, name):
     if value is None:
         return None
@@ -338,19 +358,7 @@ class LLMService:
             return False
 
         model = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
-        extra_body = {}
-        if model.startswith("openai/gpt-oss"):
-            extra_body = {
-                "reasoning_effort": "low",
-                "include_reasoning": False,
-            }
-        elif model in {
-            "qwen/qwen3.6-27b",
-            "qwen/qwen3.8-27b",
-        }:
-            extra_body = {
-                "reasoning_effort": "none",
-            }
+        extra_body = _provider_extra_body(model)
 
         started_at = time.perf_counter()
         stream = None
@@ -511,21 +519,7 @@ class LLMService:
                 f"total_prompt_chars={total_prompt_chars}"
             )
 
-            extra_body = {}
-
-            if model.startswith("openai/gpt-oss"):
-                extra_body = {
-                    "reasoning_effort": "low",
-                    "include_reasoning": False,
-                }
-
-            elif model in {
-                "qwen/qwen3.6-27b",
-                "qwen/qwen3.8-27b",
-            }:
-                extra_body = {
-                    "reasoning_effort": "none",
-                }
+            extra_body = _provider_extra_body(model)
 
             request_started_at = time.perf_counter()
 
@@ -679,14 +673,7 @@ class ShadowLLMProbe:
         ]
 
         model = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
-        extra_body = {}
-        if model.startswith("openai/gpt-oss"):
-            extra_body = {"reasoning_effort": "low", "include_reasoning": False}
-        elif model in {
-            "qwen/qwen3.6-27b",
-            "qwen/qwen3.8-27b",
-        }:
-            extra_body = {"reasoning_effort": "none"}
+        extra_body = _provider_extra_body(model)
 
         request_kwargs = {
             "model": model,
