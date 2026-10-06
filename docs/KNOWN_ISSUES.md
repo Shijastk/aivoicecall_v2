@@ -469,3 +469,22 @@ Interpretation remains evidence-bound: matching clean pre/post codec transcripts
 with sane levels would move suspicion downstream toward PipeWire/BlueZ/HFP/cellular
 transport; divergence or clipping after the codec would localize the defect before
 that boundary.
+
+
+## Pocket-only 24 kHz downsampling clarity defect localized — 2026-10-06
+
+The earlier noisy/unclear remote Pocket voice was not reproduced by a known-clean
+WAV or by Pocket native PCM when either was sent directly as S16LE/16 kHz through
+the same pw-cat/BlueZ/HFP/cellular path. The known-clean WAV also remained clear
+after an 8 kHz G.711 mu-law round trip. Pocket alone became clear when an explicit
+anti-aliased resampler was used before the existing 8 kHz mu-law boundary.
+
+This evidence rules out a general HFP transport failure, a general G.711
+mu-law/8 kHz intelligibility failure, clipping, and the previously documented
+physical-route contamination as sufficient explanations for this reproduced
+defect. It localizes the fix to Pocket's native-to-8 kHz conversion path.
+
+The candidate now applies a provider-local streaming FIR anti-alias filter before
+`audioop.ratecv`. Live end-to-end SHUO validation of the corrected repository
+head is still required; repository CI alone does not establish caller-heard
+quality.
