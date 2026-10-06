@@ -111,6 +111,14 @@ class SpeechTurnBuffer:
 
         self.speech.extend(frame)
 
+        # The hard maximum is a safety bound and must win over start
+        # qualification if both become true on the same frame.
+        if len(self.speech) >= max_speech_bytes:
+            return "commit", (
+                "max_speech",
+                bytes(self.speech),
+            )
+
         if not self.start_emitted:
             self.start_window.append(frame)
             if len(self.start_window) >= self.start_qualify_frames:
@@ -127,12 +135,6 @@ class SpeechTurnBuffer:
                 if start_rms >= self.start_min_rms:
                     self.start_emitted = True
                     return "start", None
-
-        if len(self.speech) >= max_speech_bytes:
-            return "commit", (
-                "max_speech",
-                bytes(self.speech),
-            )
 
         if self.pending_end_frames is not None:
             if _has_event(event, "start"):
