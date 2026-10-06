@@ -1,4 +1,5 @@
 import asyncio
+import audioop
 import base64
 import os
 import threading
@@ -67,6 +68,62 @@ def test_float_audio_conversion_has_mulaw_8k_duration_geometry():
     mulaw, state = float_audio_to_mulaw_8k(samples, 24_000)
     assert len(mulaw) == 160
     assert state is not None
+
+
+def test_pocket_antialias_state_is_exact_across_streaming_chunks():
+    rate = 24_000
+    t = np.arange(2400, dtype=np.float32) / rate
+    samples = (
+        0.35 * np.sin(2 * np.pi * 1000 * t)
+        + 0.12 * np.sin(2 * np.pi * 3100 * t)
+    ).astype(np.float32)
+
+    whole, _ = float_audio_to_mulaw_8k(samples, rate)
+
+    state = None
+    pieces = []
+    for chunk in (samples[:731], samples[731:1607], samples[1607:]):
+        encoded, state = float_audio_to_mulaw_8k(
+            chunk,
+            rate,
+            state,
+        )
+        pieces.append(encoded)
+
+    assert b"".join(pieces) == whole
+
+
+def test_pocket_antialias_suppresses_energy_above_8k_nyquist():
+    rate = 24_000
+    t = np.arange(2400, dtype=np.float32) / rate
+
+    in_band = (
+        0.5 * np.sin(2 * np.pi * 1000 * t)
+    ).astype(np.float32)
+    above_nyquist = (
+        0.5 * np.sin(2 * np.pi * 6000 * t)
+    ).astype(np.float32)
+
+    in_band_mulaw, _ = float_audio_to_mulaw_8k(
+        in_band,
+        rate,
+    )
+    high_mulaw, _ = float_audio_to_mulaw_8k(
+        above_nyquist,
+        rate,
+    )
+
+    in_band_rms = audioop.rms(
+        audioop.ulaw2lin(in_band_mulaw, 2),
+        2,
+    )
+    high_rms = audioop.rms(
+        audioop.ulaw2lin(high_mulaw, 2),
+        2,
+    )
+
+    assert in_band_rms > 0
+    assert high_rms < in_band_rms * 0.10
 
 
 def test_pocket_profile_installs_audioop_lts_for_python_313_plus():
