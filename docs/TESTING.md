@@ -1394,3 +1394,28 @@ successfully. PR-run evidence:
 
 A fresh exact-head gate is still required after documentation changes before the
 next live call.
+
+
+### Local Malayalam false-barge-in regression gate — 2026-10-06
+
+The local-STT focused tests now cover:
+
+- tentative acoustic START not immediately becoming conversational START;
+- minimum duration/energy qualification before START;
+- low-energy segments committing without being promoted to an Agent turn;
+- post-EndOfTurn residual START plus its matching END being suppressed;
+- legitimate START after the guard window still being forwarded;
+- max-speech safety commit retaining priority over START qualification.
+
+Exact code/test head before documentation amendment:
+`9d3500685a68696c2cbed3b796df3a060c23ae77`.
+
+Push run `37450035665` and PR run `37450040531` both passed. PR evidence:
+
+- Python 3.12: 118 focused passed, 171 Bluetooth passed, 1072 full passes plus
+  exactly the four historical failures, `FULL_SUITE_BASELINE_CLEAN`;
+- Python 3.14: 118 focused passed, 171 Bluetooth passed, 1072 full passes plus
+  exactly the four historical failures, `FULL_SUITE_BASELINE_CLEAN`;
+- `git diff --check origin/main...HEAD`: PASS.
+
+A fresh exact-head workflow is still required after documentation changes.
