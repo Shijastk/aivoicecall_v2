@@ -561,3 +561,27 @@ The post-call barge-prefix diagnostic also had a teardown race: the worker could
 emit final PROBE lines immediately before process exit while the parent
 cancelled its stdout reader. Stop now gives that reader a bounded chance to
 drain already-produced output after worker EOF.
+
+
+## Qwen reasoning text leaked into spoken output — 2026-10-06
+
+Controlled call `phase5-local-ml-stt-tts-fix-8` captured exact generated Agent
+text and both TTS audio boundaries. Turns 1-3 generated Malayalam Agent text and
+produced recognizable Malayalam at both pre-codec and post-codec ASR boundaries.
+Turn 4 generated content beginning with a literal `<think>` block followed by
+English reasoning prose before the response was cancelled.
+
+Therefore the reproduced non-Malayalam-like speech is upstream of Pocket TTS and
+Bluetooth codec for that turn: reasoning text entered the ordinary
+`delta.content -> Agent -> TTS` streaming path.
+
+The active model was verified from runtime logs as `qwen/qwen3.8-27b`.
+The existing request already set `reasoning_effort="none"`, but that alone did
+not prevent the observed content leak. Groq documents
+`reasoning_format="hidden"` as returning only the final answer for supported
+reasoning models. The candidate now sends both controls for Qwen 3.6/3.8 through
+one shared provider-request helper used by warmup, normal generation and
+shadow/prepared request creation.
+
+No generic token regex/filter has been added yet. A live validation must first
+show whether the provider-native hidden output control is sufficient.
