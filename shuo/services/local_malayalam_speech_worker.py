@@ -31,6 +31,7 @@ FRAME_MS = FRAME_SAMPLES / 16000 * 1000.0
 DEFAULT_COMMIT_SILENCE_MS = 320
 DEFAULT_START_QUALIFY_MS = 128
 DEFAULT_START_MIN_RMS = 500
+_MAX_BARGE_PROBE_SEGMENTS = 32
 
 
 def emit(line: str) -> None:
@@ -85,6 +86,7 @@ class SpeechTurnBuffer:
         self.start_emitted = False
         self.start_window = deque(maxlen=self.start_qualify_frames)
         self.best_start_rms = 0
+        self.speech_start_bytes = 0
 
     def feed(
         self,
@@ -99,6 +101,13 @@ class SpeechTurnBuffer:
                 self.in_speech = True
                 self.speech = bytearray(
                     b"".join(self.preroll)
+                )
+                # The preroll includes the current Silero start frame. Prefix
+                # diagnostics must begin at that acoustic start, not at the
+                # earlier retained context.
+                self.speech_start_bytes = max(
+                    0,
+                    len(self.speech) - len(frame),
                 )
                 self.preroll.clear()
                 self.pending_end_frames = None
@@ -164,6 +173,7 @@ class SpeechTurnBuffer:
         self.start_emitted = False
         self.start_window.clear()
         self.best_start_rms = 0
+        self.speech_start_bytes = 0
 
 
 def pcm16_to_tensor(frame: bytes):
@@ -320,6 +330,52 @@ def format_end_frame(
     )
 
 
+def format_barge_probe_frame(
+    model,
+    *,
+    segment_id: int,
+    prefix_pcm: bytes,
+    probe_ms: tuple[int, ...],
+    final_chars: int,
+    start_qualified: bool,
+    start_rms: int,
+) -> str:
+    """ASR-probe bounded speech prefixes and emit content-free metadata."""
+    fields = [
+        "PROBE",
+        f"segment={segment_id}",
+        f"final_chars={int(final_chars)}",
+        f"start_qualified={int(start_qualified)}",
+        f"start_rms={int(start_rms)}",
+    ]
+    bytes_per_ms = 16000 * 2 / 1000.0
+    for duration_ms in probe_ms:
+        need = int(round(duration_ms * bytes_per_ms))
+        if len(prefix_pcm) < need:
+            fields.extend(
+                (
+                    f"p{duration_ms}_chars=-1",
+                    f"p{duration_ms}_asr_ms=-1.0",
+                )
+            )
+            continue
+        started = time.perf_counter()
+        text = transcribe(
+            model,
+            prefix_pcm[:need],
+        )
+        elapsed_ms = (
+            time.perf_counter() - started
+        ) * 1000.0
+        fields.extend(
+            (
+                f"p{duration_ms}_chars={len(text)}",
+                f"p{duration_ms}_asr_ms={elapsed_ms:.1f}",
+            )
+        )
+    return "\t".join(fields)
+
+
 def main() -> int:
     import onnx_asr
     from silero_vad import load_silero_vad, VADIterator
@@ -351,7 +407,37 @@ def main() -> int:
     )
     parser.add_argument("--max-speech-seconds", type=float, default=45.0)
     parser.add_argument("--verify-only", action="store_true")
+    parser.add_argument(
+        "--barge-in-probe-ms",
+        default="",
+        help=(
+            "Diagnostic-only comma-separated ASR prefix durations. "
+            "Runs after Q so live call timing is unchanged."
+        ),
+    )
     args = parser.parse_args()
+
+    probe_ms = ()
+    if args.barge_in_probe_ms:
+        try:
+            probe_ms = tuple(
+                int(value)
+                for value in args.barge_in_probe_ms.split(",")
+                if value
+            )
+        except ValueError as exc:
+            raise SystemExit(
+                "--barge-in-probe-ms must contain integers"
+            ) from exc
+        if (
+            not probe_ms
+            or any(value <= 0 or value > 2000 for value in probe_ms)
+            or tuple(sorted(set(probe_ms))) != probe_ms
+        ):
+            raise SystemExit(
+                "--barge-in-probe-ms must be unique ascending values "
+                "between 1 and 2000"
+            )
 
     asr = onnx_asr.load_model(
         args.model_id,
@@ -424,6 +510,8 @@ def main() -> int:
 
     rate_state = None
     frame_buffer = bytearray()
+    barge_probe_segments = []
+    segment_id = 0
 
     max_speech_bytes = int(
         args.max_speech_seconds * 16000 * 2
@@ -435,6 +523,19 @@ def main() -> int:
         line = raw.rstrip("\n")
 
         if line == "Q":
+            if probe_ms:
+                for item in barge_probe_segments:
+                    emit(
+                        format_barge_probe_frame(
+                            asr,
+                            segment_id=item["segment_id"],
+                            prefix_pcm=item["prefix_pcm"],
+                            probe_ms=probe_ms,
+                            final_chars=item["final_chars"],
+                            start_qualified=item["start_qualified"],
+                            start_rms=item["start_rms"],
+                        )
+                    )
             break
 
         if not line.startswith("A\t"):
@@ -497,6 +598,30 @@ def main() -> int:
             asr_ms = (
                 time.perf_counter() - asr_started
             ) * 1000.0
+
+            segment_id += 1
+            if (
+                probe_ms
+                and len(barge_probe_segments) < _MAX_BARGE_PROBE_SEGMENTS
+            ):
+                max_probe_bytes = int(
+                    round(max(probe_ms) * 16000 * 2 / 1000.0)
+                )
+                start = min(
+                    len(speech),
+                    turn.speech_start_bytes,
+                )
+                barge_probe_segments.append(
+                    {
+                        "segment_id": segment_id,
+                        "prefix_pcm": bytes(
+                            speech[start : start + max_probe_bytes]
+                        ),
+                        "final_chars": len(transcript),
+                        "start_qualified": turn.start_emitted,
+                        "start_rms": turn.best_start_rms,
+                    }
+                )
 
             emit(
                 format_end_frame(
