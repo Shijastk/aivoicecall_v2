@@ -406,3 +406,15 @@ Required integration gate: exact feature head must pass the existing Python
 3.12/3.14 workflow, including focused tests, full Bluetooth regression, exact
 historical full-suite failure identity/signature verification, portability
 guards and diff validation. If that gate fails, `main` must not move.
+
+## Main integration completed — 2026-10-06
+
+The owner-authorized repository integration gate completed successfully. Pull
+request #13 passed Python 3.12 and 3.14 validation in GitHub Actions run
+`37425710006` and was merged into `main` as
+`f0a02e5e841f64821f873bec0649ffc4360298c4`.
+
+This changes repository integration status only. Phase 5 remains not accepted;
+the next runtime gate remains controlled live Malayalam Bluetooth/cellular
+validation. Phase 6 remains unauthorized and caller-heard latency remains
+unmeasured.

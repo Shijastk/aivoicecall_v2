@@ -1267,3 +1267,34 @@ Python 3.14:
 No live phone, Bluetooth device, provider credential or cellular call was used
 by this CI gate. The owner separately authorized repository integration after
 this gate; runtime/phase acceptance remains separate.
+
+## Main integration evidence — 2026-10-06
+
+Pull request #13 integrated the owner-authorized feature tree into `main` only
+after GitHub Actions run `37425710006` completed successfully.
+
+Validated PR head:
+`ef924b55c939710c3f8d618bd61a216fe7dbae9e`
+
+Python 3.12:
+- focused CI selection: 81 passed, 3 warnings;
+- complete Bluetooth regression: 166 passed, 3 warnings;
+- full repository: 1048 passed plus exactly the four documented historical
+  failures;
+- `FULL_SUITE_BASELINE_CLEAN`: PASS;
+- diff validation against `origin/main...HEAD`: PASS.
+
+Python 3.14:
+- focused CI selection: 81 passed, 2 warnings;
+- complete Bluetooth regression: 166 passed, 2 warnings;
+- full repository: 1048 passed plus exactly the four documented historical
+  failures;
+- `FULL_SUITE_BASELINE_CLEAN`: PASS;
+- diff validation against `origin/main...HEAD`: PASS.
+
+GitHub merged PR #13 with merge commit
+`f0a02e5e841f64821f873bec0649ffc4360298c4`.
+
+This is repository integration evidence only. Phase 5 remains not accepted,
+prior live FAIL observations remain FAIL, Phase 6 remains unauthorized, and no
+caller-heard latency or broad compatibility claim is created.
