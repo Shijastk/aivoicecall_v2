@@ -58,6 +58,9 @@ class BluetoothOutboundMedia(OutboundMediaSession):
             await self._session.write(pcm)
             if self._observer is not None:
                 self._observer.on_dispatched_audio(mulaw)
+                callback = getattr(self._observer, "on_dispatched_pcm", None)
+                if callback is not None:
+                    callback(pcm)
             self._dispatch_chunks += 1
             if self._dispatch_chunks == 1:
                 _log.info("BTLifecycle: event=PlaybackFirstWrite_returned pcm_bytes=%d", len(pcm))
