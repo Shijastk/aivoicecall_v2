@@ -539,3 +539,25 @@ The goal is to measure whether the current offline IndicConformer can reliably
 separate genuine caller interruptions from the false-start population early
 enough to justify semantic barge-in qualification. A controlled silence-during-
 AI-speech call is also required before calling the false starts echo.
+
+
+## Non-Malayalam-like outbound segment remains upstream of Bluetooth codec
+
+In controlled call `phase5-local-ml-stt-tts-fix-7`, caller ASR was meaningful
+Malayalam for the affected turn, while the captured outbound TTS audio for the
+cancelled response produced the same heavily garbled Malayalam-like ASR text at
+both the pre-codec mu-law boundary and the post-codec PCM boundary.
+
+That rules out `BluetoothOutboundCodec` as the source of that reproduced
+segment's corruption. It does **not** yet distinguish an incorrect LLM response
+from Pocket synthesis/phrase behavior, because the affected segment was
+cancelled and the exact generated Agent text was not persisted in that run.
+
+The candidate therefore adds opt-in local Agent-text capture to the existing
+`/tmp/shuo/<call>.json` trace. Default traces remain unchanged. This is
+diagnostic-only and local-Malayalam-only.
+
+The post-call barge-prefix diagnostic also had a teardown race: the worker could
+emit final PROBE lines immediately before process exit while the parent
+cancelled its stdout reader. Stop now gives that reader a bounded chance to
+drain already-produced output after worker EOF.
