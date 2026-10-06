@@ -700,4 +700,3 @@ required property differs.
   captured outbound segments and writes only text/metadata to
   `/tmp/shuo/<call-id>-tts-outbound-transcript.json`.
 - This is pre-Bluetooth-codec digital evidence, not a remote caller-heard claim.
-
