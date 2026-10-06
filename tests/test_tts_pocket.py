@@ -138,6 +138,8 @@ async def test_pocket_streams_native_chunks_without_writing_a_full_response():
     await service.send(text)
     assert heard, "first bounded phrase produced no streaming audio"
     assert service.is_active
+    assert runtime.texts
+    assert len(runtime.texts[0]) <= service.FIRST_PHRASE_CHARS
 
     await service.flush()
 
