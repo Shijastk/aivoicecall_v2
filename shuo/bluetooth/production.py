@@ -48,6 +48,7 @@ async def run_production_bluetooth_conversation(
     tts_phrase_chars: Optional[int] = None,
     llm_history_max_chars: Optional[int] = None,
     llm_provider_timing: bool = False,
+    llm_warmup: bool = False,
     parallel_startup: bool = False,
     diagnostics=None,
     player_preroll_frames: int = PREROLL_FRAMES,
@@ -63,8 +64,9 @@ async def run_production_bluetooth_conversation(
       2. Phase-3 Bluetooth session starts inside the orchestrator
       3. real Flux starts inside the orchestrator
       4. async Agent factory starts TTSPool and awaits usable initial readiness
-      5. existing Agent streams LLM -> TTS -> AudioPlayer -> Bluetooth adapter
-      6. teardown always stops the pool and saves the local trace
+      5. optional Bluetooth-only LLM warmup primes the Agent's existing client
+      6. existing Agent streams LLM -> TTS -> AudioPlayer -> Bluetooth adapter
+      7. teardown always stops the pool and saves the local trace
 
     ``eager_eot_threshold`` is Phase-4A measurement-only configuration. It is
     disabled by default and is passed only to Flux; it does not start the agent
@@ -161,7 +163,10 @@ async def run_production_bluetooth_conversation(
             agent_kwargs["llm_provider_timing"] = True
         if player_preroll_frames != PREROLL_FRAMES:
             agent_kwargs["player_preroll_frames"] = player_preroll_frames
-        return deps.agent_cls(**agent_kwargs)
+        agent = deps.agent_cls(**agent_kwargs)
+        if llm_warmup:
+            await agent.warmup_llm()
+        return agent
 
     def speculation_factory(agent):
         if shadow_gate is None:

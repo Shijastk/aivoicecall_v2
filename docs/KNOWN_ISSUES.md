@@ -201,3 +201,164 @@ live-qualified. In particular:
   jointly validated on a controlled real call.
 
 No sub-500ms or other caller-heard latency claim follows from the offline pass.
+## Android ADB synthetic-caller TX limits — 2026-09-23
+
+- The validated itel USB ADB connection was intermittently absent from
+  `adb devices`; the harness therefore requires an explicit connected
+  `state=device` target and never silently selects an unavailable/unauthorized
+  device.
+- An early Telephony-Tx helper consumed all PCM and printed `STREAM_DONE` but
+  could remain blocked in Android `AudioTrack.stop()/release()`. The dedicated
+  one-shot helper now exits after bounded drain and the host retains bounded
+  terminate/kill fallback. This is reference-device behavior, not a universal
+  Android claim.
+- Caller-phone cellular downlink capture back to Ubuntu is not yet
+  reference-runtime validated. Therefore the new path proves synthetic caller
+  **transmit** only; fully automated listen/decide/respond caller simulation
+  remains a later evidence gate.
+- The local Pocket timing markers do not establish caller-heard or mouth-to-ear
+  latency.
+## Android ADB synthetic-caller RX candidate — 2026-09-23
+
+- The reference itel downlink capability is proven with upstream scrcpy 4.1,
+  but the SHUO-owned `TelephonyRxBridge` still requires its own live reference
+  probe before merge/qualification.
+- The candidate deliberately captures the same proven PCM16/48 kHz/stereo shape
+  as scrcpy, then converts in memory to SHUO mu-law/8 kHz. Do not assume a
+  lower-rate Android capture configuration is supported without evidence.
+- Laptop-speaker monitoring can create an acoustic echo path back into the
+  handset microphone. The reference verification used headphones and then
+  reported clear audio with no echo. This is a test-monitoring issue, not a
+  reason to enable any acoustic production route.
+- No receive-side latency value has been measured.
+### RX doctor false negative on RECORD_AUDIO — corrected 2026-09-23
+
+The first repository-owned RX doctor treated both `CAPTURE_AUDIO_OUTPUT` and
+`RECORD_AUDIO` as privapp-allowlist permissions. On the reference itel this
+caused a false-negative stop at `RECORD_AUDIO`.
+
+AOSP permission definitions show the distinction: `RECORD_AUDIO` is
+dangerous/runtime, whereas `CAPTURE_AUDIO_OUTPUT` is privileged. The preflight
+now verifies the privileged capture permission in the privapp allowlist and
+separately requires a concrete package grant for `RECORD_AUDIO`. The live
+helper remains unqualified until the corrected doctor and bounded probe pass.
+### Android RX live gate closed on reference device — 2026-09-23
+
+The earlier issue "SHUO-owned TelephonyRxBridge still requires its own live
+reference probe" is now closed for the itel P683L reference runtime. The bounded
+probe sustained 7.915 s of PCM, produced non-zero content-free energy metrics
+and converted into the SHUO mu-law boundary without raw-audio persistence.
+
+Remaining limitations are narrower:
+
+- other Android devices remain unqualified;
+- no caller-heard RX latency has been measured;
+- a full closed-loop synthetic-human controller using RX + TX together is not
+  yet promoted by this evidence alone;
+- call establishment and hangup remain manual.
+### Android RX live gate closed on reference device — 2026-09-23
+
+The earlier issue that the SHUO-owned `TelephonyRxBridge` still required its
+own live reference probe is now closed for the itel P683L runtime. The bounded
+probe sustained 7.915 s of PCM, produced non-zero content-free energy metrics
+and converted into the SHUO mu-law boundary without raw-audio persistence.
+
+Remaining limits: other Android devices are unqualified; no caller-heard RX
+latency has been measured; a complete closed-loop synthetic-human controller is
+a separate gate; and call establishment/hangup remain manual.
+## Closed-loop Android cellular controller live gate pending — 2026-09-23
+
+TX and RX are independently qualified, but simultaneous use by the new
+closed-loop controller is not inferred from those independent tests.
+
+The controller remains unqualified until one controlled reference run proves:
+
+- TX and RX helpers remain active together on the itel P683L;
+- observer Deepgram Flux receives real SHUO downlink turns;
+- the 650 ms prepared-audio thinking pause does not trigger a premature SHUO
+  response;
+- two interruption stimuli are sent while a remote response is still active and
+  each reaches a replacement response;
+- the deterministic continuity checks complete;
+- no raw audio/transcript artifact is written;
+- manual hangup/cleanup remains bounded.
+
+No latency threshold is invented for this gate.
+### Galaxy A10 connected but compatible SCO downlink absent in first closed-loop attempt — 2026-09-23
+
+During the first combined live attempt, `bluetoothctl` reported the Galaxy A10
+paired, trusted and connected, but fresh PipeWire discovery returned no
+compatible downlink target for its address. The SHUO runner correctly failed
+closed before opening any default source.
+
+Root cause is not yet established. Possibilities such as an HFP SCO node not
+being active or a live property/codec/format mismatch must be distinguished from
+the actual `pw-dump` graph; they are not treated as conclusions. The validated
+selector contract remains unchanged pending that evidence.
+## Phase 5 closed-loop continuity failures and latency evidence — 2026-09-24
+
+A real two-device itel P683L <-> Galaxy A10/SHUO cellular run completed the
+deterministic controller with 10 observed remote response EOTs, but the overall
+result remained FAIL because `barge_in_2_continuity_codeword` and
+`late_session_continuity_fruit` failed. The first barge-in fruit continuity
+check passed. Do not attribute the two failures to STT, LLM history, cancellation,
+or transport until new evidence localizes the cause.
+
+The earlier controller exposed only interruption-start-to-observer-start and
+scenario-duration values; those are not caller-heard response latency. A new
+per-response host-correlated measurement seam has been added on the feature
+branch. It measures caller paced-TX completion to the itel downlink observer
+StartOfTurn for every deterministic response and keeps
+`CALLER_HEARD_LATENCY=NOT_MEASURED`. The new seam is not reference-runtime
+qualified yet.
+
+## Closed-loop response overlap observed in latency run — 2026-09-26
+
+One of ten host-correlated latency samples was negative
+(`-6238.519 ms`) during the first barge-in setup. This means the downlink
+observer registered response speech before the synthetic caller's paced TX
+boundary completed. The same run reported
+`barge_in_1_interrupt_sent_while_remote_speaking=FAIL`.
+
+This evidence is compatible with more than one cause, including premature SHUO
+turn finalization, observer-side classification of unintended downlink audio, or
+another turn-ordering problem. Do not choose a root cause without additional
+content-free timing/audio-path evidence.
+
+Negative samples are now retained and explicitly classified as
+`OVERLAP_RESPONSE_STARTED_BEFORE_TX_END` but excluded from response-latency
+summary statistics. This is a reporting correction only; it does not hide the
+overlap event or convert the supplemental run to PASS.
+
+## First-request LLM cold path and separate Flux fragmentation — 2026-09-26
+
+Reference-path content-free logs show first-turn Agent-start to TTS-first-audio
+at about 984 ms versus roughly 339-421 ms on several later turns. The first turn
+contained about 247 ms of post-first-token TTS time, indicating that most of the
+extra local delay occurred before the first LLM token. Exact provider-internal
+root cause remains unknown.
+
+A default-off Bluetooth `--llm-warmup` candidate now primes the same LLM client
+with static non-conversation input before caller processing. Live improvement is
+not yet proven. Do not describe this as a confirmed DNS/TLS or model-loading bug.
+
+A separate fresh silent closed-loop run still produced 11 observed response EOTs
+for 10 expected responses and three response-start-before-caller-TX-end samples.
+The SHUO-side log itself reached Agent turn 11 during the scenario, with rapid
+Flux turn/cancel sequences, so this cannot be dismissed as only an itel observer
+counting issue. The exact cause—premature Flux EOT, speech fragmentation/merge,
+transport behavior or another turn-ordering effect—remains unresolved. LLM
+warmup must not hide or reclassify this correctness problem.
+
+## Closed-loop call-connected startup delay was harness preparation — 2026-09-26
+
+The owner observed that the first synthetic question began about 5-10 seconds
+after call connection. Source review found the legacy closed-loop controller did
+all 11 Pocket pre-syntheses plus Android bridge compile/push after confirming the
+call was already active. This delay is outside `scenario_duration_ms` and is
+not evidence of slow SHUO conversational response.
+
+An explicit `--prepare-before-call` path moves that work before call
+establishment and waits for manual operator confirmation before strict active-call
+preflight and scenario start. Live reduction of call-connected-to-seed delay is
+not yet measured.

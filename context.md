@@ -423,3 +423,173 @@ was fixed and the entire relevant gate was rerun rather than bypassed. No live
 provider/device/cellular call was performed. Phase 4 remains open only for
 controlled real-path acceptance evidence; no new default or latency claim and no
 Phase 5 advancement follows from this repository milestone.
+## 2026-09-23 — rootless Android ADB cellular synthetic-caller TX milestone
+
+Task-owner supplied experiments on itel P683L/Android 13 proved a unique
+`TYPE_TELEPHONY` output is visible to shell UID 2000 and that an AudioTrack
+request actually routes to telephony type 18 during `MODE_IN_CALL`. Tone,
+Pocket-generated speech and live binary PCM sent over USB ADB stdin were heard
+clearly on the remote Galaxy A10 over the real cellular network. A final stream
+ended with `STREAM_DONE` / `ADB_EXIT=0`.
+
+Decision: codify only the proven transmit half as an isolated dev/benchmark
+harness using the existing Pocket provider seam and `BluetoothOutboundCodec`.
+Keep carrier/core mu-law unchanged, preserve manual call control and no raw-audio
+persistence, do not depend on Vobiz for this path, and label caller-heard latency
+unmeasured. Local timing observed Pocket-ready 531.8ms and first PCM 630.2ms from
+probe-process start; these are not remote latency evidence. Reverse cellular
+downlink capture is the next evidence gate and is not claimed implemented.
+Repository verification for the Android ADB TX milestone: GitHub Actions run
+`35847203988` passed Python 3.12/3.14 compile, Java-to-DEX build, 17 focused
+tests, 162 Bluetooth tests, full-suite `1016 passed / 4 expected failed` exact
+baseline verification, and full branch diff validation. The verified source tree
+still makes no reverse/downlink or caller-heard latency claim.
+## 2026-09-23 — reference cellular downlink capability proven
+
+Upstream scrcpy 4.1 was run against the itel P683L during a manually answered
+real cellular `MODE_IN_CALL` session with
+`voice-call-downlink --require-audio`. Galaxy A10 speech reached Ubuntu
+clearly; after Ubuntu playback was moved to headphones, the owner reported
+**clear, no echo**.
+
+This proves the reference Android runtime can expose real cellular downlink
+through shell-UID `VOICE_DOWNLINK` capture. A SHUO-owned no-file receive bridge
+candidate is now implemented on a feature branch using the same proven
+PCM16/48k/stereo capture shape and an in-memory conversion to the unchanged SHUO
+mu-law/8k boundary. Its own reference probe remains the explicit promotion gate;
+no caller-heard latency or automatic call-control claim follows.
+RX candidate correction: the first SHUO `doctor` stopped on a false-negative
+permission classification because it expected dangerous/runtime
+`RECORD_AUDIO` in the privapp allowlist. AOSP source confirms
+`RECORD_AUDIO` and privileged `CAPTURE_AUDIO_OUTPUT` have different grant
+classes. The branch now checks the privileged allowlist and the explicit runtime
+package grant separately, still fail-closed. The SHUO helper itself has not yet
+run on the reference phone, so its live gate remains pending.
+## 2026-09-23 — SHUO-owned cellular RX reference PASS
+
+The repository-owned `TelephonyRxBridge` has passed its independent itel
+P683L live gate during a manually controlled real cellular call:
+1,519,616 PCM bytes / 371 chunks / 7.915 s, peak RMS 4300, average RMS 1541.0,
+and 63,318 bytes converted in memory to the existing SHUO mu-law/8k boundary.
+The probe explicitly persisted no raw audio and logged no caller speech content.
+
+Caller-side Android cellular TX and RX transports are now both independently
+reference-validated. The next missing product/test layer is a closed-loop
+synthetic-human controller that listens via RX and replies via TX; automatic
+dial/answer/hangup is still out of scope and Phase 5 remains not accepted.
+## 2026-09-23 — closed-loop real-cellular caller candidate prepared
+
+After independent itel ADB TX and RX PASS evidence, an isolated Phase-5
+controller was implemented to listen to real SHUO cellular downlink through RX,
+advance a deterministic script with a private Deepgram Flux observer, and reply
+through the existing TX bridge using pre-synthesized Pocket audio.
+
+The scenario includes normal turns, a 650 ms prepared thinking pause, two
+barge-in attempts and continuity facts, with a 300-second cap. Response text is
+never serialized and raw audio is never persisted. GitHub Actions run
+`35853641593` passed 36 focused tests, 162 Bluetooth tests and full-root
+`1035 passed / exact 4 historical failures` on Python 3.12/3.14.
+
+This is not yet merged or reference-qualified. One combined itel/Galaxy/SHUO
+live run is the explicit next gate. Call answer/hangup remain manual.
+## 2026-09-23 — first combined closed-loop live attempt stopped at Bluetooth preflight
+
+The itel ADB caller side was connected and `MODE_IN_CALL`; Galaxy A10 was
+paired/trusted/connected over Bluetooth. The Galaxy-side
+`scripts/run_bluetooth_ai.py` failed before SHUO session startup with
+`PipeWireSelectionError: no compatible Bluetooth downlink target for
+04:BA:8D:42:97:B1`.
+
+This is currently a PipeWire/HFP readiness or capability-discovery question, not
+evidence against the Android RX/TX transports or the new closed-loop controller.
+Do not relax capability matching. Capture the content-free live PipeWire graph
+while the call is active and identify whether the SCO node is absent or which
+required property differs.
+### 2026-09-24 — two-device closed loop and latency seam
+
+- Owner-supplied real itel P683L USB/ADB <-> Galaxy A10 Bluetooth/SHUO cellular
+  run completed the deterministic scenario with 10 observed remote response EOTs.
+- Closed-loop completion, seed response, 650 ms thinking-pause behavior, both
+  interruption-send-while-remote-speaking checks, and first barge-in fruit
+  continuity passed.
+- Second barge-in codeword continuity and final fruit continuity failed; overall
+  supplemental result remains FAIL. Phase 5 is not accepted and Phase 6 remains
+  unauthorized.
+- Owner authorized per-response latency instrumentation.
+- Feature-branch controller now records each response from host paced caller-TX
+  completion to itel VOICE_DOWNLINK Flux-observer StartOfTurn, plus min/average/max.
+- Measurement is explicitly `MEASURED_HOST_CORRELATED`; observer delay is included,
+  no acceptance threshold was invented, and
+  `CALLER_HEARD_LATENCY=NOT_MEASURED` remains unchanged.
+- Barge-in replacement baselines are captured before interrupt TX so a fast
+  replacement StartOfTurn cannot be skipped merely because it arrives while the
+  prepared interrupt audio is still being streamed.
+
+### 2026-09-26 — first per-response latency run
+
+- Latency-instrumented real itel P683L <-> Galaxy A10/SHUO run completed with
+  10 observed response turns.
+- Raw host-correlated samples included one negative overlap sample:
+  `-6238.519 ms`, meaning observer response start preceded caller TX end.
+- Nine non-overlapping samples: min 1707.244 ms, avg 3202.070 ms,
+  median 3279.708 ms, max 4274.329 ms.
+- The raw negative sample is now kept with
+  `OVERLAP_RESPONSE_STARTED_BEFORE_TX_END` status and excluded from summary
+  statistics. Total sample count and valid sample count are reported separately.
+- Overall run remained FAIL: first barge-in speaking-state check failed and
+  second barge-in codeword continuity failed. Final mango continuity passed.
+- No caller-heard latency claim, Phase 5 acceptance, or Phase 6 authorization.
+
+### 2026-09-26 — first-turn LLM warmup candidate after silent closed-loop rerun
+
+- Fresh no-manual-speech closed-loop evidence removed the earlier "manual Hi"
+  explanation. Seed response was positive-latency, but 11 RX EOTs were observed
+  for 10 expected responses and three overlap samples remained.
+- SHUO-side content-free logs also reached Agent turn 11 during the scenario,
+  preserving Flux/turn-fragmentation as a separate unresolved correctness issue.
+- The same log showed first-turn TTS-first-audio around 984 ms versus about
+  339-421 ms on later turns; most first-turn excess occurred before first LLM
+  content.
+- Added explicit Bluetooth-only `--llm-warmup`: the existing Agent LLM client
+  sends static `ping`, streams at most one token, discards output, sends no
+  persona/history/caller content and mutates no conversation state.
+- Warmup is bounded and fail-open; cancellation propagates. Default behavior,
+  carrier paths, pure state machine, EOT 0.8 owner decision, manual call control
+  and raw-audio policy remain unchanged.
+- Recommended controlled candidate uses `--llm-warmup --parallel-startup`.
+  Live latency benefit is unproven; caller-heard latency remains NOT_MEASURED.
+
+### Automated gate — first-turn LLM warmup candidate
+
+- Exact candidate commit `ad47766b86b7e74be148d86e7db5250bfd502eeb`
+  passed GitHub Actions run `36222331133` on Python 3.12/3.14.
+- 71 focused tests and 164 Bluetooth tests passed on each matrix.
+- Full suite: 1038 passed plus the exact four documented historical failures;
+  `FULL_SUITE_BASELINE_CLEAN` and diff validation passed on both matrices.
+- CI did not access providers or devices. Live latency benefit remains unproven.
+
+### 2026-09-26 — pre-call synthetic-caller preparation candidate
+
+- Owner observed roughly 5-10 seconds between call connection and the first
+  synthetic caller question even after LLM warmup work.
+- Source review located that delay before the scenario: legacy controller order
+  was active-call preflight -> 11 sequential Pocket pre-syntheses -> TX/RX bridge
+  compile/push -> TX/RX/observer start -> seed.
+- This is benchmark startup latency, separate from SHUO question-end -> response
+  latency.
+- Added explicit `--prepare-before-call` mode: non-call preflight, in-memory
+  prompt preparation and bridge build/push happen before the call; the controller
+  prints a readiness marker and waits for manual Enter after call + Terminal 0
+  readiness, then reruns strict active-call preflight.
+- Raw caller audio remains memory-only; call control remains manual; default mode
+  is unchanged. Live call-connected-to-seed improvement remains unproven.
+
+### Automated gate — pre-call synthetic-caller preparation
+
+- Exact candidate commit `671821696292998df6c25cdf7ee03d6f201d77ee`
+  passed Actions run `36223200306` on Python 3.12/3.14.
+- 72 focused tests and 164 Bluetooth tests passed on each matrix.
+- Full suite: 1039 passed plus the exact four historical failures;
+  `FULL_SUITE_BASELINE_CLEAN` and diff validation passed on both matrices.
+- No live-device/provider execution occurred in CI; runtime seed-start reduction
+  remains to be measured.

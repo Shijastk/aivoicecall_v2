@@ -93,3 +93,34 @@ Never mark a phase complete from code existence alone. Record gate results,
 limitations, rollback evidence and approval. No future phase is authorized by
 this setup. Report documentation conflicts; do not rewrite requirements after
 implementation merely to hide noncompliance.
+## 2026-09-23 supplemental Android cellular synthetic-caller TX
+
+The task owner authorized codifying the reference-proven, Vobiz-free Android ADB
+cellular transmit path as an isolated Phase-5 development harness. See
+[ANDROID_CELLULAR_SYNTHETIC_CALLER](ANDROID_CELLULAR_SYNTHETIC_CALLER.md).
+
+The harness is not imported by production entrypoints, keeps the shared/carrier
+audio contract at G.711 mu-law/8 kHz, performs no automatic call control, writes
+no raw audio, and does not create a caller-heard latency claim. Its Android edge
+is S16LE/16 kHz/mono, matching the already-validated Bluetooth boundary.
+### Android caller-side RX follow-up — 2026-09-23
+
+Reference `VOICE_DOWNLINK` capability is now proven on the itel P683L with
+upstream scrcpy 4.1. A SHUO-owned no-file receive bridge candidate is under the
+same [ANDROID_CELLULAR_SYNTHETIC_CALLER](ANDROID_CELLULAR_SYNTHETIC_CALLER.md)
+evidence record and remains gated by its own live reference probe before
+qualification.
+### Android caller-side RX qualified — 2026-09-23
+
+The SHUO-owned no-file `VOICE_DOWNLINK` bridge has now passed its independent
+reference-device probe. TX and RX transport directions are both
+reference-validated; see
+[ANDROID_CELLULAR_SYNTHETIC_CALLER](ANDROID_CELLULAR_SYNTHETIC_CALLER.md) for
+the exact evidence and remaining closed-loop/controller limits.
+### Real-cellular closed-loop synthetic caller candidate — 2026-09-23
+
+The reference-qualified Android cellular RX/TX transports now have an isolated
+deterministic composition candidate for real-cellular multi-turn testing. Its
+repository gate is clean, but live simultaneous RX/TX qualification remains
+required before merge. See
+[ANDROID_CELLULAR_SYNTHETIC_CALLER](ANDROID_CELLULAR_SYNTHETIC_CALLER.md).

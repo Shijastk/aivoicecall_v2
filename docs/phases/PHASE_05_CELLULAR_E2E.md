@@ -118,3 +118,85 @@ Approved behavior:
 Detailed provider behavior, installation and regression commands are owned by [TTS_PROVIDERS](../TTS_PROVIDERS.md).
 
 For Phase 5 interpretation, eSpeak-backed live evidence may establish only provider-independent functional observations (digital duplex/routing, turn-taking, interruption mechanics, continuity, manual hangup and bounded cleanup). It cannot establish ElevenLabs TTS latency/quality or caller mouth-to-ear performance. Existing ElevenLabs runs remain separate evidence. Phase 5 remains **not accepted** until all remaining Gate 1 observations are reviewed and the final quantitative latency/echo methodology, sample and thresholds required by this document are separately approved and satisfied.
+## Owner-authorized supplemental Android ADB synthetic-caller TX — 2026-09-23
+
+The owner authorized a Vobiz-free supplemental synthetic-caller transmit path
+after direct reference-device experiments. On itel P683L / Android 13, shell UID
+2000 exposed a unique `TYPE_TELEPHONY` output; during an active manually
+controlled cellular call, `AudioTrack.getRoutedDevice()` returned telephony
+type 18. Generated tone, Pocket speech and live ADB-stdin PCM were then heard
+clearly at the remote Galaxy A10.
+
+The repository implementation is deliberately outside default production
+entrypoints and preserves all locked media/privacy boundaries: no raw-audio
+persistence, no automatic call control, no Vobiz dependency for this supplemental
+path, no shared/carrier PCM contract change, and no caller-heard latency claim.
+
+A local timing probe observed Pocket-ready at 531.8 ms and first PCM at 630.2 ms
+from that probe process start. The difference is component-local evidence only.
+Phase 5 remains not accepted by this supplemental result. Reverse/downlink capture
+is separately unvalidated, and Phase 6 remains outside this implementation.
+## Supplemental cellular downlink evidence and receive candidate — 2026-09-23
+
+The owner completed the previously missing reference-phone capability check with
+upstream scrcpy 4.1. On the itel P683L during `MODE_IN_CALL`,
+`voice-call-downlink --require-audio` delivered Galaxy A10 speech clearly to
+Ubuntu. With Ubuntu monitoring on headphones the result was clear with no echo.
+
+This is sufficient to authorize a bounded SHUO-owned receive candidate using the
+same Android `VOICE_DOWNLINK` direct-capture concept and proven
+PCM16/48 kHz/stereo shape. It is not sufficient to pre-write a PASS for the new
+helper. The candidate must separately demonstrate its own `STREAM_READY` and
+non-silent content-free capture metrics on the reference call.
+
+All existing Phase-5 restrictions remain: manual answer/hangup, no raw-audio
+persistence, content-free public diagnostics, no Phase 6, and no caller-heard
+latency claim from local timestamps.
+## SHUO-owned Android RX reference evidence — 2026-09-23
+
+The repository-owned receive bridge has now passed the separate live gate that
+was intentionally left open after the scrcpy capability test.
+
+On the itel P683L during a manually answered real cellular call, the bounded
+8-second probe reported 1,519,616 PCM bytes, 371 chunks, peak RMS 4300, average
+RMS 1541.0, and 63,318 converted SHUO mu-law bytes. It explicitly reported no
+raw-audio persistence and no caller-content logging.
+
+This establishes the caller-side cellular downlink transport boundary on the
+reference device. Together with the already-proven ADB Telephony-Tx path, both
+synthetic-caller media directions are now available for Phase-5 development
+tooling. Manual call control, no raw recording, content-free public diagnostics,
+no caller-heard latency claim, Phase-5-not-accepted status and the Phase-6 block
+all remain unchanged.
+## SHUO-owned Android RX reference evidence — 2026-09-23
+
+The repository-owned receive bridge has now passed the separate live gate that
+was intentionally left open after the scrcpy capability test.
+
+On the itel P683L during a manually answered real cellular call, the bounded
+8-second probe reported 1,519,616 PCM bytes, 371 chunks, peak RMS 4300, average
+RMS 1541.0, and 63,318 converted SHUO mu-law bytes. It explicitly reported no
+raw-audio persistence and no caller-content logging.
+
+This establishes the caller-side cellular downlink transport boundary on the
+reference device. Together with the already-proven ADB Telephony-Tx path, both
+synthetic-caller media directions are now available for Phase-5 development
+tooling. Manual call control, no raw recording, content-free public diagnostics,
+no caller-heard latency claim, Phase-5-not-accepted status and the Phase-6 block
+all remain unchanged.
+## Closed-loop caller automation candidate — 2026-09-23
+
+A deterministic caller-side controller now composes the independently validated
+itel ADB RX/TX media directions. It keeps the cellular call itself manual and
+uses only in-memory caller audio plus a separate Deepgram Flux observer on the
+real downlink.
+
+The scripted scenario targets the still-useful functional observations: ordinary
+multi-turn continuity, a sub-0.8-second prepared thinking pause, two
+interruptions while remote speech is active, and at least ten observed response
+turns. Response transcript text is not emitted as public evidence; only boolean
+content checks and content-free timings/counts leave the process.
+
+Repository tests have passed, but the controller remains a candidate until the
+combined real-cellular run succeeds. This does not alter the remaining formal
+Phase-5 quantitative latency/echo acceptance gate.

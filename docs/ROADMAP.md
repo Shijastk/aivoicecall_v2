@@ -296,3 +296,79 @@ Phase 5 remains **not accepted** until the controlled live evidence is reviewed.
 Caller mouth-to-ear `<500 ms` is not claimable from current local timestamps, and
 no missing latency/echo threshold is invented. Phase 6 remains blocked pending a
 separate explicit approval after Phase 5 evidence review.
+## Phase 5 supplemental ADB synthetic-caller TX milestone — 2026-09-23
+
+Owner-authorized reference testing has proven and now codified the transmit half
+of a Vobiz-free synthetic caller: Ubuntu Pocket speech -> existing SHUO mu-law
+provider seam -> Bluetooth codec -> live ADB PCM -> itel Telephony Tx -> real
+cellular -> remote Galaxy A10.
+
+This is additive Phase-5 test infrastructure only. It does not accept Phase 5,
+change the manual answer/hangup rule, authorize Phase 6, establish universal
+Android support, or support a caller-heard <500 ms claim. The next independent
+external gate is caller-phone cellular downlink capture back to Ubuntu; no
+receive implementation is promoted until reference-runtime evidence exists.
+Repository gate update: GitHub Actions run `35847203988` passed the Android
+helper build, focused tests, complete Bluetooth regression, exact four-failure
+historical full-suite baseline verification and full-diff validation on Python
+3.12/3.14. This makes the supplemental TX harness repository-ready; it does not
+change the remaining Phase-5 acceptance gates or authorize Phase 6.
+## Phase 5 supplemental Android cellular RX gate — 2026-09-23
+
+The reference caller phone's receive capability is now independently proven:
+scrcpy 4.1 `VOICE_DOWNLINK` capture delivered real Galaxy A10 call audio to
+Ubuntu clearly, and headphone monitoring produced a clear/no-echo result.
+
+A SHUO-owned receive bridge candidate is implemented behind the dev/benchmark
+boundary. The immediate gate is not more architecture speculation: run the
+bounded no-file reference probe and verify `STREAM_READY`, sustained PCM bytes,
+and non-silent content-free energy metrics. Only then synchronize the evidence,
+rerun repository validation, and merge.
+
+This work remains Phase 5 supplemental test infrastructure. It does not accept
+Phase 5, authorize Phase 6, automate answer/hangup, or establish caller-heard
+latency.
+## Phase 5 supplemental Android cellular RX milestone complete — 2026-09-23
+
+The SHUO-owned caller-side receive transport has passed its independent
+reference-device gate. A bounded 8-second itel P683L probe sustained 7.915 s of
+PCM capture with non-zero content-free energy and successfully converted the
+stream into the existing SHUO mu-law/8 kHz boundary, with no raw-audio
+persistence.
+
+The immediate transport milestone is therefore complete for the reference
+device: Android cellular TX and RX are both independently proven. The next
+implementation gate is the higher-level closed-loop synthetic-human controller
+that consumes RX turns and emits TX turns while keeping manual call
+answer/hangup and all existing Phase-5 privacy/acceptance restrictions.
+
+This transport milestone does not accept Phase 5 or authorize Phase 6.
+## Phase 5 supplemental Android cellular RX milestone complete — 2026-09-23
+
+The SHUO-owned caller-side receive transport has passed its independent
+reference-device gate. A bounded 8-second itel P683L probe sustained 7.915 s of
+PCM capture with non-zero content-free energy and successfully converted the
+stream into the existing SHUO mu-law/8 kHz boundary, with no raw-audio
+persistence.
+
+The transport milestone is therefore complete for the reference device: Android
+cellular TX and RX are both independently proven. The next implementation gate
+is the higher-level closed-loop synthetic-human controller that consumes RX
+turns and emits TX turns while keeping manual call answer/hangup and all existing
+Phase-5 privacy/acceptance restrictions.
+
+This milestone does not accept Phase 5 or authorize Phase 6.
+## Phase 5 closed-loop real-cellular synthetic caller — 2026-09-23
+
+The next bounded milestone is now implemented on a feature branch: compose the
+reference-qualified Android caller-side RX and TX transports into a deterministic
+real-cellular synthetic caller.
+
+Automated repository validation is baseline-clean. The remaining gate is one
+controlled reference run with the actual itel caller phone, Galaxy/SHUO endpoint,
+manual call setup, observer Deepgram Flux, prepared thinking pause, two
+interruptions and continuity checks.
+
+Do not merge/qualify this controller from CI alone. A successful run still does
+not accept Phase 5, automate call control, authorize Phase 6 or establish
+caller-heard latency.

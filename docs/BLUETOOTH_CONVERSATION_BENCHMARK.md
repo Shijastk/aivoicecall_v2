@@ -302,3 +302,50 @@ The real-Flux extension is still Phase-4 provider-pipeline evidence only. The
 repository's Phase-5 contract separately owns controlled cellular E2E validation,
 and Phase 6 owns automated call-control lifecycle. This harness does not advance
 either phase.
+## Relationship to the Android cellular TX harness — 2026-09-23
+
+The provider-only `human-sim` benchmark and the Android ADB cellular TX
+harness are different evidence surfaces. The former has no device/cellular
+transport. The latter has reference-proven real cellular **transmit** from an
+itel caller phone, but its reverse/downlink receive path is not yet validated.
+
+Neither surface alone is a fully automated real-cellular conversation benchmark,
+and neither may be used to manufacture a caller-heard latency measurement.
+## Android caller-side receive evidence — 2026-09-23
+
+The real-cellular caller-side receive capability is no longer hypothetical:
+upstream scrcpy 4.1 captured the itel P683L's `VOICE_DOWNLINK` during a real
+manual cellular call and delivered clear Galaxy A10 speech to Ubuntu. With
+headphone monitoring, the owner reported no echo.
+
+The SHUO-owned receive bridge remains a separate candidate until its own bounded
+reference probe passes. The provider-only `human-sim` still has no cellular
+transport, and no surface may be used to infer caller-heard latency.
+## Android caller-side RX transport qualified — 2026-09-23
+
+The SHUO-owned receive bridge has now independently passed on the reference itel
+P683L, so the caller-side real-cellular harness has validated TX and RX
+transport directions. This remains distinct from the provider-only human-sim
+benchmark and from a complete closed-loop synthetic-human conversation
+controller. No caller-heard latency is inferred from the transport probe.
+## Real-cellular closed-loop caller candidate — 2026-09-23
+
+A new controller now differs from the provider-only `human-sim` surface in one
+important way: it traverses the real itel <-> Galaxy cellular connection and
+uses the reference-qualified ADB receive/transmit boundaries.
+
+It still does not automate call control or create an external caller-heard clock.
+Its report is content-free: response text is used only in memory to score
+deterministic continuity booleans. The branch remains live-gated before merge.
+
+## First-turn warmup A/B — 2026-09-26
+
+For the controlled reference-path A/B, keep the established runner arguments and
+add `--llm-warmup --parallel-startup` only to the candidate run. The warmup is
+default-off, uses static non-conversation input, and does not alter the approved
+Flux EOT threshold or the manual call-control boundary.
+
+Report the content-free `LLMWarmup`, first real `LLMRequest` stream-open /
+first-token timing, first `TTS first audio`, and first
+`PlaybackFirstWrite_returned` timing. Later turns are the warm-path comparison.
+Do not equate these local timestamps with caller-heard mouth-to-ear latency.

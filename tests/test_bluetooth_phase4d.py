@@ -110,6 +110,71 @@ async def test_llm_context_budget_keeps_system_and_latest_user_but_not_canonical
 
 
 @pytest.mark.asyncio
+async def test_llm_warmup_is_static_history_neutral_and_callback_free(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "unused")
+    callbacks = []
+    stream = FakeStream([_chunk("pong")])
+    client = CaptureClient(stream)
+
+    async def on_token(token):
+        callbacks.append(("token", token))
+
+    async def on_done():
+        callbacks.append(("done", None))
+
+    service = LLMService(
+        on_token=on_token,
+        on_done=on_done,
+        system_prompt="PRIVATE DIGITAL TWIN FACTS",
+    )
+    service._client = client
+    service._history = [
+        {"role": "user", "content": "existing private user turn"},
+        {"role": "assistant", "content": "existing private assistant turn"},
+    ]
+    before = service.history
+
+    assert await service.warmup(timeout_seconds=1.0) is True
+    assert client.kwargs["messages"] == [{"role": "user", "content": "ping"}]
+    assert client.kwargs["stream"] is True
+    assert client.kwargs["max_tokens"] == 1
+    assert client.kwargs["temperature"] == 0.7
+    assert service.history == before
+    assert callbacks == []
+    assert stream.closed is True
+
+    first_kwargs = client.kwargs
+    assert await service.warmup(timeout_seconds=1.0) is True
+    assert client.kwargs is first_kwargs
+
+
+@pytest.mark.asyncio
+async def test_llm_warmup_failure_is_fail_open_and_history_neutral(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "unused")
+
+    class FailingClient:
+        async def create(self, **kwargs):
+            raise RuntimeError("provider unavailable")
+
+        def __init__(self):
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=self.create)
+            )
+
+    async def noop(*_args):
+        return None
+
+    service = LLMService(on_token=noop, on_done=noop, system_prompt="facts")
+    service._client = FailingClient()
+    service._history = [{"role": "user", "content": "kept"}]
+    before = service.history
+
+    assert await service.warmup(timeout_seconds=1.0) is False
+    assert service.history == before
+    assert service._running is False
+
+
+@pytest.mark.asyncio
 async def test_shadow_probe_uses_same_budget_and_usage_opt_in(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "unused")
     stream = FakeStream([_chunk("first")])
@@ -295,9 +360,15 @@ class CapturePool:
 
 class CaptureAgent:
     captured = None
+    warmup_calls = 0
+
     def __init__(self, **kwargs):
         CaptureAgent.captured = kwargs
         self.history = []
+
+    async def warmup_llm(self):
+        CaptureAgent.warmup_calls += 1
+        return True
 
 
 class CaptureProbe:
@@ -321,6 +392,7 @@ def _settings():
 @pytest.mark.asyncio
 async def test_phase4d_options_are_explicitly_wired_only_on_bluetooth_path():
     captured = {}
+    CaptureAgent.warmup_calls = 0
 
     async def runner(session, *, agent_factory, speculation_factory, **kwargs):
         captured.update(kwargs)
@@ -330,7 +402,8 @@ async def test_phase4d_options_are_explicitly_wired_only_on_bluetooth_path():
     await run_production_bluetooth_conversation(
         object(), settings=_settings(), eager_eot_threshold=0.3,
         shadow_speculation=True, tts_phrase_chars=48, llm_history_max_chars=4096,
-        llm_provider_timing=True, parallel_startup=True, player_preroll_frames=2,
+        llm_provider_timing=True, llm_warmup=True, parallel_startup=True,
+        player_preroll_frames=2,
         deps=BluetoothProductionDeps(
             tts_pool_cls=CapturePool, agent_cls=CaptureAgent,
             shadow_probe_cls=CaptureProbe, tracer_factory=CaptureTracer,
@@ -342,6 +415,7 @@ async def test_phase4d_options_are_explicitly_wired_only_on_bluetooth_path():
     assert CaptureAgent.captured["tts_phrase_chars"] == 48
     assert CaptureAgent.captured["llm_history_max_chars"] == 4096
     assert CaptureAgent.captured["llm_provider_timing"] is True
+    assert CaptureAgent.warmup_calls == 1
     assert CaptureAgent.captured["player_preroll_frames"] == 2
     assert CaptureProbe.captured["history_max_chars"] == 4096
     assert CaptureProbe.captured["capture_provider_timing"] is True

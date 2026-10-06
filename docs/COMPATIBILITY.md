@@ -94,3 +94,59 @@ Player pre-roll is constrained to the already permitted two/three-frame range,
 with three retained as default. No claim is made that another phone, PipeWire
 version, codec/profile, provider region or operating system supports the reference
 Bluetooth path until independently qualified.
+## Supplemental Android ADB synthetic-caller TX — 2026-09-23
+
+Reference-only compatibility evidence now includes an itel P683L running Android
+13/API 33 as a **caller-side synthetic-audio injector** over USB ADB. During an
+active manually controlled cellular call, shell UID 2000 could enumerate a unique
+`TYPE_TELEPHONY` output and an `AudioTrack` explicitly routed to it returned
+actual `ROUTED_TYPE=18`. Generated tone, Pocket speech and live ADB-stdin PCM
+were heard at the remote Galaxy A10.
+
+This does not qualify arbitrary Android phones. Required capabilities remain
+runtime gates: connected authorized ADB target, API >=23, `app_process`, shell
+privapp routing grants, active `MODE_IN_CALL`, unique telephony output and actual
+telephony routing after playback starts. Any failure is fail-closed. USB UAC
+bidirectional audio is not part of this supported reference path.
+
+Receive/downlink capture on the itel remains unvalidated and must not be inferred
+from the transmit result.
+## itel P683L cellular downlink capture evidence — 2026-09-23
+
+On the reference itel P683L / Android 13, upstream scrcpy 4.1 successfully
+started `voice-call-downlink` capture while Android reported `MODE_IN_CALL`.
+The remote Galaxy A10 caller was heard clearly on Ubuntu. With Ubuntu playback
+moved to headphones, the reported result was **clear, no echo**.
+
+This validates the phone/runtime capability needed for caller-side receive over
+ADB. The repository-owned `TelephonyRxBridge` remains a separate compatibility
+gate until its own bounded probe passes on the same reference call. No other
+Android model is qualified from this result.
+## itel P683L SHUO receive qualification — 2026-09-23
+
+The repository-owned `TelephonyRxBridge` has now passed on the same reference
+itel P683L / Android 13 runtime previously qualified with scrcpy.
+
+Bounded probe evidence:
+
+- PCM bytes: 1,519,616;
+- observed PCM duration: 7.915 s in an 8-second probe;
+- chunks: 371;
+- peak RMS: 4300;
+- average RMS: 1541.0;
+- in-memory SHUO mu-law bytes: 63,318;
+- raw-audio persistence: none.
+
+This qualifies the reference phone/runtime for the SHUO-owned caller-side
+downlink bridge. It does not qualify arbitrary Android devices.
+## itel P683L SHUO receive qualification — 2026-09-23
+
+The repository-owned `TelephonyRxBridge` has passed on the same reference itel
+P683L / Android 13 runtime previously qualified with scrcpy.
+
+Bounded probe evidence: 1,519,616 PCM bytes, 7.915 s observed PCM duration,
+371 chunks, peak RMS 4300, average RMS 1541.0, and 63,318 in-memory SHUO
+mu-law bytes. No raw audio was persisted.
+
+This qualifies the reference phone/runtime for the SHUO-owned caller-side
+downlink bridge. It does not qualify arbitrary Android devices.

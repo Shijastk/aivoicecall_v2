@@ -277,3 +277,88 @@ PYTHONPATH=. \
 Pocket-backed evidence may support provider-independent functional observations: digital routing, turn-taking, interruption/cancellation mechanics, short-session continuity, manual hangup and bounded cleanup. Because Pocket inference is local CPU work and cancellation is cooperative at the vendor-yield boundary, the reference live run must specifically confirm that barge-in remains prompt while Flux/Groq/Pocket are active together and that no late Pocket audio leaks after interruption.
 
 Pocket evidence must **not** be used to claim ElevenLabs-specific latency/voice quality, production voice quality, caller mouth-to-ear `<500 ms`, or final Phase 5 quantitative latency/echo acceptance. Those remain separate evidence gates. The historical eSpeak amendment above is preserved rather than rewritten; this later Pocket amendment governs future functional Gate 1 runs.
+## Supplemental ADB synthetic-caller transmit tool — 2026-09-23
+
+A later owner-authorized development harness can inject synthetic caller speech
+from Ubuntu through an itel caller phone's real cellular uplink using USB ADB.
+Its owning documentation is
+`docs/ANDROID_CELLULAR_SYNTHETIC_CALLER.md`.
+
+This does not rewrite the historical Gate-1 manual command or its acceptance
+record. The supplemental tool still requires the cellular call to be established
+and answered manually, records no raw audio, performs no automatic hangup, and
+does not make local timestamps into caller-heard latency evidence. It is suitable
+for repeatable caller stimulus; the reverse caller-phone downlink path is not yet
+validated and therefore full closed-loop automation is not claimed.
+## Supplemental caller-side receive probe — 2026-09-23
+
+Independent capability evidence now exists for the itel P683L using upstream
+scrcpy 4.1 `voice-call-downlink`; clear Galaxy A10 speech reached Ubuntu, and
+headphone monitoring eliminated acoustic echo.
+
+The repository-owned receive candidate is intentionally gated separately. During
+a manually established/answered authorized cellular call, its bounded
+`scripts/dev/17_android_cellular_rx.py probe` command may consume downlink PCM
+only in memory and print content-free byte/RMS/conversion metrics. It must not
+write a raw-audio file, automate call control, or be interpreted as a latency
+measurement. Failure to reach `STREAM_READY` or capture sustained non-silent
+data is a stop condition, not a reason to bypass the route/permission checks.
+## Supplemental receive probe result — 2026-09-23
+
+The repository-owned caller-side receive probe passed on the reference itel
+P683L. The bounded 8-second run captured 1,519,616 PCM bytes over 371 chunks,
+with non-zero content-free RMS (peak 4300, average 1541.0), and converted 63,318
+bytes to SHUO mu-law in memory. No raw audio or caller content was persisted.
+
+This closes the receive-transport validation item for the reference device. It
+does not replace the historical Gate-1 acceptance requirements or authorize
+automatic call control.
+## Supplemental receive probe result — 2026-09-23
+
+The repository-owned caller-side receive probe passed on the reference itel
+P683L. The bounded 8-second run captured 1,519,616 PCM bytes over 371 chunks,
+with non-zero content-free RMS (peak 4300, average 1541.0), and converted 63,318
+bytes to SHUO mu-law in memory. No raw audio or caller content was persisted.
+
+This closes the receive-transport validation item for the reference device. It
+does not replace the historical Gate-1 acceptance requirements or authorize
+automatic call control.
+## Optional closed-loop synthetic caller run — 2026-09-23
+
+After both Android caller-side media directions were independently qualified,
+the owner authorized a deterministic real-cellular caller controller for
+supplemental Gate-1 evidence.
+
+The controller is started only after the itel <-> Galaxy cellular call is
+manually established/answered and the Galaxy-side SHUO Bluetooth pipeline is
+already running. It may:
+
+- keep one caller-side RX and one TX helper alive;
+- contact Deepgram for content-private turn observation;
+- send prepared Pocket caller utterances;
+- exercise a 650 ms thinking pause and two interruption attempts;
+- keep response text in memory only for boolean continuity checks.
+
+It may not dial, answer, hang up, save raw audio, serialize response transcripts,
+or turn local timings into caller-heard latency. Maximum scenario duration
+remains 300 seconds. Any timeout/provider/device error is a failed supplemental
+run, not permission to weaken a gate.
+### Closed-loop preflight correction after first Galaxy attempt — 2026-09-23
+
+For the Galaxy-side SHUO leg, `bluetoothctl Connected: yes` is not a sufficient
+precondition. Before starting `run_bluetooth_ai.py`, verify that the active
+cellular call has produced compatible BlueZ SCO PipeWire nodes.
+
+Use the existing content-free graph helper while the call is active:
+
+```bash
+cd /tmp/shuo-cellular-loop
+./scripts/dev/07_bluetooth_graph.sh
+wpctl status
+```
+
+Do not continue to the closed-loop controller unless the graph contains the
+Galaxy call's BlueZ SCO capture/playback pair. If the SHUO runner reports
+`no compatible Bluetooth downlink target`, stop and inspect the live graph;
+do not remove the address/profile/codec/format gates or fall back to a default
+microphone/speaker.

@@ -161,3 +161,14 @@ evidence supplied by the task owner:
 
 These results do not validate real PipeWire I/O, cellular duplex, echo isolation,
 device-loss handling or live SHUO integration. Those remain later-phase gates.
+## Supplemental caller-side Android ADB TX boundary — 2026-09-23
+
+The Phase-5 synthetic-caller TX harness is deliberately **outside** the
+Bluetooth transport architecture. It reuses `BluetoothOutboundCodec` only as
+the already-owned G.711 mu-law/8 kHz -> S16LE/16 kHz/mono converter, then sends
+that PCM over USB ADB to a separate caller phone's Android
+`TYPE_TELEPHONY` sink. It does not alter PipeWire/BlueZ target discovery,
+Bluetooth route isolation, queue budgets, or the SHUO core audio format.
+
+Reference evidence and operational limits are owned by
+[ANDROID_CELLULAR_SYNTHETIC_CALLER](ANDROID_CELLULAR_SYNTHETIC_CALLER.md).

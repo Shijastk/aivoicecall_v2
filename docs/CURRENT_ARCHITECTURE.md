@@ -334,3 +334,89 @@ keeps three as default. The existing 15-second TTS warm-idle/readiness behavior 
 unchanged. None of these controls are imported or started by default `main.py`.
 Offline automation proves wiring, bounds, cleanup and regressions, not live
 provider timing, caller-heard latency, XRUN/audio quality or production benefit.
+## Supplemental Android ADB cellular TX harness — 2026-09-23
+
+An opt-in development-only path now exists under
+`shuo/benchmark/android_cellular_tx.py`,
+`scripts/dev/16_android_cellular_tx.py` and
+`tools/android/TelephonyTxBridge.java`. No default production entrypoint imports
+it.
+
+The host side accepts Pocket through the existing `PocketTTSService` interface
+(G.711 mu-law/8 kHz), then uses `BluetoothOutboundCodec` to reach
+S16LE/16 kHz/mono. That PCM is written with backpressure to `adb shell -T`
+stdin. The Android shell helper creates `AudioTrack` with
+`USAGE_VOICE_COMMUNICATION`, selects the unique `TYPE_TELEPHONY` output and
+fails closed unless `getRoutedDevice()` reports telephony after playback starts.
+
+Reference runtime evidence on the itel P683L/Android 13 showed actual routed type
+18 and clear tone/Pocket/live-stream speech at the remote Galaxy A10 over the
+real cellular call. This is supplemental test tooling, not a new carrier PCM
+contract, automatic call-control implementation, universal Android support claim,
+or caller-heard latency measurement. The reverse cellular downlink-to-ADB path is
+not yet reference-runtime validated.
+## Candidate Android ADB cellular RX boundary — 2026-09-23
+
+Reference-device capability is now proven independently with scrcpy 4.1:
+`VOICE_DOWNLINK` capture from the itel P683L during a real `MODE_IN_CALL`
+session reached Ubuntu clearly; with headphones the owner observed clear audio
+and no echo.
+
+A SHUO-owned receive candidate now mirrors only the proven direct-capture shape:
+Android `MediaRecorder.AudioSource.VOICE_DOWNLINK` -> PCM16/48 kHz/stereo ->
+binary `adb shell -T` stdout. The host boundary lives under
+`shuo/benchmark/android_cellular_rx.py`, converts in memory to the unchanged
+SHUO mono mu-law/8 kHz contract, persists no raw audio, performs no call control,
+and is not imported by default production entrypoints.
+
+The candidate remains pending its own reference-runtime probe. scrcpy capability
+proof is not silently substituted for SHUO-helper runtime proof.
+## Validated Android ADB cellular RX boundary — 2026-09-23
+
+The SHUO-owned receive candidate has passed its reference-device gate. On the
+itel P683L during a real manually controlled cellular call,
+`TelephonyRxBridge` sustained `VOICE_DOWNLINK` capture and streamed
+PCM16/48 kHz/stereo over binary ADB stdout. The bounded 8-second probe consumed
+1,519,616 PCM bytes with peak RMS 4300 / average RMS 1541.0 and converted
+63,318 bytes in memory to the unchanged SHUO mono mu-law/8 kHz boundary.
+
+The receive bridge remains a dev/benchmark transport boundary. It persists no raw
+audio, performs no call control, and is not imported by default production
+entrypoints. TX and RX are now both reference-validated independently; a higher
+level closed-loop synthetic-human controller is a separate implementation/
+behavior gate.
+## Validated Android ADB cellular RX boundary — 2026-09-23
+
+The SHUO-owned receive candidate has passed its reference-device gate. On the
+itel P683L during a real manually controlled cellular call,
+`TelephonyRxBridge` sustained `VOICE_DOWNLINK` capture and streamed
+PCM16/48 kHz/stereo over binary ADB stdout. The bounded probe consumed
+1,519,616 PCM bytes, peak RMS 4300 / average RMS 1541.0, and converted 63,318
+bytes in memory to the unchanged SHUO mono mu-law/8 kHz boundary.
+
+The receive bridge remains a dev/benchmark transport boundary. It persists no raw
+audio, performs no call control, and is not imported by default production
+entrypoints. TX and RX are now both reference-validated independently; a higher
+level closed-loop synthetic-human controller is a separate gate.
+## Candidate real-cellular synthetic-human controller — 2026-09-23
+
+The independently validated itel ADB TX and RX transports are now composed by an
+opt-in dev/benchmark controller. It does not change either transport contract.
+
+```text
+itel VOICE_DOWNLINK
+-> ADB RX PCM16/48k/stereo
+-> in-memory mu-law/8k conversion
+-> observer Deepgram Flux (EOT 0.8)
+-> deterministic scenario state
+-> pre-synthesized Pocket caller PCM16/16k/mono
+-> persistent ADB Telephony Tx
+-> itel cellular uplink
+```
+
+The controller uses Flux only to observe the remote SHUO response boundary and
+to perform in-memory boolean continuity checks. It does not write response text
+or raw audio to disk. Dial/answer/hangup remain manual.
+
+Repository-level tests are baseline-clean; simultaneous real-device operation is
+the remaining qualification gate.

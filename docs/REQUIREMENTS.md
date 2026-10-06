@@ -104,3 +104,59 @@ of application/tests/providers/devices/calls, system changes, commit/push and
 Phase 2 implementation. **Product non-goals:** replacement of carriers, universal
 Android/Linux compatibility, an itel-only product, acoustic bridging, unvalidated
 codec fallback, promotional dialer work, unrelated frontend/provider migration.
+## Current owner amendment: supplemental Android cellular test transport — 2026-09-23
+
+The earlier task-specific OUT-OF-SCOPE wording above is historical. The task owner
+has now explicitly authorized implementation, test, documentation, commit and
+push of an isolated Phase-5 Android ADB synthetic-caller **transmit** harness.
+
+Permanent requirements remain unchanged: the shared SHUO/carrier boundary stays
+G.711 mu-law/8 kHz; S16LE/16 kHz/mono exists only at the isolated local device
+edge; no raw audio is persisted; manual call control remains in force for this
+harness; route selection is explicit/fail-closed; and documentation/tests ship
+with the implementation. This amendment does not by itself authorize Phase-6
+automatic call control or a caller-heard latency claim.
+## Current owner amendment: supplemental Android cellular receive candidate — 2026-09-23
+
+After direct reference-device proof that the itel P683L can expose real cellular
+`VOICE_DOWNLINK` audio to Ubuntu through shell-UID ADB capture, the owner
+explicitly authorized implementation/test/documentation/merge work for the
+isolated receive half of the Phase-5 synthetic-caller harness.
+
+Permanent restrictions are unchanged: shared/core audio remains mono G.711
+mu-law/8 kHz; raw audio is not persisted; manual call control remains in force;
+the Android capture edge is explicit and fail-closed; local/content-free probe
+metrics are not caller-heard latency evidence; and Phase 6 is not authorized by
+this amendment.
+## Android cellular receive amendment status — 2026-09-23
+
+The owner-authorized receive amendment has now satisfied its reference-device
+runtime gate. The SHUO-owned `VOICE_DOWNLINK` helper sustained a bounded real
+cellular capture and converted it in memory to the unchanged SHUO mu-law/8 kHz
+contract with no raw-audio persistence.
+
+The authorization remains scoped to the isolated Phase-5 development/benchmark
+transport. Manual call control, privacy restrictions, core codec invariants and
+the Phase-6 boundary remain unchanged.
+## Android cellular receive amendment status — 2026-09-23
+
+The owner-authorized receive amendment has now satisfied its reference-device
+runtime gate. The SHUO-owned `VOICE_DOWNLINK` helper sustained a bounded real
+cellular capture and converted it in memory to the unchanged SHUO mu-law/8 kHz
+contract with no raw-audio persistence.
+
+The authorization remains scoped to the isolated Phase-5 development/benchmark
+transport. Manual call control, privacy restrictions, core codec invariants and
+the Phase-6 boundary remain unchanged.
+## Current owner amendment: closed-loop synthetic caller test controller — 2026-09-23
+
+After independent caller-side Android cellular TX and RX qualification, the
+owner authorized an isolated Phase-5 controller that composes those media
+boundaries for deterministic real-cellular conversation testing.
+
+This authorization covers code/tests/docs and a controlled live run only. It
+does not authorize automatic dial/answer/hangup or any Phase-6 lifecycle action.
+Raw audio must remain non-persistent; response transcript text must remain
+process-private for narrow boolean checks; the shared SHUO codec contract remains
+mu-law/8 kHz; and caller-heard latency remains unmeasured unless a separately
+valid external methodology is approved.

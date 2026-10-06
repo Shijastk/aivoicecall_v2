@@ -176,3 +176,104 @@ Before changing repository code, Pocket TTS 3.1.0 and Supertonic 3 were compared
 Decision: keep ElevenLabs as the unchanged default/production-quality provider; use `TTS_PROVIDER=pocket` for cost-free functional testing and permit `TTS_FALLBACK_PROVIDER=pocket` only for the existing pre-first-audio recovery contract. Pocket is an optional Python dependency profile (`requirements-pocket-tts.txt`) rather than part of the default install. Use the ungated built-in catalog voice `alba`; custom/gated voice cloning is outside this validated path. Native Pocket PCM must remain inside the provider module and be converted to the existing mono G.711 mu-law/8 kHz boundary. Remove eSpeak as a selectable runtime provider while preserving its historical evidence in documentation.
 
 The first real-package CI attempt supplied an `hf://...wav` prompt and failed because Pocket correctly treated it as gated voice cloning. That evidence directly drove the correction to built-in alias `alba`; no speculative workaround or credential was added. The subsequent source validation passed real Pocket synthesis, focused regression, the full Bluetooth suite, and the exact historical full-suite failure baseline. Final merge still requires the same automated gate against the final documentation/source snapshot. Manual reference-hardware validation remains required for caller-heard clarity, simultaneous CPU load, interruption/cancellation and cleanup. This decision does not accept Phase 5 and does not authorize Phase 6.
+## BT-D29 — isolate the reference-proven ADB Telephony-Tx synthetic caller — 2026-09-23
+
+Owner-authorized reference evidence proved that a shell-UID `app_process`
+helper on the itel P683L can route S16LE/16 kHz/mono to the actual Android
+`TYPE_TELEPHONY` sink during a manually controlled real cellular call, and that
+the remote Galaxy A10 hears generated speech clearly.
+
+Decision: preserve that capability only as an opt-in Phase-5 development/
+benchmark boundary. Feed it through the existing Pocket provider contract and
+`BluetoothOutboundCodec`; do not add PCM to the shared carrier core, do not use
+Vobiz for this path, do not add automatic dial/answer/hangup, do not persist raw
+audio, and fail closed unless the actual Android route is telephony. Keep one
+helper alive for multi-turn work rather than paying process/route startup on each
+utterance.
+
+The observed local Pocket-ready/first-PCM timings remain local-only evidence.
+Reverse/downlink capture must be runtime-proven independently before it becomes a
+supported receive bridge or the caller is described as fully automated.
+## BT-D30 — implement receive candidate only after independent downlink proof — 2026-09-23
+
+The reference itel P683L / Android 13 has now demonstrated real cellular
+downlink capture independently through upstream scrcpy 4.1. During an active
+manual call, `voice-call-downlink --require-audio` delivered Galaxy A10 speech
+clearly to Ubuntu; headphone monitoring removed the observed acoustic echo.
+
+Decision: permit a SHUO-owned Phase-5 receive **candidate** that mirrors the
+proven direct capture source/format, keeps raw audio only in transit/in memory,
+converts at the isolated benchmark edge to the existing mu-law/8 kHz SHUO
+contract, performs no automatic call control, and remains outside default
+production entrypoints.
+
+Do not mark the SHUO receive helper validated merely because scrcpy works. Its
+own `STREAM_READY` + non-silent content-free reference probe is required before
+merge/qualification. No receive latency claim follows from this decision.
+## BT-D31 — qualify SHUO-owned Android cellular RX on reference device — 2026-09-23
+
+The owner completed the required independent live gate for
+`TelephonyRxBridge` on the itel P683L. The bounded 8-second probe consumed
+1,519,616 PCM bytes over 371 chunks, observed peak RMS 4300 / average RMS
+1541.0, and converted 63,318 bytes to the existing SHUO mu-law/8 kHz boundary.
+No raw audio was persisted and no speech content was logged.
+
+Decision: promote the receive helper from candidate to reference-qualified
+Phase-5 development/benchmark transport, subject to final repository regression
+after the evidence/docs commit. This qualifies only the receive transport
+boundary; it does not automate call control, accept Phase 5, authorize Phase 6,
+or establish caller-heard latency.
+## BT-D31 — qualify SHUO-owned Android cellular RX on reference device — 2026-09-23
+
+The owner completed the required independent live gate for
+`TelephonyRxBridge` on the itel P683L. The bounded probe consumed 1,519,616
+PCM bytes over 371 chunks, observed peak RMS 4300 / average RMS 1541.0, and
+converted 63,318 bytes to the existing SHUO mu-law/8 kHz boundary. No raw audio
+was persisted and no speech content was logged.
+
+Decision: promote the receive helper from candidate to reference-qualified
+Phase-5 development/benchmark transport, subject to final repository regression
+after the evidence/docs commit. This qualifies only the receive transport
+boundary; it does not automate call control, accept Phase 5, authorize Phase 6,
+or establish caller-heard latency.
+## BT-D32 — compose validated Android RX/TX only behind a live-gated controller — 2026-09-23
+
+The owner authorized direct implementation of the next synthetic-caller layer
+after both Android cellular media directions passed independently.
+
+Decision: compose the existing RX/TX boundaries in a deterministic Phase-5
+dev/benchmark controller, not in production call-control code. Keep call
+establishment/hangup manual, pre-synthesize caller stimuli only in memory, use a
+separate Flux observer at the approved 0.8 threshold, serialize no response
+transcript, and make no caller-heard latency claim.
+
+Repository validation is necessary but not sufficient. The branch must remain
+unmerged until simultaneous real-cellular RX/TX and the scripted pause/barge-in/
+continuity scenario pass on the reference itel/Galaxy/SHUO path.
+
+## 2026-09-26 — Prime first-turn LLM path only by explicit Bluetooth opt-in
+
+Decision: add default-off `--llm-warmup` to the manual Bluetooth runner. It
+warms the Agent's existing streaming LLM client with one static `ping` request
+capped at one generated token. It sends no digital-twin prompt, history or caller
+content and mutates no conversation state. Failure/timeout is fail-open to the
+normal final-EOT path; cancellation propagates.
+
+Reason: owner-supplied logs show a substantially slower first local LLM/TTS
+startup than later turns. Existing prepared-response reuse remains
+evidence-gated and is not enabled as a substitute, especially while Flux
+turn-fragmentation remains unresolved. The warmup is a narrower test of the
+observed first-request cold-path hypothesis and preserves carrier/default
+behavior.
+
+## 2026-09-26 — Pre-arm the synthetic caller before manual call establishment
+
+Decision: add default-off `--prepare-before-call` to the Phase-5 dev controller.
+It pre-synthesizes the fixed Pocket script into process memory and compiles/pushes
+the Android bridges before the real call. It then waits for explicit operator
+Enter after the call is manually established and Terminal 0 is ready, reruns
+strict MODE_IN_CALL preflight, and only then starts TX/RX/observer/scenario.
+
+Reason: owner observation plus source review proved the visible 5-10 second delay
+before the first synthetic question was harness setup after call connection, not
+SHUO first-response latency. The two latency questions must remain separate.
