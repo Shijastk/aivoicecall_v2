@@ -1419,3 +1419,31 @@ Push run `37450035665` and PR run `37450040531` both passed. PR evidence:
 - `git diff --check origin/main...HEAD`: PASS.
 
 A fresh exact-head workflow is still required after documentation changes.
+
+
+### Local barge-in prefix shadow diagnostic — 2026-10-06
+
+The candidate adds an opt-in diagnostic only:
+
+`--diagnose-local-barge-in-probes`
+
+When local Malayalam STT is selected, the worker retains at most 32 bounded
+speech prefixes in memory. On worker shutdown, after the live call is already
+ending, the existing IndicConformer probes 256/384/512 ms prefixes and emits
+content-free metadata only: final transcript character count, start
+qualification/RMS, prefix transcript character counts, and probe ASR timings.
+
+No prefix transcript text or raw audio is persisted. The diagnostic is rejected
+outside `speech-provider=local-malayalam`.
+
+Exact pre-documentation head `9fa8febe13275f572e483ca1769efd382939564e`
+passed the PR workflow on Python 3.12 and 3.14:
+
+- Python 3.12: 123 focused, 173 Bluetooth, 1077 full passes plus exactly the
+  four historical failures, `FULL_SUITE_BASELINE_CLEAN`;
+- Python 3.14: 123 focused, 173 Bluetooth, 1077 full passes plus exactly the
+  four historical failures, `FULL_SUITE_BASELINE_CLEAN`;
+- diff validation passed.
+
+This gate validates diagnostic plumbing only. It does not establish the best
+barge-in threshold, prove echo, or justify an ASR/VAD/AEC replacement.
