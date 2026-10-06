@@ -180,7 +180,8 @@ async def test_shadow_llm_uses_history_snapshot_without_mutating_it(monkeypatch)
         {"role": "user", "content": "new question"},
     ]
     assert client.chat.completions.kwargs["extra_body"] == {
-        "reasoning_effort": "none"
+        "reasoning_effort": "none",
+        "reasoning_format": "hidden",
     }
     assert stream.closed is True
 
