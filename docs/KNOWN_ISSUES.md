@@ -435,4 +435,3 @@ The candidate now centralizes END-frame construction in a pure
 `format_end_frame` helper and executes that exact path in
 `tests/test_local_malayalam_speech.py`. The prior green CI run is retained as
 historical repository evidence but is not sufficient for the corrected head.
-
