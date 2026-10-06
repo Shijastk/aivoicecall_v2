@@ -1365,3 +1365,32 @@ samples with absolute amplitude >=32700. No raw audio is persisted.
 Hardware-free tests assert that the observer receives the same post-codec bytes
 as the session write, that pre/post buffers share checkpoint/cancel boundaries,
 and that both verifier frame formats expose bounded content-free level metrics.
+
+
+### Pocket anti-alias regression gate — 2026-10-06
+
+The Pocket conversion regression now pins two properties that the prior duration
+test did not cover:
+
+1. splitting one 24 kHz Pocket waveform across arbitrary streaming chunk
+   boundaries must produce byte-identical mu-law output to converting the same
+   waveform as one chunk;
+2. a 6 kHz input component, which is above the 4 kHz Nyquist limit of the locked
+   8 kHz SHUO representation, must be strongly attenuated relative to an in-band
+   1 kHz component before mu-law encoding.
+
+Exact candidate head before this documentation amendment:
+`5d65ed3d172bc7fe1a58004b53aa42bc7396a424`.
+
+GitHub Actions push run `37447949940` and PR run `37447956114` both completed
+successfully. PR-run evidence:
+
+- Python 3.12: 113 focused passed, 171 Bluetooth passed, full repository 1067
+  passed plus exactly the four documented historical failures,
+  `FULL_SUITE_BASELINE_CLEAN`;
+- Python 3.14: 113 focused passed, 171 Bluetooth passed, full repository 1067
+  passed plus exactly the four documented historical failures,
+  `FULL_SUITE_BASELINE_CLEAN`.
+
+A fresh exact-head gate is still required after documentation changes before the
+next live call.
