@@ -5,6 +5,7 @@ on:
     branches:
       - feat/phase5-adb-cellular-closed-loop
       - feat/local-malayalam-stt
+      - feat/local-malayalam-stt-tts-latency
   pull_request:
   workflow_dispatch:
 
@@ -41,6 +42,8 @@ jobs:
             shuo/bluetooth/production.py \
             shuo/services/local_malayalam_speech.py \
             shuo/services/local_malayalam_speech_worker.py \
+            shuo/services/phrase_buffer.py \
+            shuo/services/tts_pocket.py \
             scripts/run_bluetooth_ai.py \
             shuo/benchmark/android_cellular_loop.py \
             scripts/dev/18_android_cellular_closed_loop.py \
@@ -84,6 +87,7 @@ jobs:
             tests/test_bluetooth_phase4d.py \
             tests/test_bluetooth_production.py \
             tests/test_bluetooth_phase4c.py \
+            tests/test_tts_pocket.py \
             -p no:cacheprovider
 
       - name: Bluetooth regression
