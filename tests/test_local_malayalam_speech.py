@@ -642,8 +642,13 @@ def test_barge_probe_frame_is_content_free_and_reports_prefix_asr():
 
 
 @pytest.mark.asyncio
-async def test_barge_probe_protocol_is_logged_without_forwarding_turn(caplog):
+async def test_barge_probe_protocol_is_logged_without_forwarding_turn(monkeypatch):
     rec = Recorder()
+    logged = []
+    monkeypatch.setattr(
+        "shuo.services.local_malayalam_speech.log.info",
+        logged.append,
+    )
     service = LocalMalayalamSpeechService(
         rec.end,
         rec.start,
@@ -666,8 +671,10 @@ async def test_barge_probe_protocol_is_logged_without_forwarding_turn(caplog):
 
     assert rec.starts == 0
     assert rec.ends == []
-    assert "Local Malayalam BargeProbe" in caplog.text
-    assert "p512_chars=0" in caplog.text
+    assert len(logged) == 1
+    assert "Local Malayalam BargeProbe" in logged[0]
+    assert "p512_chars=0" in logged[0]
+    assert "ഹലോ" not in logged[0]
 
 
 def test_barge_probe_durations_must_be_unique_ascending_and_bounded():
