@@ -416,3 +416,23 @@ The 320 ms commit window is a controlled candidate, not a proven optimal value.
 Live cellular validation is still required. Phase 5 remains unaccepted and no
 caller-heard latency claim follows.
 \n
+## Local STT END-frame NameError escaped repository CI — 2026-10-06
+
+The first live run of the segmentation/latency candidate exposed a worker-only
+runtime defect that the initial repository gate did not execute. The worker
+assigned the buffered segment duration to `audio_ms` but formatted the emitted
+END protocol frame using `buffered_audio_ms`. Python compilation succeeds with
+an unresolved local name, so `py_compile` did not detect the defect. Existing
+unit coverage exercised `SpeechTurnBuffer` and the parent metadata parser but
+did not execute the worker END-frame construction path.
+
+Observed live sequence: the worker reached READY and emitted START for real HFP
+speech, then exited at the first attempted committed END frame. The parent
+correctly failed closed on the next send with
+`LocalMalayalamSpeechError: Local Malayalam STT is not active`.
+
+The candidate now centralizes END-frame construction in a pure
+`format_end_frame` helper and executes that exact path in
+`tests/test_local_malayalam_speech.py`. The prior green CI run is retained as
+historical repository evidence but is not sufficient for the corrected head.
+
