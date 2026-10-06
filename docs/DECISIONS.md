@@ -301,3 +301,19 @@ Consequence: this decision authorizes only the opt-in Bluetooth implementation
 and its controlled validation. It does not replace carrier/V2 Flux, accept
 Phase 5, prove live cellular accuracy, authorize Phase 6, or create a
 caller-heard latency claim.
+
+## BT-D34 — Permit main integration after exact repository gate without accepting Phase 5 — 2026-10-06
+
+Owner decision: the current default-off feature implementation may be integrated
+into `main` after its exact head passes the established Python 3.12/3.14
+repository workflow.
+
+This is a source-integration decision only. It does not reinterpret any failed
+live observation, mark Phase 4 or Phase 5 accepted, enable speculative/local
+providers by default, authorize automated call control or Phase 6, or support a
+caller-heard latency claim.
+
+The earlier closed-loop "do not merge from CI alone" hold remains part of the
+historical record. This later owner authorization supersedes only the merge hold,
+subject to the full CI gate and preservation of all existing runtime/safety
+restrictions.
