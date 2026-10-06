@@ -189,8 +189,11 @@ class PocketTTSService:
     """
 
     # Pocket sounds unnatural when every ~24 chars are synthesised as a
-    # separate utterance. Keep normal short conversational sentences
-    # together; commas may release only after a useful clause length.
+    # separate utterance. Keep steady-state conversational sentences together,
+    # but bound only the first phrase more tightly so token streaming can reach
+    # native synthesis without waiting for a 128-character prefix.
+    FIRST_PHRASE_CHARS = 48
+    FIRST_PHRASE_MIN_SOFT_CHARS = 32
     PHRASE_CHARS = 128
     PHRASE_MIN_SOFT_CHARS = 80
 
@@ -215,7 +218,12 @@ class PocketTTSService:
         self._running = False
         self._fatal_error: Optional[str] = None
         self._warm_idle_started_at: Optional[float] = None
-        self._buffer = BoundedPhraseBuffer(self.PHRASE_CHARS, min_soft_chars=self.PHRASE_MIN_SOFT_CHARS)
+        self._buffer = BoundedPhraseBuffer(
+            self.PHRASE_CHARS,
+            min_soft_chars=self.PHRASE_MIN_SOFT_CHARS,
+            first_max_chars=self.FIRST_PHRASE_CHARS,
+            first_min_soft_chars=self.FIRST_PHRASE_MIN_SOFT_CHARS,
+        )
         self._done_emitted = False
         self._lock = asyncio.Lock()
         self._cancel_event: Optional[threading.Event] = None
@@ -241,7 +249,12 @@ class PocketTTSService:
     ) -> None:
         self._on_audio = on_audio
         self._on_done = on_done
-        self._buffer = BoundedPhraseBuffer(self.PHRASE_CHARS, min_soft_chars=self.PHRASE_MIN_SOFT_CHARS)
+        self._buffer = BoundedPhraseBuffer(
+            self.PHRASE_CHARS,
+            min_soft_chars=self.PHRASE_MIN_SOFT_CHARS,
+            first_max_chars=self.FIRST_PHRASE_CHARS,
+            first_min_soft_chars=self.FIRST_PHRASE_MIN_SOFT_CHARS,
+        )
         self._done_emitted = False
         self._fatal_error = None
         self._cancel_event = None
@@ -326,7 +339,12 @@ class PocketTTSService:
 
     async def cancel(self) -> None:
         self._running = False
-        self._buffer = BoundedPhraseBuffer(self.PHRASE_CHARS, min_soft_chars=self.PHRASE_MIN_SOFT_CHARS)
+        self._buffer = BoundedPhraseBuffer(
+            self.PHRASE_CHARS,
+            min_soft_chars=self.PHRASE_MIN_SOFT_CHARS,
+            first_max_chars=self.FIRST_PHRASE_CHARS,
+            first_min_soft_chars=self.FIRST_PHRASE_MIN_SOFT_CHARS,
+        )
         cancel_event = self._cancel_event
         if cancel_event is not None:
             cancel_event.set()
