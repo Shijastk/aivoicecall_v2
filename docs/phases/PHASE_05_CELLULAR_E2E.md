@@ -296,4 +296,3 @@ The diagnostic remains within Phase-5 restrictions:
 
 Use this together with the existing caller-ASR trace to compare what SHUO heard
 from the caller with what Pocket actually rendered into the outbound audio path.
-
