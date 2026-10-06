@@ -515,3 +515,27 @@ semantics.
 These thresholds are evidence-driven candidates for the reference HFP path, not
 universal hardware claims. A controlled live retest is required before declaring
 voice-cut behavior fixed.
+
+
+## High-energy false barge-in source still unproven — shadow probe added
+
+The fix-6 live run showed that duration+RMS qualification removes several
+low-energy false starts, but it does not distinguish all false interruptions.
+Some Agent cancellations were followed by final local-ASR transcript length 0
+despite start RMS values well above the current qualification threshold.
+
+This does not, by itself, prove acoustic echo, background noise, or caller speech.
+The candidate therefore does not raise the RMS threshold, replace Silero, replace
+IndicConformer, or enable AEC based on that observation alone.
+
+An explicit local-only diagnostic,
+`--diagnose-local-barge-in-probes`, now retains only bounded 256/384/512 ms
+speech prefixes in worker memory and runs the existing IndicConformer on those
+prefixes only after the operator stops the call. It emits only content-free
+prefix transcript character counts and ASR timings. Raw prefix audio is never
+written to disk and the diagnostic does not delay live call processing.
+
+The goal is to measure whether the current offline IndicConformer can reliably
+separate genuine caller interruptions from the false-start population early
+enough to justify semantic barge-in qualification. A controlled silence-during-
+AI-speech call is also required before calling the false starts echo.
