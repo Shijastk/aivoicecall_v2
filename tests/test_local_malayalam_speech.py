@@ -11,7 +11,8 @@ from shuo.services.local_malayalam_speech_worker import (
     FRAME_BYTES,
     SpeechTurnBuffer,
     format_end_frame,
-    format_verify_frame,
+    format_verify_mulaw_frame,
+    format_verify_pcm_frame,
     transcribe_mulaw8,
 )
 
@@ -346,6 +347,9 @@ def test_worker_end_frame_builder_executes_runtime_metadata_path():
     assert base64.b64decode(parts[1]).decode("utf-8") == text
     metadata = dict(field.split("=", 1) for field in parts[2:])
     assert metadata["buffered_audio_ms"] == "100"
+    assert int(metadata["peak"]) >= 0
+    assert float(metadata["rms"]) >= 0
+    assert float(metadata["near_full_scale_ratio"]) >= 0
     assert metadata["asr_ms"] == "87.2"
     assert metadata["reason"] == "vad_silence"
     assert int(metadata["peak"]) >= 0
@@ -357,7 +361,7 @@ def test_tts_verify_frame_builder_executes_runtime_protocol_path():
     mulaw = b"\xff" * 800
     text = "ഇത് ടെസ്റ്റ് ശബ്ദമാണ്"
 
-    frame = format_verify_frame(
+    frame = format_verify_mulaw_frame(
         "7",
         text,
         mulaw,
@@ -391,3 +395,25 @@ def test_tts_verify_mulaw_path_calls_asr_at_16khz():
     assert result == "വെരിഫൈ"
     assert model.sample_rate == 16000
     assert len(model.samples) > 800
+
+
+
+def test_tts_verify_pcm_frame_reports_post_codec_metrics():
+    pcm = b"\x00\x00" * 1600
+    text = "പോസ്റ്റ് കോഡെക്"
+
+    frame = format_verify_pcm_frame(
+        "8",
+        text,
+        pcm,
+    )
+
+    parts = frame.split("\t")
+    assert parts[0] == "VERIFY"
+    assert parts[1] == "8"
+    assert base64.b64decode(parts[2]).decode("utf-8") == text
+    metadata = dict(field.split("=", 1) for field in parts[3:])
+    assert metadata["buffered_audio_ms"] == "100"
+    assert metadata["peak"] == "0"
+    assert metadata["rms"] == "0.0"
+    assert metadata["near_full_scale_ratio"] == "0.00000000"
