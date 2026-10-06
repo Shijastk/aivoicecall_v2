@@ -653,4 +653,24 @@ required property differs.
   `f0a02e5e841f64821f873bec0649ffc4360298c4`.
 - This is repository integration only: Phase 5 is not accepted, prior live FAIL
   evidence is unchanged, Phase 6 is unauthorized, and caller-heard latency
-  remains unmeasured.
+  remains unmeasured.\n### 2026-10-06 — local Malayalam live trace localized turn fragmentation; fix candidate opened
+
+- Transcript-bearing local trace from `phase5-local-malayalam-live-1` showed
+  useful complete Malayalam turns alongside repeated partial/adjacent turns.
+- A representative split was `നാളെ` followed by
+  `ഒരു മീറ്റിഗ ഉണ്ട് അത് വൈകുന്നേരത്തേക്ക് മാറ്റണം`; a later complete turn was
+  `നാളെ ഒരു മീറ്റിങ് ഉണ്ട് അത് വൈകുന്നേരത്തേക്ക് മാറ്റണം`.
+- Code-mixed Malayalam/English recognition remains weaker and is not declared
+  solved; the current candidate does not swap ASR models without A/B evidence.
+- Branch `feat/local-malayalam-stt-tts-latency` separates Silero acoustic end
+  from conversational EOT with a bounded 320 ms commit window and adds
+  content-free segment duration/ASR/energy diagnostics.
+- Pocket keeps its 128/80 steady-state phrase policy but uses a 48/32 first-only
+  phrase bound to expose first audio sooner when LLM text is already streaming.
+- CI/CD workflow now covers these files/tests on Python 3.12 and 3.14 plus the
+  existing Bluetooth/full-suite historical-baseline gates.
+- Caller-heard latency remains unmeasured; the requested <500 ms goal may only be
+  evaluated against explicitly defined host-side milestones until external
+  mouth-to-ear timing exists. Phase 5 remains not accepted and Phase 6 remains
+  unauthorized.
+\n
