@@ -409,4 +409,9 @@ class Agent:
         if not self._response:
             return
         text, self._response = "".join(self._response), []
+        self._tracer.set_agent_text(
+            self._turn,
+            text,
+            interrupted=interrupted,
+        )
         self._recorder.agent_said(text, turn=self._turn, interrupted=interrupted)
