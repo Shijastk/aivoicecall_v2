@@ -731,3 +731,23 @@ required property differs.
   passed both push and PR CI on Python 3.12/3.14 before this docs amendment:
   113 focused, 171 Bluetooth, 1067 full passes plus exactly the four historical
   failures on each matrix, with `FULL_SUITE_BASELINE_CLEAN`.
+
+
+### 2026-10-06 — false local barge-in confirmed and bounded candidate added
+
+- `phase5-local-ml-stt-tts-fix-5` showed Agent cancellations 8 ms and 26 ms
+  after Agent start from new local START callbacks.
+- A later cancellation was followed by an empty transcript with low RMS, and a
+  separate RMS-45 one-character segment had previously triggered a full Agent
+  response.
+- Root cause is localized to the local Malayalam path promoting raw Silero
+  acoustic START directly to conversational barge-in; shared state-machine and
+  carrier/Deepgram semantics remain unchanged.
+- Candidate behavior: 128 ms rolling START qualification, RMS >=500, plus a
+  local-only 200 ms post-EndOfTurn residual-start guard.
+- Unqualified local turns are not forwarded to the Agent.
+- Code/test head `9d3500685a68696c2cbed3b796df3a060c23ae77` passed Python
+  3.12/3.14 CI with 118 focused, 171 Bluetooth, 1072 full passes plus exactly
+  the historical four failures and `FULL_SUITE_BASELINE_CLEAN`.
+- Latency tuning remains intentionally separate until the cut fix passes a live
+  retest. Phase 5 remains not accepted and Phase 6 remains unauthorized.
