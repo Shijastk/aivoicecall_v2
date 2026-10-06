@@ -688,3 +688,16 @@ required property differs.
 - The correction introduces a pure `format_end_frame` seam and an exact
   regression test. All CI evidence before this correction is historical only;
   the corrected exact head requires a fresh Python 3.12/3.14 gate.
+### 2026-10-06 — outbound Pocket TTS audio transcript diagnostic added
+
+- Owner clarified that saving LLM-generated response text is not sufficient;
+  the needed evidence is a transcript derived from the audio Pocket actually
+  produced.
+- The candidate now observes successfully dispatched post-Player mu-law/8 kHz
+  frames at the Bluetooth outbound boundary.
+- Raw response audio stays bounded in memory and is never written to disk.
+- After call teardown, a fresh isolated IndicConformer verifier transcribes the
+  captured outbound segments and writes only text/metadata to
+  `/tmp/shuo/<call-id>-tts-outbound-transcript.json`.
+- This is pre-Bluetooth-codec digital evidence, not a remote caller-heard claim.
+
