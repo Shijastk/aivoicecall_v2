@@ -276,3 +276,24 @@ fragmentation is reduced without swallowing legitimate short speech, Pocket
 audio/cancellation remains correct, mixed-language ASR limitations are recorded,
 and the relevant host-side timing distribution is measured rather than inferred.
 \n
+## Owner-requested TTS heard-output diagnostic — 2026-10-06
+
+To distinguish a correct LLM answer from a Pocket TTS pronunciation/rendering
+problem, the current candidate adds an explicit local diagnostic that
+ASR-transcribes the actual outbound TTS audio after the call rather than saving
+the generated LLM text.
+
+The diagnostic remains within Phase-5 restrictions:
+
+- manual call control only;
+- no raw audio file;
+- bounded in-memory audio only;
+- text-only local result artifact;
+- no carrier/shared-core codec change;
+- no state-machine change;
+- verifier execution only after live call teardown;
+- no claim that pre-Bluetooth digital audio equals remote caller-heard audio.
+
+Use this together with the existing caller-ASR trace to compare what SHUO heard
+from the caller with what Pocket actually rendered into the outbound audio path.
+
