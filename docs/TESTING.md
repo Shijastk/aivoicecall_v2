@@ -1349,4 +1349,3 @@ historical full-suite baseline verification, and `git diff --check`.
 A green repository gate proves the diagnostic plumbing only. The resulting ASR
 transcript is an approximation of the dispatched digital TTS audio. It is not an
 authoritative handset- or remote-caller-heard transcript.
-
