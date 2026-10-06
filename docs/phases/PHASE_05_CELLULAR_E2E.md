@@ -200,3 +200,31 @@ content checks and content-free timings/counts leave the process.
 Repository tests have passed, but the controller remains a candidate until the
 combined real-cellular run succeeds. This does not alter the remaining formal
 Phase-5 quantitative latency/echo acceptance gate.
+## Owner amendment — 2026-10-06: opt-in local Malayalam Bluetooth STT
+
+The task owner approved investigation of a free/local Malayalam STT path after
+the existing Bluetooth call path was confirmed to use Deepgram
+`flux-general-en`, which was not suitable evidence for Malayalam recognition.
+
+The resulting candidate is intentionally narrower than a provider migration:
+
+- default Bluetooth behavior remains `deepgram-flux`;
+- `--speech-provider local-malayalam` is explicit opt-in;
+- the local runtime uses Silero VAD plus Malayalam IndicConformer in an isolated
+  subprocess environment;
+- `SHUO_LOCAL_STT_PYTHON` and `SHUO_MALAYALAM_STT_MODEL_DIR` are required;
+- no user-specific filesystem defaults are allowed in source;
+- no raw audio is persisted by the worker;
+- the shared SHUO boundary remains G.711 mu-law/8 kHz;
+- carrier/V2 behavior and the pure state machine remain unchanged;
+- Deepgram-specific speculative/eager controls are rejected in local mode.
+
+Controlled offline evidence on 2026-10-06 produced the same Malayalam transcript
+from direct IndicConformer and the complete SHUO local path, with one
+StartOfTurn and one EndOfTurn. Repository CI rehearsal was historical-baseline
+clean.
+
+This evidence authorizes proceeding only to the next controlled live
+Bluetooth/cellular validation after GitHub Actions passes. It does not establish
+live-call Malayalam accuracy, caller-heard latency, broad compatibility, Phase 5
+acceptance or Phase 6 authorization.

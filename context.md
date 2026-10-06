@@ -593,3 +593,21 @@ required property differs.
   `FULL_SUITE_BASELINE_CLEAN` and diff validation passed on both matrices.
 - No live-device/provider execution occurred in CI; runtime seed-start reduction
   remains to be measured.
+### 2026-10-06 — local Malayalam Bluetooth STT candidate validated offline
+
+- Added explicit `speech_provider=local-malayalam` while preserving
+  `deepgram-flux` as the default.
+- Local speech processing is isolated in a separate worker using Silero VAD and
+  Malayalam IndicConformer.
+- Removed initial machine-specific `/home/shijas/...` runtime defaults; operator
+  configuration is now mandatory through `SHUO_LOCAL_STT_PYTHON` and
+  `SHUO_MALAYALAM_STT_MODEL_DIR`.
+- Controlled Malayalam utterance produced identical meaningful text in direct
+  IndicConformer and the complete SHUO local path:
+  `ഹലോ നാളെ മീറ്റിംഗ് റീഷെഡ്യൂൾ ചെയ്യണം`.
+- Complete path emitted exactly one StartOfTurn and one EndOfTurn.
+- Local CI rehearsal: focused 81 passed; Bluetooth 166 passed; full repository
+  1048 passed plus the exact four historical failures; baseline verification,
+  portability guard, compile/CLI smoke and diff validation all passed.
+- Live cellular validation remains pending. Phase 5 is not accepted, Phase 6 is
+  not authorized, and caller-heard latency remains unmeasured.

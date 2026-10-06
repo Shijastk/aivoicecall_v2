@@ -362,3 +362,26 @@ An explicit `--prepare-before-call` path moves that work before call
 establishment and waits for manual operator confirmation before strict active-call
 preflight and scenario start. Live reduction of call-connected-to-seed delay is
 not yet measured.
+## Malayalam STT scope clarification — 2026-10-06
+
+The older statement that Malayalam speech recognition is not established remains
+true for the existing carrier/V2 `FluxService`, which still uses
+`flux-general-en`.
+
+A narrower Bluetooth-only exception now exists behind explicit
+`speech_provider=local-malayalam`. On the reference development machine, a
+controlled Malayalam utterance passed both direct IndicConformer recognition and
+the complete SHUO local worker path with matching transcript and one start/end
+turn pair.
+
+This does not resolve:
+
+- carrier/V2 Malayalam STT;
+- live cellular Malayalam accuracy;
+- code-mixed Malayalam/English accuracy;
+- broad speaker/device/noise robustness;
+- caller-heard latency;
+- the previously observed real-call turn fragmentation problem.
+
+Treat the Bluetooth local path as reference-offline validated and live-cellular
+pending, not as a global Malayalam-STT resolution.

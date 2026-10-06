@@ -1162,3 +1162,45 @@ passed GitHub Actions run `36223200306` on Python 3.12 and 3.14.
 CI used no live phones, provider credentials or real cellular call. Therefore the
 new pre-call orchestration is repository/regression validated, while the actual
 call-connected-to-seed delay reduction remains a reference-device runtime gate.
+## Local Malayalam Bluetooth STT candidate — 2026-10-06
+
+The opt-in local Malayalam Bluetooth speech path was validated first outside a
+live cellular call.
+
+Reference utterance:
+
+`ഹലോ, നാളെ മീറ്റിംഗ് റീഷെഡ്യൂൾ ചെയ്യണം.`
+
+Direct IndicConformer result:
+
+`ഹലോ നാളെ മീറ്റിംഗ് റീഷെഡ്യൂൾ ചെയ്യണം`
+
+The same audio through the SHUO-compatible path
+PCM16/16 kHz -> mu-law/8 kHz -> local worker -> PCM16/16 kHz -> Silero VAD ->
+IndicConformer produced the same transcript, with exactly one StartOfTurn and
+one EndOfTurn and `REALTIME_LOCAL_STT=PASS`.
+
+After removal of machine-specific runtime defaults, the local repository CI
+rehearsal produced:
+
+- compile gate: PASS
+- Bluetooth/local CLI smoke: PASS
+- local STT portability guard: PASS
+- focused CI selection: **81 passed, 3 warnings**
+- complete Bluetooth regression: **166 passed, 3 warnings**
+- full repository: **1048 passed, 4 failed, 4 warnings**
+- the four failures matched the exact documented historical failure identities
+  and signatures
+- `FULL_SUITE_BASELINE_CLEAN`: PASS
+- `git diff --check`: PASS
+- `LOCAL_CI_REHEARSAL=PASS`
+
+The four retained historical failures were:
+
+- `scripts/test_v2_keys.py::test_shunya_key`
+- `scripts/test_v2_keys.py::test_azure_key`
+- `tests/test_config_api.py::TestIsolation::test_the_call_server_has_no_config_routes`
+- `tests/test_test_call.py::TestTheProcessSplitSurvives::test_the_call_server_has_no_test_call_routes`
+
+No live Bluetooth device, cellular call, provider credential or caller-heard
+latency measurement was exercised by this repository gate.

@@ -420,3 +420,37 @@ or raw audio to disk. Dial/answer/hangup remain manual.
 
 Repository-level tests are baseline-clean; simultaneous real-device operation is
 the remaining qualification gate.
+## Opt-in local Malayalam Bluetooth speech path — 2026-10-06
+
+Bluetooth production now has an explicit `speech_provider=local-malayalam`
+option in addition to the existing default `deepgram-flux` path.
+
+The local path is isolated behind `LocalMalayalamSpeechService` and a subprocess
+worker so the main SHUO virtualenv does not need ONNX Runtime, Silero VAD or
+IndicConformer dependencies. The operator must explicitly provide:
+
+- `SHUO_LOCAL_STT_PYTHON`
+- `SHUO_MALAYALAM_STT_MODEL_DIR`
+
+No machine-specific filesystem path is embedded in source. Missing configuration
+fails closed.
+
+The worker accepts the existing SHUO G.711 mu-law/8 kHz inbound boundary,
+converts it in memory to PCM16/16 kHz, applies Silero VAD, and sends completed
+speech to the Malayalam IndicConformer model. It emits start/end turn callbacks
+back through the same structural conversation seam already used by the Bluetooth
+production path. The pure state machine and the carrier/browser paths are
+unchanged.
+
+Reference offline runtime evidence supplied by the task owner:
+
+- direct IndicConformer transcript:
+  `ഹലോ നാളെ മീറ്റിംഗ് റീഷെഡ്യൂൾ ചെയ്യണം`
+- complete SHUO local path transcript:
+  `ഹലോ നാളെ മീറ്റിംഗ് റീഷെഡ്യൂൾ ചെയ്യണം`
+- one StartOfTurn and one EndOfTurn for the controlled utterance
+- `REALTIME_LOCAL_STT=PASS`
+
+This is not live cellular qualification, universal Malayalam accuracy evidence,
+or caller-heard latency evidence. The default Bluetooth provider remains
+`deepgram-flux`; local Malayalam is explicit opt-in only.

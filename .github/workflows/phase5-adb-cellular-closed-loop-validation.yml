@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - feat/phase5-adb-cellular-closed-loop
+      - feat/local-malayalam-stt
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -37,6 +39,8 @@ jobs:
             shuo/services/llm.py \
             shuo/agent.py \
             shuo/bluetooth/production.py \
+            shuo/services/local_malayalam_speech.py \
+            shuo/services/local_malayalam_speech_worker.py \
             scripts/run_bluetooth_ai.py \
             shuo/benchmark/android_cellular_loop.py \
             scripts/dev/18_android_cellular_closed_loop.py \
@@ -53,7 +57,18 @@ jobs:
           grep -q "prepare-before-call" /tmp/loop-help.txt
           PYTHONPATH=. python scripts/run_bluetooth_ai.py --help >/tmp/bt-help.txt
           grep -q "llm-warmup" /tmp/bt-help.txt
+          grep -q "speech-provider" /tmp/bt-help.txt
+          grep -q "local-malayalam" /tmp/bt-help.txt
           grep -q "CALL" /tmp/loop-help.txt || true
+
+      - name: Local Malayalam STT portability guard
+        run: |
+          if grep -nE '/home/shijas|indic-stt-test|indic-stt-models'             shuo/services/local_malayalam_speech.py             shuo/services/local_malayalam_speech_worker.py; then
+            echo "machine-specific local STT path found in source"
+            exit 1
+          fi
+          grep -q "SHUO_LOCAL_STT_PYTHON"             shuo/services/local_malayalam_speech.py
+          grep -q "SHUO_MALAYALAM_STT_MODEL_DIR"             shuo/services/local_malayalam_speech.py
 
       - name: Focused closed-loop and Android transport tests
         env:
@@ -65,6 +80,7 @@ jobs:
             tests/test_android_cellular_rx.py \
             tests/test_android_cellular_tx.py \
             tests/test_bluetooth_codec.py \
+            tests/test_local_malayalam_speech.py \
             tests/test_bluetooth_phase4d.py \
             tests/test_bluetooth_production.py \
             tests/test_bluetooth_phase4c.py \

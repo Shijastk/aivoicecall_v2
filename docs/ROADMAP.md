@@ -372,3 +372,18 @@ interruptions and continuity checks.
 Do not merge/qualify this controller from CI alone. A successful run still does
 not accept Phase 5, automate call control, authorize Phase 6 or establish
 caller-heard latency.
+## Phase 5 local Malayalam STT candidate — 2026-10-06
+
+An explicit Bluetooth-only `local-malayalam` speech provider is now implemented
+and has passed controlled offline/reference validation plus repository regression
+rehearsal.
+
+The reference Malayalam sentence matched between direct IndicConformer and the
+complete SHUO local worker path. Local CI rehearsal passed compile, CLI,
+portability, focused tests, Bluetooth regression, exact historical full-suite
+baseline verification and diff validation.
+
+This is an implementation/evidence milestone only. Phase 5 remains not accepted.
+The next gate after remote GitHub Actions is a controlled real Bluetooth/cellular
+Malayalam run. Carrier/V2 Malayalam STT, caller-heard latency and the separate
+Pocket-TTS playback/throughput issue remain unresolved.

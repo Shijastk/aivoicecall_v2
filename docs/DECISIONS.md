@@ -277,3 +277,27 @@ strict MODE_IN_CALL preflight, and only then starts TX/RX/observer/scenario.
 Reason: owner observation plus source review proved the visible 5-10 second delay
 before the first synthetic question was harness setup after call connection, not
 SHUO first-response latency. The two latency questions must remain separate.
+## BT-D33 — Add local Malayalam STT only as an explicit Bluetooth opt-in — 2026-10-06
+
+Decision: retain Deepgram Flux as the existing/default Bluetooth speech provider
+and add `local-malayalam` only behind an explicit provider selection.
+
+Reason: the previous live Malayalam call was still entering
+`flux-general-en`, while an isolated local IndicConformer benchmark had already
+shown materially better Malayalam recognition. The selected implementation keeps
+Silero/ONNX/IndicConformer dependencies in a separate worker environment instead
+of adding them to SHUO's main runtime dependency set.
+
+The operator must supply `SHUO_LOCAL_STT_PYTHON` and
+`SHUO_MALAYALAM_STT_MODEL_DIR`; source code contains no user-specific default
+paths and fails closed when either is absent.
+
+Reference offline evidence on 2026-10-06 reproduced the same Malayalam sentence
+through direct IndicConformer and through the SHUO mu-law/VAD/worker path, with
+one StartOfTurn and one EndOfTurn. Repository CI rehearsal remained
+historical-baseline clean.
+
+Consequence: this decision authorizes only the opt-in Bluetooth implementation
+and its controlled validation. It does not replace carrier/V2 Flux, accept
+Phase 5, prove live cellular accuracy, authorize Phase 6, or create a
+caller-heard latency claim.

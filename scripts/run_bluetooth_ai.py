@@ -92,6 +92,19 @@ def parse_args() -> argparse.Namespace:
         help="Local trace id only; this is not a carrier call id.",
     )
     parser.add_argument(
+        "--speech-provider",
+        choices=(
+            "deepgram-flux",
+            "local-malayalam",
+        ),
+        default="deepgram-flux",
+        help=(
+            "Bluetooth speech recognition / turn detector. "
+            "Default preserves Deepgram Flux; local-malayalam "
+            "uses isolated Silero VAD + IndicConformer."
+        ),
+    )
+    parser.add_argument(
         "--eager-eot-threshold",
         type=_eager_threshold,
         default=None,
@@ -198,6 +211,7 @@ async def _main(args: argparse.Namespace) -> None:
     await run_production_bluetooth_conversation(
         session,
         persona_id=args.persona,
+        speech_provider=args.speech_provider,
         diagnostics=diagnostics,
         stream_id="bluetooth-manual",
         call_id=args.call_id,
