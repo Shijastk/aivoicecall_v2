@@ -4,6 +4,7 @@ import asyncio
 import base64
 import json
 import math
+import inspect
 import os
 import time
 from typing import Awaitable, Callable, Optional
@@ -172,14 +173,26 @@ class SarvamVoiceCloneTTSService:
         self._validate_config()
 
         try:
-            # Sarvam documents API-key auth through this WebSocket subprotocol.
-            # It also avoids the extra_headers/additional_headers split between
-            # supported websockets releases.
+            # Sarvam recommends the api-subscription-key header. websockets 12
+            # called this kwarg extra_headers; newer asyncio releases call it
+            # additional_headers. Detect the installed callable instead of
+            # pinning SHUO to one websockets major solely for an auth keyword.
+            try:
+                connect_parameters = inspect.signature(
+                    self._connect
+                ).parameters
+            except (TypeError, ValueError):
+                connect_parameters = {}
+
+            headers = {"api-subscription-key": self._api_key}
+            if "extra_headers" in connect_parameters:
+                auth_kwargs = {"extra_headers": headers}
+            else:
+                auth_kwargs = {"additional_headers": headers}
+
             self._ws = await self._connect(
                 SARVAM_CLONE_WS_URL,
-                subprotocols=[
-                    f"api-subscription-key.{self._api_key}"
-                ],
+                **auth_kwargs,
             )
 
             config = {
