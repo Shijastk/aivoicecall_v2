@@ -317,3 +317,38 @@ The earlier closed-loop "do not merge from CI alone" hold remains part of the
 historical record. This later owner authorization supersedes only the merge hold,
 subject to the full CI gate and preservation of all existing runtime/safety
 restrictions.
+
+
+## Sarvam cloned-voice streaming TTS — 2026-10-08
+
+Owner decision: for the current Bluetooth Malayalam path, keep the existing local
+Silero VAD + IndicConformer speech-recognition path and add Sarvam saved-voice
+cloning as the selected remote TTS provider.
+
+Evidence that changed the old vendor decision: Sarvam's 2026-10-01 release added
+`GET /voices/clone/ws` for incremental cloned-voice synthesis. Current API docs
+explicitly accept `output_audio_codec=mulaw` and
+`speech_sample_rate=8000`, matching SHUO's carrier codec boundary directly.
+This is a different endpoint/capability from the older Bulbul-v3 streaming
+research that rejected Sarvam on an MP3-only constraint.
+
+Implementation boundary:
+
+- `TTS_PROVIDER=sarvam` selects `shuo/services/tts_sarvam.py`.
+- Saved voice selection is `SARVAM_VOICE_ID=svc-...`; the existing operator
+  voice catalogue remains ElevenLabs-specific and is deliberately not reused.
+- Sarvam receives incremental LLM text and `flush`; base64 mu-law frames are
+  forwarded unchanged to the existing player.
+- Default target language for this path is `ml-IN`, with pace and documented
+  server buffering exposed as environment knobs.
+- No runtime emotion parameter is invented. Sarvam documents that the reference
+  recording's pace, energy and emotion are copied; clone streaming exposes pace
+  but no per-utterance emotion control.
+- Pocket and ElevenLabs remain separately selectable for local tests/A-B.
+  Sarvam-to-Pocket same-turn fallback is deferred until replay/failure timing is
+  measured.
+
+Merge gate: repository CI plus a credentialed saved-voice smoke test and
+reference-hardware Bluetooth latency/listening test. Automated mocks alone do
+not prove provider entitlement, real TTFB, clone quality or mouth-to-ear
+latency.
