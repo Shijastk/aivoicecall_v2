@@ -7,10 +7,11 @@ from typing import Awaitable, Callable, Optional, Type
 from ..log import ServiceLogger
 from .tts import TTSService as ElevenLabsTTSService
 from .tts_pocket import PocketTTSService
+from .tts_sarvam import SarvamVoiceCloneTTSService
 
 log = ServiceLogger("TTSRouter")
 
-_SUPPORTED_PRIMARY = {"elevenlabs", "pocket"}
+_SUPPORTED_PRIMARY = {"elevenlabs", "pocket", "sarvam"}
 _SUPPORTED_FALLBACK = {"", "pocket"}
 _MAX_REPLAY_CHARS = 4096
 
@@ -34,6 +35,8 @@ def tts_required_env_vars() -> tuple[str, ...]:
     fallback = tts_fallback_provider_name()
     if primary == "elevenlabs" and fallback != "pocket":
         return ("ELEVENLABS_API_KEY",)
+    if primary == "sarvam":
+        return ("SARVAM_API_KEY", "SARVAM_VOICE_ID")
     return ()
 
 
@@ -57,8 +60,11 @@ def validate_tts_provider_config() -> Optional[str]:
             f"Unsupported TTS_FALLBACK_PROVIDER={fallback!r}. "
             "Supported: pocket or empty"
         )
-    if primary == "pocket" and fallback:
-        return "TTS_FALLBACK_PROVIDER must be empty when TTS_PROVIDER=pocket"
+    if primary in {"pocket", "sarvam"} and fallback:
+        return (
+            "TTS_FALLBACK_PROVIDER must be empty when "
+            f"TTS_PROVIDER={primary}"
+        )
     return None
 
 
@@ -281,6 +287,7 @@ def build_tts_service(
     voice_id: Optional[str] = None,
     elevenlabs_cls: Type = ElevenLabsTTSService,
     pocket_cls: Type = PocketTTSService,
+    sarvam_cls: Type = SarvamVoiceCloneTTSService,
 ):
     error = validate_tts_provider_config()
     if error:
@@ -291,6 +298,16 @@ def build_tts_service(
 
     if primary == "pocket":
         return pocket_cls(
+            on_audio=on_audio,
+            on_done=on_done,
+            voice_id=None,
+        )
+
+    if primary == "sarvam":
+        # The current config-store voice catalogue is ElevenLabs-specific.
+        # Sarvam selects its saved clone through SARVAM_VOICE_ID instead of
+        # accidentally treating an ElevenLabs provider ID as a Sarvam voice.
+        return sarvam_cls(
             on_audio=on_audio,
             on_done=on_done,
             voice_id=None,

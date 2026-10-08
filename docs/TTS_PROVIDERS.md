@@ -1,5 +1,100 @@
 # TTS provider routing and local Pocket TTS
 
+
+## Owner-selected Sarvam cloned-voice path — 2026-10-08
+
+The current Bluetooth/Malayalam target is **Sarvam saved-voice cloning over the
+voice-cloning WebSocket**, while the existing local Silero VAD + IndicConformer
+STT path remains unchanged.
+
+This is a new provider path, not the old Bulbul-v3 decision recorded in
+`rules.md`. Sarvam added saved voice cloning on 2026-09-01 and cloned-voice
+WebSocket streaming on 2026-10-01. The current protocol accepts incremental
+`text`, ends an utterance with `flush`, returns base64 `audio` frames and a
+`final` event, and explicitly supports `mulaw` at 8 kHz. SHUO therefore asks
+Sarvam for **native G.711 mu-law / 8000 Hz** and forwards those frames through
+the existing player without a provider-side PCM/resample step.
+
+Canonical configuration for this path:
+
+```bash
+TTS_PROVIDER=sarvam
+TTS_FALLBACK_PROVIDER=
+SARVAM_API_KEY=...
+SARVAM_VOICE_ID=svc-...
+SARVAM_TTS_LANGUAGE_CODE=ml-IN
+SARVAM_TTS_PACE=1.0
+SARVAM_TTS_MIN_BUFFER_SIZE=30
+SARVAM_TTS_MAX_CHUNK_LENGTH=200
+```
+
+The code-level default remains ElevenLabs when `TTS_PROVIDER` is completely
+unset so an old deployment that never set the variable does not silently change
+provider. New/reference configuration selects Sarvam explicitly.
+
+### Voice cloning
+
+Create the saved voice once from a local clip:
+
+```bash
+SARVAM_API_KEY=... python scripts/create_sarvam_voice.py \
+  ~/voice.wav \
+  --name shijas \
+  --language ml-IN \
+  --style conversational \
+  --confirm-rights
+```
+
+The script prints only `SARVAM_VOICE_ID=svc-...`; it never writes `.env`,
+prints the API key, or prints Sarvam's generated reference transcript.
+
+Use a clean single-speaker **10–15 second** reference, preferably mono WAV,
+16–24 kHz, 16-bit PCM. Sarvam documents that the clone copies the reference
+performance, including **pace, energy and emotion**. The streaming clone API
+documents a `pace` control but no per-utterance emotion parameter. Therefore
+SHUO does **not** invent an emotion field: a warm, professional, conversational
+reference take is the primary prosody control for the cloned voice.
+
+### Current provider boundary
+
+`shuo/services/tts_sarvam.py` implements the same service contract consumed by
+`TTSPool` / `Agent`:
+
+- warm `start()`
+- incremental `send(text)`
+- end-of-utterance `flush()`
+- base64 mu-law audio callback
+- deterministic `cancel()`
+- completion/failure always reaches the turn completion callback
+
+The existing operator voice catalogue is ElevenLabs-specific. To avoid sending
+an ElevenLabs voice ID to Sarvam by accident, the Sarvam provider deliberately
+ignores the per-call catalogue `voice_id` and reads `SARVAM_VOICE_ID`
+explicitly. Making the UI catalogue provider-aware is separate work; it is not
+required for the Bluetooth reference path.
+
+Pocket remains the cost-free local functional-test provider. ElevenLabs remains
+available for A/B/regression. Cross-provider Sarvam→Pocket same-turn fallback is
+**not enabled yet**: replay/failure timing must be measured first rather than
+assuming the existing ElevenLabs fallback semantics transfer unchanged.
+
+### Acceptance boundary
+
+Automated tests can prove protocol shape, routing, cleanup, codec/sample-rate
+configuration and regressions. They **cannot** prove Sarvam entitlement,
+real-provider TTFB, cloned-voice quality, or handset mouth-to-ear latency without
+the private API key/voice and reference hardware.
+
+Do not merge this provider change solely because unit CI is green. Before main:
+
+1. create/confirm the saved `svc-...` voice;
+2. run a credentialed Sarvam smoke synthesis with native mu-law/8 kHz;
+3. run the Bluetooth path with `--speech-provider local-malayalam`;
+4. capture content-free TTS first-audio and end-to-end latency evidence;
+5. listen to Malayalam + English code-mix and interruption behavior on the
+   reference handset.
+
+
 **Status:** Pocket TTS is the approved replacement candidate for the prior eSpeak local testing/fallback path. Repository automated validation must be baseline-clean before merge; real reference-hardware validation is still required before Phase 5 or caller-heard latency/quality claims.
 
 ## Purpose

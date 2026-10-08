@@ -268,3 +268,41 @@ def test_direct_pocket_rejects_a_second_fallback(monkeypatch):
         validate_tts_provider_config()
         == "TTS_FALLBACK_PROVIDER must be empty when TTS_PROVIDER=pocket"
     )
+
+
+def test_sarvam_is_supported_and_requires_its_saved_voice(monkeypatch):
+    monkeypatch.setenv("TTS_PROVIDER", "sarvam")
+    monkeypatch.delenv("TTS_FALLBACK_PROVIDER", raising=False)
+    assert validate_tts_provider_config() is None
+    assert tts_required_env_vars() == (
+        "SARVAM_API_KEY",
+        "SARVAM_VOICE_ID",
+    )
+
+
+def test_sarvam_router_does_not_reuse_elevenlabs_voice_id(monkeypatch):
+    monkeypatch.setenv("TTS_PROVIDER", "sarvam")
+    monkeypatch.delenv("TTS_FALLBACK_PROVIDER", raising=False)
+
+    class FakeSarvam(FakePrimary):
+        pass
+
+    service = build_tts_service(
+        lambda _audio: asyncio.sleep(0),
+        lambda: asyncio.sleep(0),
+        voice_id="elevenlabs-provider-id",
+        sarvam_cls=FakeSarvam,
+    )
+
+    assert isinstance(service, FakeSarvam)
+    assert service.voice_id is None
+
+
+def test_sarvam_rejects_pocket_fallback_until_cross_provider_replay_is_measured(
+    monkeypatch,
+):
+    monkeypatch.setenv("TTS_PROVIDER", "sarvam")
+    monkeypatch.setenv("TTS_FALLBACK_PROVIDER", "pocket")
+    error = validate_tts_provider_config()
+    assert error is not None
+    assert "TTS_PROVIDER=sarvam" in error
