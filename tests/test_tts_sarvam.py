@@ -68,7 +68,11 @@ async def test_sarvam_streams_native_mulaw_8k_without_transcoding(
     assert connect_calls == [
         (
             SARVAM_CLONE_WS_URL,
-            {"subprotocols": ["api-subscription-key.test-key"]},
+            {
+                "additional_headers": {
+                    "api-subscription-key": "test-key"
+                }
+            },
         )
     ]
     assert socket.sent[0] == {
